@@ -1,6 +1,6 @@
-# 🚗 TravelTrak Ops
+# 🚗 ServiceWise
 
-A comprehensive fleet management and operations system built for travel and transportation companies. TravelTrak Ops provides end-to-end management of vehicles, bookings, drivers, services, and maintenance operations.
+A comprehensive fleet management and operations system built for travel and transportation companies. ServiceWise provides end-to-end management of vehicles, bookings, drivers, services, and maintenance operations.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
@@ -284,7 +284,7 @@ verify_jwt = false  # Manual JWT verification in function
 ## 📁 Project Structure
 
 ```
-traveltrak-ops-main/
+servicewise/
 ├── public/                 # Static assets
 │   ├── favicon.ico
 │   └── robots.txt
