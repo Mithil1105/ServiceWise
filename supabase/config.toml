@@ -1,0 +1,13 @@
+project_id = "yusdopbnzalqduouewdw"
+
+[functions.petty-expenses]
+verify_jwt = true
+
+[functions.create-user]
+verify_jwt = false
+
+[functions.create-user-v2]
+verify_jwt = false
+
+[functions.create-user-v3]
+verify_jwt = false
