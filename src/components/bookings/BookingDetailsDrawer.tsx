@@ -34,7 +34,9 @@ import {
 } from '@/types/booking';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useBillsByBooking } from '@/hooks/use-bills';
+import { useSystemConfig } from '@/hooks/use-dashboard';
 
 interface BookingDetailsDrawerProps {
   booking: BookingWithDetails | null;
@@ -54,6 +56,9 @@ export function BookingDetailsDrawer({
   onViewHistory 
 }: BookingDetailsDrawerProps) {
   const [generateBillOpen, setGenerateBillOpen] = useState(false);
+  const { data: bills } = useBillsByBooking(booking?.id);
+  const { data: minKmPerKm } = useSystemConfig('minimum_km_per_km');
+  const { data: minKmHybridPerDay } = useSystemConfig('minimum_km_hybrid_per_day');
   
   // Fetch incidents for cars in this booking during the trip period
   const { data: incidents } = useQuery({
@@ -79,7 +84,7 @@ export function BookingDetailsDrawer({
   if (!booking) return null;
 
   const formatCurrency = (amount: number | null) => {
-    if (amount === null || amount === undefined) return '—';
+    if (amount === null || amount === undefined) return '₹0';
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
@@ -91,15 +96,74 @@ export function BookingDetailsDrawer({
     return formatDateTimeFull(date);
   };
 
-  const totalAmount = booking.booking_vehicles?.reduce(
-    (sum, v) => sum + (v.computed_total || v.rate_total || 0), 
-    0
-  ) || 0;
+  // Calculate amounts: Priority 1) Bills, 2) Assigned vehicles, 3) Requested vehicles
+  const { totalAmount, totalAdvance } = useMemo(() => {
+    // First priority: Use bill amounts if bills exist
+    if (bills && bills.length > 0) {
+      const latestBill = bills[0]; // Most recent bill
+      return {
+        totalAmount: latestBill.total_amount || 0,
+        totalAdvance: latestBill.advance_amount || booking.advance_amount || 0,
+      };
+    }
 
-  const totalAdvance = booking.booking_vehicles?.reduce(
-    (sum, v) => sum + (v.advance_amount || 0), 
-    0
-  ) || 0;
+    // Second priority: Calculate from assigned vehicles
+    if (booking.booking_vehicles && booking.booking_vehicles.length > 0) {
+      const vehicleTotal = booking.booking_vehicles.reduce(
+        (sum, v) => sum + (v.computed_total || v.rate_total || 0), 
+        0
+      );
+      const vehicleAdvance = booking.booking_vehicles.reduce(
+        (sum, v) => sum + (v.advance_amount || 0), 
+        0
+      );
+      
+      if (vehicleTotal > 0) {
+        return {
+          totalAmount: vehicleTotal,
+          totalAdvance: vehicleAdvance || booking.advance_amount || 0,
+        };
+      }
+    }
+
+    // Third priority: Calculate from requested vehicles
+    if (booking.booking_requested_vehicles && booking.booking_requested_vehicles.length > 0) {
+      const startDate = new Date(booking.start_at);
+      const endDate = new Date(booking.end_at);
+      const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) || 1;
+      const estimatedKm = booking.estimated_km || 0;
+      const thresholdKmPerDay = minKmPerKm ? Number(minKmPerKm) : 300;
+      const thresholdHybridPerDay = minKmHybridPerDay ? Number(minKmHybridPerDay) : 300;
+
+      const calculatedTotal = booking.booking_requested_vehicles.reduce((sum, rv) => {
+        switch (rv.rate_type) {
+          case 'total':
+            return sum + (rv.rate_total || 0);
+          case 'per_day':
+            return sum + (days * (rv.rate_per_day || 0));
+          case 'per_km':
+            const totalMinKm = thresholdKmPerDay * days;
+            const kmToCharge = Math.max(estimatedKm, totalMinKm);
+            return sum + ((rv.rate_per_km || 0) * kmToCharge);
+          case 'hybrid':
+            const hybridMinKm = Math.max(estimatedKm, thresholdHybridPerDay * days);
+            return sum + (days * (rv.rate_per_day || 0)) + ((rv.rate_per_km || 0) * hybridMinKm);
+          default:
+            return sum;
+        }
+      }, 0);
+
+      return {
+        totalAmount: calculatedTotal,
+        totalAdvance: booking.advance_amount || 0,
+      };
+    }
+
+    return {
+      totalAmount: 0,
+      totalAdvance: booking.advance_amount || 0,
+    };
+  }, [bills, booking, minKmPerKm, minKmHybridPerDay]);
 
   const totalEstimatedKm = booking.booking_vehicles?.reduce(
     (sum, v) => sum + (v.estimated_km || 0),
@@ -257,8 +321,8 @@ export function BookingDetailsDrawer({
             </>
           )}
 
-          {/* Rate Summary */}
-          {booking.booking_vehicles && booking.booking_vehicles.length > 0 && (
+          {/* Rate Summary - Always show if there's any amount or bills */}
+          {(totalAmount > 0 || (bills && bills.length > 0) || booking.booking_vehicles?.length > 0 || booking.booking_requested_vehicles?.length > 0) && (
             <>
               <Separator />
               <div className="space-y-2 p-3 bg-primary/5 rounded-lg">
@@ -268,13 +332,21 @@ export function BookingDetailsDrawer({
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Advance Paid</span>
-                  <span className="font-medium text-success">{formatCurrency(totalAdvance)}</span>
+                  <span className={`font-medium ${totalAdvance > 0 ? 'text-success' : 'text-muted-foreground'}`}>
+                    {formatCurrency(totalAdvance)}
+                    {totalAdvance === 0 && <span className="text-xs ml-1">(No advance)</span>}
+                  </span>
                 </div>
                 <Separator className="my-2" />
                 <div className="flex justify-between font-semibold">
                   <span>Due Amount</span>
                   <span className="text-primary">{formatCurrency(totalAmount - totalAdvance)}</span>
                 </div>
+                {bills && bills.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    * Amounts from latest bill ({bills[0].bill_number})
+                  </p>
+                )}
               </div>
             </>
           )}
