@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Car, Check, X, Plus, Trash2, Loader2, AlertTriangle, History } from 'lucide-react';
 import { useBooking, useUpdateBooking, useAvailableCars, useAssignVehicle, useRemoveVehicle } from '@/hooks/use-bookings';
 import { BookingStatusBadge } from '@/components/bookings/BookingStatusBadge';
