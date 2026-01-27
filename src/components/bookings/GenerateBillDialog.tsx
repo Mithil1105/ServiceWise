@@ -207,6 +207,8 @@ export function GenerateBillDialog({
         setTransferDialogOpen(true);
       } else {
         // No transfer needed, navigate to bill view and call onSuccess
+        queryClient.invalidateQueries({ queryKey: ['company-bills', { bookingId }] });
+        queryClient.invalidateQueries({ queryKey: ['company-bills'] });
         setTimeout(() => {
           navigate(`/bookings/${bookingId}/bills`);
         }, 500); // Small delay to ensure queries are invalidated
@@ -478,6 +480,8 @@ export function GenerateBillDialog({
             // Invalidate queries to refresh bill list
             queryClient.invalidateQueries({ queryKey: ['bills', bookingId] });
             queryClient.invalidateQueries({ queryKey: ['bills'] });
+            queryClient.invalidateQueries({ queryKey: ['company-bills', { bookingId }] });
+            queryClient.invalidateQueries({ queryKey: ['company-bills'] });
             setTimeout(() => {
               navigate(`/bookings/${bookingId}/bills`);
             }, 500); // Small delay to ensure queries are invalidated

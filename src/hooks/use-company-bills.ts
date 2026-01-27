@@ -13,10 +13,7 @@ export function useCompanyBills(filters?: {
     queryFn: async () => {
       let query = supabase
         .from('company_bills')
-        .select(`
-          *,
-          bookings!inner(booking_ref, status, customer_name)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (filters?.bookingId) {
@@ -31,10 +28,11 @@ export function useCompanyBills(filters?: {
 
       const { data, error } = await query;
 
-      if (error) throw error;
-      return data as (CompanyBill & {
-        bookings: { booking_ref: string; status: string; customer_name: string };
-      })[];
+      if (error) {
+        console.error('Error fetching company bills:', error);
+        throw error;
+      }
+      return (data || []) as CompanyBill[];
     },
   });
 }

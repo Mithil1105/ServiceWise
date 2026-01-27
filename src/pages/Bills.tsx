@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { formatDateTimeFull } from '@/lib/date';
@@ -23,6 +23,7 @@ import {
   Send,
   AlertCircle
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useBooking } from '@/hooks/use-bookings';
 import { 
   useBillsByBooking, 
@@ -52,6 +53,7 @@ export default function Bills() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const billRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
   const { data: booking, isLoading: loadingBooking } = useBooking(id);
   const { data: bills, isLoading: loadingBills, refetch: refetchBills } = useBillsByBooking(id);
   const { data: companyBills } = useCompanyBills({ bookingId: id });
@@ -287,9 +289,13 @@ export default function Bills() {
         <Tabs value={billViewTab} onValueChange={(v) => setBillViewTab(v as 'customer' | 'company')} className="space-y-4">
           <TabsList className="print:hidden">
             <TabsTrigger value="customer">Customer Bill</TabsTrigger>
-            {selectedCompanyBill && (
+            {selectedCompanyBill ? (
               <TabsTrigger value="company">Company Bill</TabsTrigger>
-            )}
+            ) : companyBills && companyBills.length > 0 ? (
+              <TabsTrigger value="company" disabled className="opacity-50">
+                Company Bill (No match)
+              </TabsTrigger>
+            ) : null}
           </TabsList>
 
           {/* Customer Bill Tab */}
@@ -974,6 +980,8 @@ export default function Bills() {
         onSuccess={() => {
           setGenerateBillOpen(false);
           refetchBills();
+          // Also refetch company bills
+          queryClient.invalidateQueries({ queryKey: ['company-bills', { bookingId: booking.id }] });
         }}
       />
 
