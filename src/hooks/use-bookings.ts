@@ -5,6 +5,7 @@ import type {
   Booking, 
   BookingWithDetails, 
   BookingVehicle, 
+  BookingRequestedVehicle,
   BookingAuditLog,
   AvailableCar,
   BookingStatus,
@@ -16,28 +17,106 @@ import type {
 // Buffer minutes for availability check
 const BUFFER_MINUTES = 60;
 
+/**
+ * Automatically update booking status based on current time and trip dates.
+ * - If booking is cancelled, status is never changed.
+ * - If now >= end_at -> completed
+ * - If start_at <= now < end_at -> ongoing
+ * - Otherwise status is left as-is
+ *
+ * This keeps statuses in sync without requiring manual edits.
+ */
+async function autoUpdateBookingStatuses(bookings: any[]) {
+  if (!bookings || bookings.length === 0) return;
+
+  const now = new Date();
+  const updatesByStatus: Partial<Record<BookingStatus, string[]>> = {};
+
+  for (const b of bookings) {
+    if (!b.start_at || !b.end_at) continue;
+
+    // Never auto-change cancelled bookings
+    if (b.status === 'cancelled') continue;
+
+    const start = new Date(b.start_at);
+    const end = new Date(b.end_at);
+
+    let newStatus: BookingStatus | null = null;
+
+    if (now >= end && b.status !== 'completed') {
+      newStatus = 'completed';
+    } else if (now >= start && now < end && b.status !== 'ongoing') {
+      // Consider only active bookings for ongoing
+      if (b.status === 'confirmed' || b.status === 'inquiry' || b.status === 'tentative' || b.status === 'ongoing') {
+        newStatus = 'ongoing';
+      }
+    }
+
+    if (newStatus && newStatus !== b.status) {
+      if (!updatesByStatus[newStatus]) updatesByStatus[newStatus] = [];
+      updatesByStatus[newStatus]!.push(b.id);
+      // Also update the in-memory object so UI reflects change immediately
+      b.status = newStatus;
+    }
+  }
+
+  // Persist changes to the database, grouped by status
+  const statusEntries = Object.entries(updatesByStatus) as [BookingStatus, string[]][];
+  for (const [status, ids] of statusEntries) {
+    if (ids.length === 0) continue;
+    await supabase
+      .from('bookings')
+      .update({ status })
+      .in('id', ids);
+  }
+}
+
 // Fetch all bookings with details
 export function useBookings() {
   return useQuery({
     queryKey: ['bookings'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // First, fetch bookings with vehicles
+      const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
         .select(`
           *,
           booking_vehicles(
             *,
-            car:cars(id, vehicle_number, model, seats)
+            cars(id, vehicle_number, model, seats)
           )
         `)
         .order('start_at', { ascending: false });
 
-      if (error) throw error;
+      if (bookingsError) throw bookingsError;
+      if (!bookingsData) return [];
+
+      // Auto-update statuses based on current time and trip dates
+      await autoUpdateBookingStatuses(bookingsData);
+
+      // Fetch requested vehicles separately to avoid query issues
+      const bookingIds = bookingsData.map(b => b.id);
+      let requestedVehiclesMap: Record<string, any[]> = {};
+      
+      if (bookingIds.length > 0) {
+        const { data: requestedVehicles } = await supabase
+          .from('booking_requested_vehicles')
+          .select('*')
+          .in('booking_id', bookingIds);
+        
+        if (requestedVehicles) {
+          requestedVehiclesMap = requestedVehicles.reduce((acc, rv) => {
+            if (!acc[rv.booking_id]) acc[rv.booking_id] = [];
+            acc[rv.booking_id].push(rv);
+            return acc;
+          }, {} as Record<string, any[]>);
+        }
+      }
       
       // Fetch profile names for created_by/updated_by
       const userIds = [...new Set([
-        ...data.map(b => b.created_by).filter(Boolean),
-        ...data.map(b => b.updated_by).filter(Boolean)
+        ...bookingsData.map(b => b.created_by).filter(Boolean),
+        ...bookingsData.map(b => b.updated_by).filter(Boolean)
       ])];
       
       let profileMap: Record<string, string> = {};
@@ -49,10 +128,15 @@ export function useBookings() {
         profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p.name]));
       }
       
-      return data.map(b => ({
+      return bookingsData.map(b => ({
         ...b,
         created_by_profile: b.created_by ? { name: profileMap[b.created_by] || 'Unknown' } : null,
         updated_by_profile: b.updated_by ? { name: profileMap[b.updated_by] || 'Unknown' } : null,
+        booking_vehicles: b.booking_vehicles?.map((v: any) => ({
+          ...v,
+          car: v.cars || null,
+        })) || [],
+        booking_requested_vehicles: requestedVehiclesMap[b.id] || [],
       })) as unknown as BookingWithDetails[];
     },
   });
@@ -65,26 +149,36 @@ export function useBooking(id: string | undefined) {
     queryFn: async () => {
       if (!id) return null;
       
+      // Fetch booking with vehicles
       const { data, error } = await supabase
         .from('bookings')
         .select(`
           *,
           booking_vehicles(
             *,
-            car:cars(id, vehicle_number, model, seats)
+            cars(id, vehicle_number, model, seats)
           )
         `)
         .eq('id', id)
         .single();
 
       if (error) throw error;
-      
+
+      // Auto-update status for this single booking
+      await autoUpdateBookingStatuses([data]);
+
+      // Fetch requested vehicles separately
+      const { data: requestedVehicles } = await supabase
+        .from('booking_requested_vehicles')
+        .select('*')
+        .eq('booking_id', id);
+
       // Fetch profile names
       const userIds = [...new Set([
         data.created_by,
         data.updated_by,
-        ...data.booking_vehicles.map((v: any) => v.created_by).filter(Boolean),
-        ...data.booking_vehicles.map((v: any) => v.updated_by).filter(Boolean)
+        ...(data.booking_vehicles || []).map((v: any) => v.created_by).filter(Boolean),
+        ...(data.booking_vehicles || []).map((v: any) => v.updated_by).filter(Boolean)
       ].filter(Boolean))];
       
       let profileMap: Record<string, string> = {};
@@ -100,11 +194,13 @@ export function useBooking(id: string | undefined) {
         ...data,
         created_by_profile: data.created_by ? { name: profileMap[data.created_by] || 'Unknown' } : null,
         updated_by_profile: data.updated_by ? { name: profileMap[data.updated_by] || 'Unknown' } : null,
-        booking_vehicles: data.booking_vehicles.map((v: any) => ({
+        booking_vehicles: (data.booking_vehicles || []).map((v: any) => ({
           ...v,
+          car: v.cars || null,
           created_by_profile: v.created_by ? { name: profileMap[v.created_by] || 'Unknown' } : null,
           updated_by_profile: v.updated_by ? { name: profileMap[v.updated_by] || 'Unknown' } : null,
-        }))
+        })),
+        booking_requested_vehicles: requestedVehicles || [],
       } as unknown as BookingWithDetails;
     },
     enabled: !!id,
@@ -122,7 +218,7 @@ export function useBookingsForCalendar(startDate: Date, endDate: Date) {
           *,
           booking_vehicles(
             *,
-            car:cars(id, vehicle_number, model, seats)
+            cars(id, vehicle_number, model, seats)
           )
         `)
         .gte('end_at', startDate.toISOString())
@@ -308,6 +404,7 @@ export function useAssignVehicle() {
       rate_per_km?: number;
       estimated_km?: number;
       advance_amount?: number;
+      requested_vehicle_id?: string | null;
     }) => {
       const { data: result, error } = await supabase.rpc('assign_car_to_booking', {
         p_booking_id: data.booking_id,
@@ -321,6 +418,7 @@ export function useAssignVehicle() {
         p_estimated_km: data.estimated_km || null,
         p_advance_amount: data.advance_amount || 0,
         p_buffer_minutes: BUFFER_MINUTES,
+        p_requested_vehicle_id: data.requested_vehicle_id || null,
       });
 
       if (error) throw error;
@@ -357,7 +455,7 @@ export function useRemoveVehicle() {
       // Get vehicle info for audit
       const { data: vehicle } = await supabase
         .from('booking_vehicles')
-        .select('*, car:cars(vehicle_number)')
+        .select('*, cars(vehicle_number)')
         .eq('id', vehicleId)
         .single();
 
@@ -534,5 +632,153 @@ export function useInvoice(bookingId: string | undefined) {
       } as Invoice & { created_by_profile?: { name: string } | null };
     },
     enabled: !!bookingId,
+  });
+}
+
+// Fetch requested vehicles for a booking
+export function useBookingRequestedVehicles(bookingId: string | undefined) {
+  return useQuery({
+    queryKey: ['booking-requested-vehicles', bookingId],
+    queryFn: async () => {
+      if (!bookingId) return [];
+
+      const { data, error } = await supabase
+        .from('booking_requested_vehicles')
+        .select('*')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return data as BookingRequestedVehicle[];
+    },
+    enabled: !!bookingId,
+  });
+}
+
+// Create requested vehicle
+export function useCreateRequestedVehicle() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      booking_id: string;
+      brand: string;
+      model: string;
+      rate_type: RateType;
+      rate_total?: number | null;
+      rate_per_day?: number | null;
+      rate_per_km?: number | null;
+      estimated_km?: number | null;
+      driver_allowance_per_day?: number | null;
+      advance_amount?: number;
+      advance_payment_method?: 'cash' | 'online' | null;
+      advance_collected_by?: string | null;
+      advance_account_type?: 'company' | 'personal' | null;
+      advance_account_id?: string | null;
+    }) => {
+      const { data: session } = await supabase.auth.getSession();
+      const userId = session.session?.user?.id;
+
+      const { data: requestedVehicle, error } = await supabase
+        .from('booking_requested_vehicles')
+        .insert({
+          booking_id: data.booking_id,
+          brand: data.brand,
+          model: data.model,
+          rate_type: data.rate_type,
+          rate_total: data.rate_total || null,
+          rate_per_day: data.rate_per_day || null,
+          rate_per_km: data.rate_per_km || null,
+          estimated_km: data.estimated_km || null,
+          driver_allowance_per_day: data.driver_allowance_per_day || null,
+          advance_amount: data.advance_amount || 0,
+          advance_payment_method: data.advance_payment_method || null,
+          advance_collected_by: data.advance_collected_by || null,
+          advance_account_type: data.advance_account_type || null,
+          advance_account_id: data.advance_account_id || null,
+          created_by: userId,
+          updated_by: userId,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return requestedVehicle as BookingRequestedVehicle;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['booking-requested-vehicles', variables.booking_id] });
+      queryClient.invalidateQueries({ queryKey: ['booking', variables.booking_id] });
+      toast.success('Requested vehicle added');
+    },
+    onError: (error) => {
+      toast.error(`Failed to add requested vehicle: ${error.message}`);
+    },
+  });
+}
+
+// Update requested vehicle
+export function useUpdateRequestedVehicle() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: Partial<BookingRequestedVehicle> & { id: string }) => {
+      const { data: session } = await supabase.auth.getSession();
+      const userId = session.session?.user?.id;
+
+      const { data: requestedVehicle, error } = await supabase
+        .from('booking_requested_vehicles')
+        .update({
+          ...data,
+          updated_by: userId,
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return requestedVehicle as BookingRequestedVehicle;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['booking-requested-vehicles', data.booking_id] });
+      queryClient.invalidateQueries({ queryKey: ['booking', data.booking_id] });
+      toast.success('Requested vehicle updated');
+    },
+    onError: (error) => {
+      toast.error(`Failed to update requested vehicle: ${error.message}`);
+    },
+  });
+}
+
+// Delete requested vehicle
+export function useDeleteRequestedVehicle() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      // Get booking_id before deleting
+      const { data: requestedVehicle } = await supabase
+        .from('booking_requested_vehicles')
+        .select('booking_id')
+        .eq('id', id)
+        .single();
+
+      const { error } = await supabase
+        .from('booking_requested_vehicles')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      return requestedVehicle?.booking_id;
+    },
+    onSuccess: (bookingId) => {
+      if (bookingId) {
+        queryClient.invalidateQueries({ queryKey: ['booking-requested-vehicles', bookingId] });
+        queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
+      }
+      toast.success('Requested vehicle removed');
+    },
+    onError: (error) => {
+      toast.error(`Failed to remove requested vehicle: ${error.message}`);
+    },
   });
 }

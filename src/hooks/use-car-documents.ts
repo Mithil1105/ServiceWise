@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-export type DocumentType = 'rc' | 'puc' | 'insurance' | 'warranty';
+export type DocumentType = 'rc' | 'puc' | 'insurance' | 'warranty' | 'permits' | 'fitness';
 
 export interface CarDocument {
   id: string;
@@ -11,6 +11,7 @@ export interface CarDocument {
   expiry_date: string | null;
   file_path: string | null;
   file_name: string | null;
+  insurance_provider_name?: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -88,12 +89,14 @@ export function useUpsertCarDocument() {
       expiryDate,
       notes,
       file,
+      insuranceProviderName,
     }: {
       carId: string;
       documentType: DocumentType;
       expiryDate?: string | null;
       notes?: string | null;
       file?: File;
+      insuranceProviderName?: string | null;
     }) => {
       let file_path: string | null = null;
       let file_name: string | null = null;
@@ -121,6 +124,7 @@ export function useUpsertCarDocument() {
           expiry_date: expiryDate || null,
           file_path: file_path || undefined,
           file_name: file_name || undefined,
+          insurance_provider_name: documentType === 'insurance' ? (insuranceProviderName || null) : null,
           notes: notes || null,
         }, {
           onConflict: 'car_id,document_type',

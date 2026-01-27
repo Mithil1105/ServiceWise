@@ -278,7 +278,7 @@ export default function BookingCalendar() {
           if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/edit`);
         }}
         onViewInvoice={() => {
-          if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/invoice`);
+          if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/bills`);
         }}
       />
     </div>

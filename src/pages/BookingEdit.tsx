@@ -23,6 +23,7 @@ interface VehicleAssignment {
   model: string;
   driver_name: string;
   driver_phone: string;
+  requested_vehicle_id?: string | null; // Link to requested vehicle
   rate_type: RateType;
   rate_total: number | string;
   rate_per_day: number | string;
@@ -82,6 +83,7 @@ export default function BookingEdit() {
         model: v.car?.model || '',
         driver_name: v.driver_name || '',
         driver_phone: v.driver_phone || '',
+        requested_vehicle_id: (v as any).requested_vehicle_id || null,
         rate_type: v.rate_type,
         rate_total: v.rate_total || '',
         rate_per_day: v.rate_per_day || '',
@@ -124,18 +126,37 @@ export default function BookingEdit() {
   const grandTotal = selectedVehicles.reduce((sum, v) => sum + calculateVehicleTotal(v), 0);
   const totalAdvance = selectedVehicles.reduce((sum, v) => sum + (Number(v.advance_amount) || 0), 0);
 
-  const handleAddVehicle = (car: typeof availableForSelection[0]) => {
+  const handleAddVehicle = (car: typeof availableForSelection[0], requestedVehicleId?: string) => {
+    // If requested vehicle is provided, auto-fill rates from it
+    let rateData: Partial<VehicleAssignment> = {
+      rate_type: 'total',
+      rate_total: '',
+      rate_per_day: '',
+      rate_per_km: '',
+      estimated_km: '',
+    };
+
+    if (requestedVehicleId && booking?.booking_requested_vehicles) {
+      const requestedVehicle = booking.booking_requested_vehicles.find(rv => rv.id === requestedVehicleId);
+      if (requestedVehicle) {
+        rateData = {
+          requested_vehicle_id: requestedVehicleId,
+          rate_type: requestedVehicle.rate_type,
+          rate_total: requestedVehicle.rate_total || '',
+          rate_per_day: requestedVehicle.rate_per_day || '',
+          rate_per_km: requestedVehicle.rate_per_km || '',
+          estimated_km: booking.estimated_km ? booking.estimated_km.toString() : '',
+        };
+      }
+    }
+
     setSelectedVehicles(prev => [...prev, {
       car_id: car.car_id,
       vehicle_number: car.vehicle_number,
       model: car.model,
       driver_name: '',
       driver_phone: '',
-      rate_type: 'total',
-      rate_total: '',
-      rate_per_day: '',
-      rate_per_km: '',
-      estimated_km: '',
+      ...rateData,
       advance_amount: '',
       isNew: true,
     }]);
@@ -401,7 +422,94 @@ export default function BookingEdit() {
         </CardContent>
       </Card>
 
-      {/* Vehicle Assignment - same as BookingNew */}
+      {/* Requested Vehicles Section - Show rates and estimated KM */}
+      {booking?.booking_requested_vehicles && booking.booking_requested_vehicles.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Requested Vehicles & Rates</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">These are the original vehicle requirements with pricing</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {booking.booking_requested_vehicles.map((rv, index) => {
+              const days = startDate && endDate ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) || 1 : 0;
+              const estimatedKm = booking.estimated_km || 0;
+              
+              let calculatedTotal = 0;
+              if (rv.rate_type === 'total') {
+                calculatedTotal = rv.rate_total || 0;
+              } else if (rv.rate_type === 'per_day') {
+                calculatedTotal = (rv.rate_per_day || 0) * days;
+              } else if (rv.rate_type === 'per_km') {
+                calculatedTotal = (rv.rate_per_km || 0) * estimatedKm;
+              } else if (rv.rate_type === 'hybrid') {
+                calculatedTotal = ((rv.rate_per_day || 0) * days) + ((rv.rate_per_km || 0) * estimatedKm);
+              }
+
+              return (
+                <div key={rv.id || index} className="p-4 border rounded-lg bg-muted/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Car className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">Requested Vehicle {index + 1}</span>
+                      <Badge variant="outline">{RATE_TYPE_LABELS[rv.rate_type]}</Badge>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Brand/Model:</span>
+                      <p className="font-medium">{rv.brand} {rv.model}</p>
+                    </div>
+                    {rv.rate_type === 'total' && (
+                      <div>
+                        <span className="text-muted-foreground">Total Rate:</span>
+                        <p className="font-medium">₹{formatCurrency(Number(rv.rate_total || 0))}</p>
+                      </div>
+                    )}
+                    {['per_day', 'hybrid'].includes(rv.rate_type) && (
+                      <div>
+                        <span className="text-muted-foreground">Rate/Day:</span>
+                        <p className="font-medium">₹{formatCurrency(Number(rv.rate_per_day || 0))}</p>
+                      </div>
+                    )}
+                    {['per_km', 'hybrid'].includes(rv.rate_type) && (
+                      <>
+                        <div>
+                          <span className="text-muted-foreground">Rate/KM:</span>
+                          <p className="font-medium">₹{formatCurrency(Number(rv.rate_per_km || 0))}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Est. KM:</span>
+                          <p className="font-medium">{estimatedKm} km</p>
+                        </div>
+                      </>
+                    )}
+                    {rv.rate_type === 'per_day' && (
+                      <div>
+                        <span className="text-muted-foreground">Days:</span>
+                        <p className="font-medium">{days} days</p>
+                      </div>
+                    )}
+                    {rv.driver_allowance_per_day && (
+                      <div>
+                        <span className="text-muted-foreground">Driver Allowance/Day:</span>
+                        <p className="font-medium">₹{formatCurrency(Number(rv.driver_allowance_per_day))}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="pt-2 border-t">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Calculated Total:</span>
+                      <span className="font-semibold text-lg">{formatCurrency(calculatedTotal)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Vehicle Assignment - simplified to only driver info */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Assigned Vehicles</CardTitle>
@@ -416,12 +524,37 @@ export default function BookingEdit() {
                 <h4 className="font-medium">Select a Vehicle</h4>
                 <Button variant="ghost" size="sm" onClick={() => setShowVehicleSelect(false)}>Cancel</Button>
               </div>
+              {booking?.booking_requested_vehicles && booking.booking_requested_vehicles.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Link to Requested Vehicle (Optional)</Label>
+                  <Select onValueChange={(requestedVehicleId) => {
+                    // Store selected requested vehicle ID for when vehicle is selected
+                    (window as any).__selectedRequestedVehicleId = requestedVehicleId;
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select requested vehicle to auto-fill rates" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No link (manual rates)</SelectItem>
+                      {booking.booking_requested_vehicles.map((rv, idx) => (
+                        <SelectItem key={rv.id || idx} value={rv.id || ''}>
+                          Requested Vehicle {idx + 1} - {rv.brand} {rv.model} ({RATE_TYPE_LABELS[rv.rate_type]})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {loadingCars ? (
                 <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading...</div>
               ) : availableForSelection.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {availableForSelection.map(car => (
-                    <div key={car.car_id} className="flex items-center justify-between p-2 border rounded bg-background hover:bg-muted/50 cursor-pointer" onClick={() => handleAddVehicle(car)}>
+                    <div key={car.car_id} className="flex items-center justify-between p-2 border rounded bg-background hover:bg-muted/50 cursor-pointer" onClick={() => {
+                      const requestedVehicleId = (window as any).__selectedRequestedVehicleId;
+                      handleAddVehicle(car, requestedVehicleId && requestedVehicleId !== 'none' ? requestedVehicleId : undefined);
+                      (window as any).__selectedRequestedVehicleId = undefined;
+                    }}>
                       <div className="flex items-center gap-2">
                         <Check className="h-4 w-4 text-success" />
                         <span className="font-medium">{car.vehicle_number}</span>
@@ -436,79 +569,100 @@ export default function BookingEdit() {
             </div>
           )}
 
-          {selectedVehicles.map(vehicle => (
-            <div key={vehicle.car_id} className="p-4 border rounded-lg space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Car className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-semibold">{vehicle.vehicle_number}</span>
-                  <span className="text-sm text-muted-foreground">({vehicle.model})</span>
-                  {vehicle.isNew && <span className="text-xs bg-success/10 text-success px-2 py-0.5 rounded">New</span>}
+          {selectedVehicles.map(vehicle => {
+            // Find linked requested vehicle to show rate info
+            const linkedRequestedVehicle = booking?.booking_requested_vehicles?.find(
+              rv => rv.id === vehicle.requested_vehicle_id
+            );
+            
+            return (
+              <div key={vehicle.car_id} className="p-4 border rounded-lg space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Car className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-semibold">{vehicle.vehicle_number}</span>
+                    <span className="text-sm text-muted-foreground">({vehicle.model})</span>
+                    {vehicle.isNew && <span className="text-xs bg-success/10 text-success px-2 py-0.5 rounded">New</span>}
+                    {linkedRequestedVehicle && (
+                      <Badge variant="outline" className="text-xs">
+                        Linked to: {linkedRequestedVehicle.brand} {linkedRequestedVehicle.model}
+                      </Badge>
+                    )}
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => handleRemoveVehicle(vehicle)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => handleRemoveVehicle(vehicle)}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Driver Name</Label>
-                  <Input value={vehicle.driver_name} onChange={e => updateVehicle(vehicle.car_id, 'driver_name', e.target.value)} placeholder="Optional" className="h-8 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Driver Phone</Label>
-                  <Input value={vehicle.driver_phone} onChange={e => updateVehicle(vehicle.car_id, 'driver_phone', e.target.value)} placeholder="Optional" className="h-8 text-sm" />
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <Label className="text-xs">Rate Type</Label>
-                  <Select value={vehicle.rate_type} onValueChange={v => updateVehicle(vehicle.car_id, 'rate_type', v)}>
-                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(RATE_TYPE_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {vehicle.rate_type === 'total' && (
-                  <div className="space-y-1">
-                    <Label className="text-xs">Total Amount (₹)</Label>
-                    <Input type="number" value={vehicle.rate_total} onChange={e => updateVehicle(vehicle.car_id, 'rate_total', e.target.value)} className="h-8 text-sm" />
+                {/* Show rate info from requested vehicle if linked */}
+                {linkedRequestedVehicle && (
+                  <div className="p-3 bg-muted/50 rounded-md space-y-2 text-sm">
+                    <p className="font-medium text-xs text-muted-foreground">Rate Information (from requested vehicle):</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <div>
+                        <span className="text-muted-foreground">Rate Type:</span>
+                        <p className="font-medium">{RATE_TYPE_LABELS[linkedRequestedVehicle.rate_type]}</p>
+                      </div>
+                      {linkedRequestedVehicle.rate_type === 'total' && (
+                        <div>
+                          <span className="text-muted-foreground">Total:</span>
+                          <p className="font-medium">₹{formatCurrency(Number(linkedRequestedVehicle.rate_total || 0))}</p>
+                        </div>
+                      )}
+                      {['per_day', 'hybrid'].includes(linkedRequestedVehicle.rate_type) && (
+                        <div>
+                          <span className="text-muted-foreground">Per Day:</span>
+                          <p className="font-medium">₹{formatCurrency(Number(linkedRequestedVehicle.rate_per_day || 0))}</p>
+                        </div>
+                      )}
+                      {['per_km', 'hybrid'].includes(linkedRequestedVehicle.rate_type) && (
+                        <>
+                          <div>
+                            <span className="text-muted-foreground">Per KM:</span>
+                            <p className="font-medium">₹{formatCurrency(Number(linkedRequestedVehicle.rate_per_km || 0))}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Est. KM:</span>
+                            <p className="font-medium">{booking?.estimated_km || 0} km</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <div className="pt-2 border-t">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Computed Total:</span>
+                        <span className="font-semibold">{formatCurrency(calculateVehicleTotal(vehicle))}</span>
+                      </div>
+                    </div>
                   </div>
                 )}
-                {['per_day', 'hybrid'].includes(vehicle.rate_type) && (
+
+                {/* Only show driver fields - rates are auto-filled from requested vehicle */}
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Rate/Day (₹)</Label>
-                    <Input type="number" value={vehicle.rate_per_day} onChange={e => updateVehicle(vehicle.car_id, 'rate_per_day', e.target.value)} className="h-8 text-sm" />
+                    <Label className="text-xs">Driver Name *</Label>
+                    <Input 
+                      value={vehicle.driver_name} 
+                      onChange={e => updateVehicle(vehicle.car_id, 'driver_name', e.target.value)} 
+                      placeholder="Enter driver name" 
+                      className="h-8 text-sm" 
+                      required
+                    />
                   </div>
-                )}
-                {['per_km', 'hybrid'].includes(vehicle.rate_type) && (
-                  <>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Rate/KM (₹)</Label>
-                      <Input type="number" value={vehicle.rate_per_km} onChange={e => updateVehicle(vehicle.car_id, 'rate_per_km', e.target.value)} className="h-8 text-sm" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Est. KM *</Label>
-                      <Input type="number" value={vehicle.estimated_km} onChange={e => updateVehicle(vehicle.car_id, 'estimated_km', e.target.value)} className="h-8 text-sm" />
-                    </div>
-                  </>
-                )}
-                <div className="space-y-1">
-                  <Label className="text-xs">Advance (₹)</Label>
-                  <Input type="number" value={vehicle.advance_amount} onChange={e => updateVehicle(vehicle.car_id, 'advance_amount', e.target.value)} className="h-8 text-sm" />
+                  <div className="space-y-1">
+                    <Label className="text-xs">Driver Phone *</Label>
+                    <Input 
+                      value={vehicle.driver_phone} 
+                      onChange={e => updateVehicle(vehicle.car_id, 'driver_phone', e.target.value)} 
+                      placeholder="Enter driver phone" 
+                      className="h-8 text-sm" 
+                      required
+                    />
+                  </div>
                 </div>
               </div>
-
-              <div className="flex justify-end text-sm">
-                <span className="text-muted-foreground mr-2">Computed Total:</span>
-                <span className="font-semibold">{formatCurrency(calculateVehicleTotal(vehicle))}</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {selectedVehicles.length === 0 && !showVehicleSelect && (
             <p className="text-center text-muted-foreground py-8">No vehicles assigned.</p>

@@ -17,8 +17,8 @@ import ServiceNew from "./pages/ServiceNew";
 import CriticalQueue from "./pages/CriticalQueue";
 import Incidents from "./pages/Incidents";
 import DowntimeReport from "./pages/DowntimeReport";
-import VehicleHealthScore from "./pages/VehicleHealthScore";
 import Reports from "./pages/Reports";
+import Financials from "./pages/Financials";
 import Settings from "./pages/Settings";
 import UserManagement from "./pages/UserManagement";
 import Bookings from "./pages/Bookings";
@@ -27,6 +27,8 @@ import BookingNew from "./pages/BookingNew";
 import BookingEdit from "./pages/BookingEdit";
 import BookingInvoice from "./pages/BookingInvoice";
 import BookingHistory from "./pages/BookingHistory";
+import Bills from "./pages/Bills";
+import BillingManagement from "./pages/BillingManagement";
 import Drivers from "./pages/Drivers";
 import Supervisors from "./pages/Supervisors";
 import NotFound from "./pages/NotFound";
@@ -55,8 +57,8 @@ const App = () => (
               <Route path="/critical" element={<CriticalQueue />} />
               <Route path="/incidents" element={<Incidents />} />
               <Route path="/downtime-report" element={<DowntimeReport />} />
-              <Route path="/health-score" element={<VehicleHealthScore />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/financials" element={<Financials />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/users" element={<UserManagement />} />
               <Route path="/supervisors" element={<Supervisors />} />
@@ -65,7 +67,9 @@ const App = () => (
               <Route path="/bookings/new" element={<BookingNew />} />
               <Route path="/bookings/:id/edit" element={<BookingEdit />} />
               <Route path="/bookings/:id/invoice" element={<BookingInvoice />} />
+              <Route path="/bookings/:id/bills" element={<Bills />} />
               <Route path="/bookings/:id/history" element={<BookingHistory />} />
+              <Route path="/billing" element={<BillingManagement />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

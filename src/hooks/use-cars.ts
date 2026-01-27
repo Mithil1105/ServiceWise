@@ -133,9 +133,12 @@ export function useCreateCar() {
         .from('cars')
         .insert({
           vehicle_number: carFields.vehicle_number!,
+          brand: carFields.brand,
           model: carFields.model!,
           year: carFields.year,
           fuel_type: carFields.fuel_type,
+          vehicle_type: carFields.vehicle_type,
+          owner_name: carFields.owner_name,
           status: carFields.status || 'active',
           vin_chassis: carFields.vin_chassis,
           notes: carFields.notes,
@@ -158,24 +161,47 @@ export function useCreateCar() {
       
       if (odoError) throw odoError;
 
-      // Get default service rule (General Service)
-      const { data: defaultRule } = await supabase
-        .from('service_rules')
-        .select('id')
-        .eq('name', 'General Service')
-        .eq('active', true)
-        .single();
+      // Get brand-specific service rules (if brand is provided)
+      if (carFields.brand) {
+        const { data: brandRules } = await supabase
+          .from('service_rules')
+          .select('id')
+          .eq('brand', carFields.brand)
+          .eq('active', true);
 
-      if (defaultRule) {
-        // Attach default service rule
-        await supabase
-          .from('car_service_rules')
-          .insert({
+        if (brandRules && brandRules.length > 0) {
+          // Attach all brand-specific service rules to the car
+          const carServiceRules = brandRules.map(rule => ({
             car_id: car.id,
-            rule_id: defaultRule.id,
+            rule_id: rule.id,
             last_serviced_km: initial_odometer,
             last_serviced_at: new Date().toISOString().split('T')[0],
-          });
+          }));
+
+          await supabase
+            .from('car_service_rules')
+            .insert(carServiceRules);
+        }
+      } else {
+        // Fallback: Get default service rule (General Service) if no brand rules found
+        const { data: defaultRule } = await supabase
+          .from('service_rules')
+          .select('id')
+          .eq('name', 'General Service')
+          .eq('active', true)
+          .single();
+
+        if (defaultRule) {
+          // Attach default service rule
+          await supabase
+            .from('car_service_rules')
+            .insert({
+              car_id: car.id,
+              rule_id: defaultRule.id,
+              last_serviced_km: initial_odometer,
+              last_serviced_at: new Date().toISOString().split('T')[0],
+            });
+        }
       }
 
       return car as Car;

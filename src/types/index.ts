@@ -17,10 +17,13 @@ export interface UserRole {
 export interface Car {
   id: string;
   vehicle_number: string;
+  brand?: string;
   model: string;
   year?: number;
   fuel_type?: string;
   seats?: number;
+  vehicle_type?: 'private' | 'commercial';
+  owner_name?: string;
   status: 'active' | 'inactive';
   vin_chassis?: string;
   notes?: string;
@@ -41,6 +44,7 @@ export interface OdometerEntry {
 export interface ServiceRule {
   id: string;
   name: string;
+  brand?: string | null;
   interval_km?: number;
   interval_days?: number;
   is_critical: boolean;

@@ -1,4 +1,4 @@
-import { format } from 'date-fns';
+import { formatDateTimeFull, formatDateOnly } from '@/lib/date';
 import { 
   Sheet, 
   SheetContent, 
@@ -22,9 +22,11 @@ import {
   Users,
   Gauge,
   AlertTriangle,
-  Receipt
+  Receipt,
+  Calculator
 } from 'lucide-react';
 import { BookingStatusBadge } from './BookingStatusBadge';
+import { GenerateBillDialog } from './GenerateBillDialog';
 import { 
   type BookingWithDetails, 
   TRIP_TYPE_LABELS,
@@ -32,6 +34,7 @@ import {
 } from '@/types/booking';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useState } from 'react';
 
 interface BookingDetailsDrawerProps {
   booking: BookingWithDetails | null;
@@ -50,6 +53,8 @@ export function BookingDetailsDrawer({
   onViewInvoice,
   onViewHistory 
 }: BookingDetailsDrawerProps) {
+  const [generateBillOpen, setGenerateBillOpen] = useState(false);
+  
   // Fetch incidents for cars in this booking during the trip period
   const { data: incidents } = useQuery({
     queryKey: ['booking-incidents', booking?.id],
@@ -83,7 +88,7 @@ export function BookingDetailsDrawer({
   };
 
   const formatDateTime = (date: string) => {
-    return format(new Date(date), 'dd MMM yyyy, hh:mm a');
+    return formatDateTimeFull(date);
   };
 
   const totalAmount = booking.booking_vehicles?.reduce(
@@ -240,7 +245,7 @@ export function BookingDetailsDrawer({
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {(incident.car as any)?.vehicle_number} • {format(new Date(incident.incident_at), 'dd MMM yyyy')}
+                        {(incident.car as any)?.vehicle_number} • {formatDateOnly(incident.incident_at)}
                       </p>
                       {incident.description && (
                         <p className="text-xs mt-1">{incident.description}</p>
@@ -282,7 +287,7 @@ export function BookingDetailsDrawer({
               <Clock className="h-3 w-3" />
               <span>
                 Booked by: {booking.created_by_profile?.name || 'Unknown'} on{' '}
-                {format(new Date(booking.created_at), 'dd MMM yyyy, hh:mm a')}
+                {formatDateTimeFull(booking.created_at)}
               </span>
             </div>
             {booking.updated_by_profile && (
@@ -290,7 +295,7 @@ export function BookingDetailsDrawer({
                 <Clock className="h-3 w-3" />
                 <span>
                   Last updated by: {booking.updated_by_profile.name} on{' '}
-                  {format(new Date(booking.updated_at), 'dd MMM yyyy, hh:mm a')}
+                  {formatDateTimeFull(booking.updated_at)}
                 </span>
               </div>
             )}
@@ -315,10 +320,16 @@ export function BookingDetailsDrawer({
                 Edit Booking
               </Button>
             )}
+            {['ongoing', 'completed'].includes(booking.status) && (
+              <Button variant="outline" onClick={() => setGenerateBillOpen(true)}>
+                <Calculator className="h-4 w-4 mr-2" />
+                Generate Bill
+              </Button>
+            )}
             {onViewInvoice && ['confirmed', 'ongoing', 'completed'].includes(booking.status) && (
               <Button variant="outline" onClick={onViewInvoice}>
                 <Receipt className="h-4 w-4 mr-2" />
-                Billing
+                Bills
               </Button>
             )}
             {onViewHistory && (
@@ -329,6 +340,19 @@ export function BookingDetailsDrawer({
           </div>
         </div>
       </SheetContent>
+
+      {/* Generate Bill Dialog */}
+      {booking && (
+        <GenerateBillDialog
+          bookingId={booking.id}
+          open={generateBillOpen}
+          onOpenChange={setGenerateBillOpen}
+          onSuccess={() => {
+            setGenerateBillOpen(false);
+            onViewInvoice?.();
+          }}
+        />
+      )}
     </Sheet>
   );
 }

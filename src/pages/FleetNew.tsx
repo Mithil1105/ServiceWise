@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCreateCar } from '@/hooks/use-cars';
 import { useUpsertCarDocument, DocumentType } from '@/hooks/use-car-documents';
+import { BrandAutocomplete } from '@/components/fleet/BrandAutocomplete';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,17 +16,21 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ArrowLeft, Car, Loader2, AlertCircle, Upload, X, FileText, Image as ImageIcon } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 
 const carSchema = z.object({
   vehicle_number: z.string().min(1, 'Vehicle number is required').max(20, 'Vehicle number too long'),
+  brand: z.string().min(1, 'Brand is required').max(50, 'Brand name too long'),
   model: z.string().min(1, 'Model is required').max(100, 'Model name too long'),
-  year: z.number().min(1900).max(new Date().getFullYear() + 1).optional().nullable(),
-  fuel_type: z.string().optional(),
-  seats: z.number().min(2, 'Minimum 2 seats').max(50, 'Maximum 50 seats').optional().nullable(),
+  year: z.number().min(1900, 'Year must be valid').max(new Date().getFullYear() + 1, 'Year cannot be in the future'),
+  fuel_type: z.string().min(1, 'Fuel type is required'),
+  seats: z.number().min(2, 'Minimum 2 seats').max(50, 'Maximum 50 seats'),
+  vehicle_type: z.enum(['private', 'commercial'], { required_error: 'Vehicle type is required' }),
+  owner_name: z.string().min(1, 'Owner name is required').max(100, 'Owner name too long'),
   initial_odometer: z.number().min(0, 'Odometer must be positive'),
-  vin_chassis: z.string().max(50).optional(),
+  vin_chassis: z.string().min(1, 'VIN/Chassis number is required').max(50, 'VIN/Chassis number too long'),
   notes: z.string().max(500).optional(),
 });
 
@@ -44,11 +49,14 @@ export default function FleetNew() {
   
   const [formData, setFormData] = useState({
     vehicle_number: '',
+    brand: '',
     model: '',
     year: '',
     fuel_type: '',
     seats: '5',
     customSeats: '',
+    vehicle_type: '',
+    owner_name: '',
     initial_odometer: '',
     vin_chassis: '',
     notes: '',
@@ -56,11 +64,13 @@ export default function FleetNew() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   
   // Document uploads
-  const [documents, setDocuments] = useState<Record<DocumentType, DocumentUpload>>({
+  const [documents, setDocuments] = useState<Record<DocumentType, DocumentUpload & { insuranceProviderName?: string }>>({
     rc: { file: null, expiryDate: '' },
     puc: { file: null, expiryDate: '' },
-    insurance: { file: null, expiryDate: '' },
+    insurance: { file: null, expiryDate: '', insuranceProviderName: '' },
     warranty: { file: null, expiryDate: '' },
+    permits: { file: null, expiryDate: '' },
+    fitness: { file: null, expiryDate: '' },
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -75,12 +85,15 @@ export default function FleetNew() {
 
     const parsed: CarFormData = {
       vehicle_number: formData.vehicle_number.trim(),
+      brand: formData.brand.trim(),
       model: formData.model.trim(),
-      year: formData.year ? parseInt(formData.year) : null,
-      fuel_type: formData.fuel_type || undefined,
+      year: parseInt(formData.year),
+      fuel_type: formData.fuel_type,
       seats: seatCount,
+      vehicle_type: formData.vehicle_type as 'private' | 'commercial',
+      owner_name: formData.owner_name.trim(),
       initial_odometer: parseInt(formData.initial_odometer) || 0,
-      vin_chassis: formData.vin_chassis?.trim() || undefined,
+      vin_chassis: formData.vin_chassis.trim(),
       notes: formData.notes?.trim() || undefined,
     };
 
@@ -100,10 +113,13 @@ export default function FleetNew() {
     try {
       const newCar = await createCar.mutateAsync({
         vehicle_number: result.data.vehicle_number,
+        brand: result.data.brand,
         model: result.data.model,
         year: result.data.year ?? undefined,
         fuel_type: result.data.fuel_type,
         seats: result.data.seats ?? 5,
+        vehicle_type: result.data.vehicle_type,
+        owner_name: result.data.owner_name,
         vin_chassis: result.data.vin_chassis,
         notes: result.data.notes,
         initial_odometer: result.data.initial_odometer,
@@ -111,15 +127,20 @@ export default function FleetNew() {
 
       // Upload documents after car is created
       if (newCar?.id) {
-        const docTypes: DocumentType[] = ['rc', 'puc', 'insurance', 'warranty'];
+        const docTypes: DocumentType[] = ['rc', 'puc', 'insurance', 'warranty', 'permits', 'fitness'];
         for (const docType of docTypes) {
           const doc = documents[docType];
-          if (doc.file || doc.expiryDate) {
+          // Only upload fitness if vehicle is commercial
+          if (docType === 'fitness' && formData.vehicle_type !== 'commercial') {
+            continue;
+          }
+          if (doc.file || doc.expiryDate || (docType === 'insurance' && doc.insuranceProviderName)) {
             await upsertDocument.mutateAsync({
               carId: newCar.id,
               documentType: docType,
               expiryDate: doc.expiryDate || null,
               file: doc.file || undefined,
+              insuranceProviderName: docType === 'insurance' ? (doc.insuranceProviderName || null) : null,
             });
           }
         }
@@ -151,6 +172,13 @@ export default function FleetNew() {
     }));
   };
 
+  const handleInsuranceProviderName = (providerName: string) => {
+    setDocuments(prev => ({
+      ...prev,
+      insurance: { ...prev.insurance, insuranceProviderName: providerName },
+    }));
+  };
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -162,6 +190,8 @@ export default function FleetNew() {
     puc: 'PUC Certificate',
     insurance: 'Insurance',
     warranty: 'Warranty',
+    permits: 'Permits',
+    fitness: 'Fitness Certificate',
   };
 
   return (
@@ -192,12 +222,53 @@ export default function FleetNew() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label htmlFor="owner_name">Owner Name *</Label>
+                <Input
+                  id="owner_name"
+                  placeholder="e.g., John Doe"
+                  value={formData.owner_name}
+                  onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
+                  required
+                />
+                {errors.owner_name && (
+                  <p className="text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.owner_name}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="vehicle_type">Category *</Label>
+                <Select
+                  value={formData.vehicle_type}
+                  onValueChange={(value) => setFormData({ ...formData, vehicle_type: value })}
+                  required
+                >
+                  <SelectTrigger id="vehicle_type">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private">Private</SelectItem>
+                    <SelectItem value="commercial">Commercial</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.vehicle_type && (
+                  <p className="text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.vehicle_type}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="vehicle_number">Vehicle Number *</Label>
                 <Input
                   id="vehicle_number"
                   placeholder="e.g., GJ-01-AB-1234"
                   value={formData.vehicle_number}
                   onChange={(e) => setFormData({ ...formData, vehicle_number: e.target.value.toUpperCase() })}
+                  required
                 />
                 {errors.vehicle_number && (
                   <p className="text-sm text-destructive flex items-center gap-1">
@@ -208,12 +279,27 @@ export default function FleetNew() {
               </div>
 
               <div className="space-y-2">
+                <BrandAutocomplete
+                  brand={formData.brand}
+                  onBrandChange={(brand) => setFormData({ ...formData, brand })}
+                  required
+                />
+                {errors.brand && (
+                  <p className="text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.brand}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="model">Model *</Label>
                 <Input
                   id="model"
-                  placeholder="e.g., Toyota Innova"
+                  placeholder="e.g., Innova"
                   value={formData.model}
                   onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                  required
                 />
                 {errors.model && (
                   <p className="text-sm text-destructive flex items-center gap-1">
@@ -224,13 +310,14 @@ export default function FleetNew() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="year">Year</Label>
+                <Label htmlFor="year">Year *</Label>
                 <Input
                   id="year"
                   type="number"
                   placeholder="e.g., 2022"
                   value={formData.year}
                   onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+                  required
                 />
                 {errors.year && (
                   <p className="text-sm text-destructive flex items-center gap-1">
@@ -241,10 +328,11 @@ export default function FleetNew() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="fuel_type">Fuel Type</Label>
+                <Label htmlFor="fuel_type">Fuel Type *</Label>
                 <Select
                   value={formData.fuel_type}
                   onValueChange={(value) => setFormData({ ...formData, fuel_type: value })}
+                  required
                 >
                   <SelectTrigger id="fuel_type">
                     <SelectValue placeholder="Select fuel type" />
@@ -257,14 +345,21 @@ export default function FleetNew() {
                     <SelectItem value="Hybrid">Hybrid</SelectItem>
                   </SelectContent>
                 </Select>
+                {errors.fuel_type && (
+                  <p className="text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.fuel_type}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="seats">Number of Seats</Label>
+                <Label htmlFor="seats">Number of Seats *</Label>
                 <div className="flex gap-2">
                   <Select
                     value={formData.seats}
                     onValueChange={(value) => setFormData({ ...formData, seats: value, customSeats: '' })}
+                    required
                   >
                     <SelectTrigger id="seats" className={formData.seats === '9+' ? 'w-[120px]' : 'w-full'}>
                       <SelectValue placeholder="Select seats" />
@@ -287,6 +382,7 @@ export default function FleetNew() {
                       min={9}
                       max={50}
                       className="w-24"
+                      required
                     />
                   )}
                 </div>
@@ -316,13 +412,20 @@ export default function FleetNew() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="vin_chassis">VIN / Chassis Number</Label>
+                <Label htmlFor="vin_chassis">VIN / Chassis Number *</Label>
                 <Input
                   id="vin_chassis"
-                  placeholder="Optional"
+                  placeholder="e.g., ABC123456789"
                   value={formData.vin_chassis}
                   onChange={(e) => setFormData({ ...formData, vin_chassis: e.target.value })}
+                  required
                 />
+                {errors.vin_chassis && (
+                  <p className="text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.vin_chassis}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -340,10 +443,16 @@ export default function FleetNew() {
             {/* Document Uploads */}
             <div className="border-t pt-4">
               <Label className="text-base font-medium">Vehicle Documents</Label>
-              <p className="text-xs text-muted-foreground mb-4">Upload RC, PUC, Insurance, and Warranty documents with expiry dates</p>
+              <p className="text-xs text-muted-foreground mb-4">Upload vehicle documents with expiry dates</p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {(['rc', 'puc', 'insurance', 'warranty'] as DocumentType[]).map((docType) => (
+                {(['rc', 'puc', 'insurance', 'warranty', 'permits', 'fitness'] as DocumentType[]).map((docType) => {
+                  // Hide fitness if vehicle is not commercial
+                  if (docType === 'fitness' && formData.vehicle_type !== 'commercial') {
+                    return null;
+                  }
+                  
+                  return (
                   <div key={docType} className="border rounded-lg p-4 space-y-3">
                     <Label className="font-medium">{documentLabels[docType]}</Label>
                     
@@ -356,6 +465,19 @@ export default function FleetNew() {
                         onChange={(e) => handleDocumentExpiry(docType, e.target.value)}
                       />
                     </div>
+                    
+                    {/* Insurance Provider Name - only for insurance */}
+                    {docType === 'insurance' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="insurance-provider" className="text-xs text-muted-foreground">Insurance Provider Name</Label>
+                        <Input
+                          id="insurance-provider"
+                          placeholder="e.g., HDFC Ergo, ICICI Lombard"
+                          value={documents.insurance.insuranceProviderName || ''}
+                          onChange={(e) => handleInsuranceProviderName(e.target.value)}
+                        />
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Upload Document</Label>
@@ -400,7 +522,8 @@ export default function FleetNew() {
                       )}
                     </div>
                   </div>
-                ))}
+                );
+                })}
               </div>
             </div>
 

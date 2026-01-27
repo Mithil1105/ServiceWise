@@ -59,3 +59,4 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 - It should only be used in Edge Functions (backend)
 - If exposed in frontend, anyone can access your entire database
 
+

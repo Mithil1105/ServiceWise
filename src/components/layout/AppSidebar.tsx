@@ -15,17 +15,19 @@ import {
   UserCheck,
   ClipboardList,
   Clock,
-  Heart,
+  Receipt,
+  DollarSign,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import patidarLogo from '@/assets/patidar-logo.jpg';
+import serviceWiseLogo from '@/assets/SWlogo.png';
 
 const navItems = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard },
   { title: 'Bookings', href: '/bookings', icon: CalendarDays, adminOnly: true },
+  { title: 'Billing', href: '/billing', icon: Receipt, adminOnly: true },
   { title: 'Fleet', href: '/fleet', icon: Car },
   { title: 'Drivers', href: '/drivers', icon: UserCheck },
   { title: 'Odometer', href: '/odometer', icon: Gauge },
@@ -33,11 +35,11 @@ const navItems = [
   { title: 'Critical Queue', href: '/critical', icon: AlertTriangle },
   { title: 'Incidents', href: '/incidents', icon: AlertCircle },
   { title: 'Downtime Report', href: '/downtime-report', icon: Clock },
-  { title: 'Health Score', href: '/health-score', icon: Heart },
   { title: 'Reports', href: '/reports', icon: FileText },
 ];
 
 const adminItems = [
+  { title: 'Financials', href: '/financials', icon: DollarSign },
   { title: 'Supervisors', href: '/supervisors', icon: ClipboardList },
   { title: 'Settings', href: '/settings', icon: Settings },
   { title: 'Users', href: '/users', icon: Users },
@@ -60,10 +62,11 @@ export default function AppSidebar() {
       {/* Header with Logo */}
       <div className="p-4 flex items-center gap-3">
         <img 
-          src={patidarLogo} 
-          alt="Patidar Travels" 
+          src={serviceWiseLogo} 
+          alt="ServiceWise" 
           className="h-10 w-auto object-contain"
         />
+        <span className="text-lg font-semibold text-sidebar-foreground">ServiceWise</span>
       </div>
 
       <Separator className="bg-sidebar-border" />

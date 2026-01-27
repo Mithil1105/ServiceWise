@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
+import { formatDateOnly, formatTime12hr, formatDateTimeFull } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,11 +10,15 @@ import { Plus, Calendar, Search, Phone, MapPin, Car, Eye, Edit, FileText, Loader
 import { useBookings } from '@/hooks/use-bookings';
 import { BookingStatusBadge } from '@/components/bookings/BookingStatusBadge';
 import { BookingDetailsDrawer } from '@/components/bookings/BookingDetailsDrawer';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { TRIP_TYPE_LABELS, type BookingWithDetails, type BookingStatus } from '@/types/booking';
+import { useSystemConfig } from '@/hooks/use-dashboard';
 
 export default function Bookings() {
   const navigate = useNavigate();
   const { data: bookings, isLoading } = useBookings();
+  const { data: minKmPerKm } = useSystemConfig('minimum_km_per_km');
+  const { data: minKmHybridPerDay } = useSystemConfig('minimum_km_hybrid_per_day');
   
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -44,7 +48,7 @@ export default function Bookings() {
   }, [bookings, search, statusFilter]);
 
   const formatDateTime = (date: string) => {
-    return format(new Date(date), 'dd MMM yyyy, hh:mm a');
+    return formatDateTimeFull(date);
   };
 
   const formatCurrency = (amount: number | null) => {
@@ -57,10 +61,45 @@ export default function Bookings() {
   };
 
   const getTotalAmount = (booking: BookingWithDetails) => {
-    return booking.booking_vehicles?.reduce(
-      (sum, v) => sum + (v.computed_total || v.rate_total || 0), 
-      0
-    ) || 0;
+    // First try to get from assigned vehicles
+    if (booking.booking_vehicles && booking.booking_vehicles.length > 0) {
+      const total = booking.booking_vehicles.reduce(
+        (sum, v) => sum + (v.computed_total || v.rate_total || 0), 
+        0
+      );
+      if (total > 0) return total;
+    }
+
+    // If no assigned vehicles or amount is 0, calculate from requested vehicles
+    if (booking.booking_requested_vehicles && booking.booking_requested_vehicles.length > 0) {
+      const startDate = new Date(booking.start_at);
+      const endDate = new Date(booking.end_at);
+      const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) || 1;
+      const estimatedKm = booking.estimated_km || 0;
+      const thresholdKmPerDay = minKmPerKm ? Number(minKmPerKm) : 300;
+      const thresholdHybridPerDay = minKmHybridPerDay ? Number(minKmHybridPerDay) : 300;
+
+      return booking.booking_requested_vehicles.reduce((sum, rv) => {
+        switch (rv.rate_type) {
+          case 'total':
+            return sum + (rv.rate_total || 0);
+          case 'per_day':
+            return sum + (days * (rv.rate_per_day || 0));
+          case 'per_km':
+            // Apply threshold: days × threshold_km_per_day
+            const totalMinKm = thresholdKmPerDay * days;
+            const kmToCharge = Math.max(estimatedKm, totalMinKm);
+            return sum + ((rv.rate_per_km || 0) * kmToCharge);
+          case 'hybrid':
+            const hybridMinKm = Math.max(estimatedKm, thresholdHybridPerDay * days);
+            return sum + (days * (rv.rate_per_day || 0)) + ((rv.rate_per_km || 0) * hybridMinKm);
+          default:
+            return sum;
+        }
+      }, 0);
+    }
+
+    return 0;
   };
 
   const handleViewBooking = (booking: BookingWithDetails) => {
@@ -180,6 +219,7 @@ export default function Bookings() {
                     <TableHead>Vehicles</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Date Created</TableHead>
                     <TableHead>Booked By</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -200,9 +240,9 @@ export default function Bookings() {
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          <p>{format(new Date(booking.start_at), 'dd MMM, HH:mm')}</p>
+                          <p>{formatDateOnly(booking.start_at)} {formatTime12hr(booking.start_at)}</p>
                           <p className="text-xs text-muted-foreground">
-                            to {format(new Date(booking.end_at), 'dd MMM, HH:mm')}
+                            to {formatDateOnly(booking.end_at)} {formatTime12hr(booking.end_at)}
                           </p>
                         </div>
                       </TableCell>
@@ -227,23 +267,54 @@ export default function Bookings() {
                         <BookingStatusBadge status={booking.status} />
                       </TableCell>
                       <TableCell>
+                        <div className="text-sm">
+                          <p>{formatDateOnly(booking.created_at)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatTime12hr(booking.created_at)}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <span className="text-sm text-muted-foreground">
                           {booking.created_by_profile?.name || 'Unknown'}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" onClick={() => handleViewBooking(booking)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => navigate(`/bookings/${booking.id}/edit`)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          {booking.status === 'confirmed' && (
-                            <Button variant="ghost" size="icon" onClick={() => navigate(`/bookings/${booking.id}/invoice`)}>
-                              <FileText className="h-4 w-4" />
-                            </Button>
-                          )}
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={() => handleViewBooking(booking)}>
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>View Details</p>
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={() => navigate(`/bookings/${booking.id}/edit`)}>
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Edit Booking</p>
+                              </TooltipContent>
+                            </Tooltip>
+                            {(booking.status === 'confirmed' || booking.status === 'ongoing' || booking.status === 'completed') && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" onClick={() => navigate(`/bookings/${booking.id}/bills`)}>
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>View Bills</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </TooltipProvider>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -273,7 +344,7 @@ export default function Bookings() {
           if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/edit`);
         }}
         onViewInvoice={() => {
-          if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/invoice`);
+          if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/bills`);
         }}
         onViewHistory={() => {
           if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/history`);

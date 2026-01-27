@@ -27,17 +27,41 @@ export function isoAtNoonUtcFromDateInput(dateValue: string) {
 }
 
 /**
- * Format a date string or Date to DD/MM/YY format.
+ * Format a date string or Date to DD/MM/YYYY format.
  */
 export function formatDateDMY(date: string | Date) {
   const d = typeof date === 'string' ? new Date(date) : date;
-  return format(d, 'dd/MM/yy');
+  return format(d, 'dd/MM/yyyy');
 }
 
 /**
- * Format a date string or Date to DD/MM/YY • HH:mm format.
+ * Format a date string or Date to DD/MM/YYYY • hh:mm a format (12hr with AM/PM).
  */
 export function formatDateTimeDMY(date: string | Date) {
   const d = typeof date === 'string' ? new Date(date) : date;
-  return format(d, 'dd/MM/yy • HH:mm');
+  return format(d, 'dd/MM/yyyy • hh:mm a');
+}
+
+/**
+ * Format a date string or Date to DD/MM/YYYY format (date only).
+ */
+export function formatDateOnly(date: string | Date) {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return format(d, 'dd/MM/yyyy');
+}
+
+/**
+ * Format a time string or Date to hh:mm a format (12hr with AM/PM).
+ */
+export function formatTime12hr(date: string | Date) {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return format(d, 'hh:mm a');
+}
+
+/**
+ * Format a date string or Date to DD/MM/YYYY, hh:mm a format.
+ */
+export function formatDateTimeFull(date: string | Date) {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return format(d, 'dd/MM/yyyy, hh:mm a');
 }

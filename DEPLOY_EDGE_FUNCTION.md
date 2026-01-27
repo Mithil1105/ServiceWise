@@ -62,3 +62,4 @@ After deploying, test the function:
 - **403 Error**: User doesn't have admin role
 - **500 Error**: Check function logs in Supabase Dashboard
 
+

@@ -253,7 +253,7 @@ export default function VehicleReport() {
   ` : ''}
 
   <div class="footer">
-    <p>This report was generated from Patidar Travels Fleet Management System.</p>
+    <p>This report was generated from ServiceWise Fleet Management System.</p>
     <p>For showroom verification, all service records are authentic and verifiable.</p>
   </div>
 </body>

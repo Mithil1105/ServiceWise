@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { format } from 'date-fns';
+import { formatDateTimeFull } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, History, Car, Calendar, DollarSign, FileText, User, Plus } from 'lucide-react';
@@ -129,7 +129,7 @@ export default function BookingHistory() {
           <div>
             <p className="text-muted-foreground text-xs">Last Updated By</p>
             <p className="font-medium">{booking.updated_by_profile?.name || 'Unknown'}</p>
-            <p className="text-xs text-muted-foreground">{format(new Date(booking.updated_at), 'dd MMM yyyy, HH:mm')}</p>
+            <p className="text-xs text-muted-foreground">{formatDateTimeFull(booking.updated_at)}</p>
           </div>
           <div>
             <p className="text-muted-foreground text-xs">Vehicles Assigned</p>
@@ -178,7 +178,7 @@ export default function BookingHistory() {
                             <span className="font-medium text-sm">{actionConfig.label}</span>
                           </div>
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(log.created_at), 'dd MMM yyyy, HH:mm')}
+                            {formatDateTimeFull(log.created_at)}
                           </span>
                         </div>
                         

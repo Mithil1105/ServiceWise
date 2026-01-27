@@ -4,18 +4,79 @@ import type { ServiceRule, ServiceRecord, CarServiceRule, CriticalServiceItem } 
 import { useToast } from '@/hooks/use-toast';
 import { isoAtNoonUtcFromDateInput } from '@/lib/date';
 
-export function useServiceRules() {
+/**
+ * Search existing rule names (for autocomplete)
+ */
+export function useSearchRuleNames(search: string) {
   return useQuery({
-    queryKey: ['service-rules'],
+    queryKey: ['rule-names', 'search', search],
+    queryFn: async () => {
+      if (!search.trim()) return [];
+      
+      const { data, error } = await supabase
+        .from('service_rules')
+        .select('name')
+        .ilike('name', `%${search}%`)
+        .limit(20);
+      
+      if (error) throw error;
+      
+      // Extract unique rule names and sort
+      const uniqueNames = Array.from(
+        new Set((data || []).map((rule: { name: string }) => rule.name).filter(Boolean))
+      ).sort() as string[];
+      
+      return uniqueNames;
+    },
+    enabled: search.length >= 2,
+  });
+}
+
+export function useServiceRules(brand?: string | null) {
+  return useQuery({
+    queryKey: ['service-rules', brand],
+    queryFn: async () => {
+      let query = supabase
+        .from('service_rules')
+        .select('*')
+        .eq('active', true);
+      
+      if (brand) {
+        query = query.eq('brand', brand);
+      } else {
+        // If no brand specified, only get brand-specific rules (exclude NULL/global template rules)
+        query = query.not('brand', 'is', null);
+      }
+      
+      const { data, error } = await query.order('name', { ascending: true });
+      
+      if (error) throw error;
+      return (data || []) as ServiceRule[];
+    },
+  });
+}
+
+/**
+ * Get all brands that have service rules
+ */
+export function useBrandsWithRules() {
+  return useQuery({
+    queryKey: ['brands-with-rules'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('service_rules')
-        .select('*')
-        .eq('active', true)
-        .order('name');
+        .select('brand')
+        .not('brand', 'is', null)
+        .eq('active', true);
       
       if (error) throw error;
-      return data as ServiceRule[];
+      
+      // Extract unique brands and sort
+      const uniqueBrands = Array.from(
+        new Set((data || []).map((rule: { brand: string }) => rule.brand).filter(Boolean))
+      ).sort() as string[];
+      
+      return uniqueBrands || [];
     },
   });
 }
@@ -244,11 +305,12 @@ export function useCreateServiceRule() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (rule: Omit<Partial<ServiceRule>, 'id' | 'created_at' | 'updated_at'> & { name: string }) => {
+    mutationFn: async (rule: Omit<Partial<ServiceRule>, 'id' | 'created_at' | 'updated_at'> & { name: string; brand: string }) => {
       const { data, error } = await supabase
         .from('service_rules')
         .insert({
           name: rule.name,
+          brand: rule.brand,
           interval_km: rule.interval_km,
           interval_days: rule.interval_days,
           is_critical: rule.is_critical ?? false,
@@ -264,6 +326,7 @@ export function useCreateServiceRule() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['service-rules'] });
+      queryClient.invalidateQueries({ queryKey: ['brands-with-rules'] });
       toast({
         title: 'Service rule created',
         description: 'New service rule has been added.',
@@ -278,3 +341,165 @@ export function useCreateServiceRule() {
     },
   });
 }
+
+/**
+ * Copy service rules from one brand to another
+ */
+export function useCopyServiceRules() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ fromBrand, toBrand }: { fromBrand: string; toBrand: string }) => {
+      // Get all rules from source brand
+      const { data: sourceRules, error: fetchError } = await supabase
+        .from('service_rules')
+        .select('*')
+        .eq('brand', fromBrand)
+        .eq('active', true);
+      
+      if (fetchError) throw fetchError;
+      if (!sourceRules || sourceRules.length === 0) {
+        throw new Error(`No active rules found for brand "${fromBrand}"`);
+      }
+
+      // Check if target brand already has rules
+      const { data: existingRules } = await supabase
+        .from('service_rules')
+        .select('id')
+        .eq('brand', toBrand)
+        .limit(1);
+      
+      if (existingRules && existingRules.length > 0) {
+        throw new Error(`Brand "${toBrand}" already has service rules. Please delete them first or use a different brand.`);
+      }
+
+      // Insert rules for target brand
+      const rulesToInsert = sourceRules.map(rule => ({
+        name: rule.name,
+        brand: toBrand,
+        interval_km: rule.interval_km,
+        interval_days: rule.interval_days,
+        is_critical: rule.is_critical,
+        due_soon_threshold_km: rule.due_soon_threshold_km,
+        due_soon_threshold_days: rule.due_soon_threshold_days,
+        active: true,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('service_rules')
+        .insert(rulesToInsert);
+      
+      if (insertError) throw insertError;
+      
+      return { copiedCount: sourceRules.length };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['service-rules'] });
+      queryClient.invalidateQueries({ queryKey: ['brands-with-rules'] });
+      toast({
+        title: 'Rules copied',
+        description: `Successfully copied ${data.copiedCount} service rules.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
+/**
+ * Apply service rules to multiple brands
+ */
+export function useApplyRulesToBrands() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ fromBrand, toBrands }: { fromBrand: string; toBrands: string[] }) => {
+      // Get all rules from source brand
+      const { data: sourceRules, error: fetchError } = await supabase
+        .from('service_rules')
+        .select('*')
+        .eq('brand', fromBrand)
+        .eq('active', true);
+      
+      if (fetchError) throw fetchError;
+      if (!sourceRules || sourceRules.length === 0) {
+        throw new Error(`No active rules found for brand "${fromBrand}"`);
+      }
+
+      const results: { brand: string; success: boolean; error?: string }[] = [];
+
+      for (const toBrand of toBrands) {
+        // Check if target brand already has rules
+        const { data: existingRules } = await supabase
+          .from('service_rules')
+          .select('id')
+          .eq('brand', toBrand)
+          .limit(1);
+        
+        if (existingRules && existingRules.length > 0) {
+          results.push({ brand: toBrand, success: false, error: 'Already has rules' });
+          continue;
+        }
+
+        // Insert rules for target brand
+        const rulesToInsert = sourceRules.map(rule => ({
+          name: rule.name,
+          brand: toBrand,
+          interval_km: rule.interval_km,
+          interval_days: rule.interval_days,
+          is_critical: rule.is_critical,
+          due_soon_threshold_km: rule.due_soon_threshold_km,
+          due_soon_threshold_days: rule.due_soon_threshold_days,
+          active: true,
+        }));
+
+        const { error: insertError } = await supabase
+          .from('service_rules')
+          .insert(rulesToInsert);
+        
+        if (insertError) {
+          results.push({ brand: toBrand, success: false, error: insertError.message });
+        } else {
+          results.push({ brand: toBrand, success: true });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.filter(r => !r.success).length;
+
+      return { results, successCount, failCount };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['service-rules'] });
+      queryClient.invalidateQueries({ queryKey: ['brands-with-rules'] });
+      
+      if (data.failCount === 0) {
+        toast({
+          title: 'Rules applied',
+          description: `Successfully applied rules to ${data.successCount} brand(s).`,
+        });
+      } else {
+        toast({
+          title: 'Partial success',
+          description: `Applied to ${data.successCount} brand(s), ${data.failCount} failed.`,
+          variant: 'destructive',
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+}
+

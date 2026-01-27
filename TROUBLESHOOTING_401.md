@@ -86,3 +86,4 @@ Make sure the deployed function matches `supabase/functions/create-user-v2/index
 ## Still Not Working?
 Check the Edge Function logs in Supabase Dashboard - they will show the exact error!
 
+

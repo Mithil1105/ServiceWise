@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { AttentionItem, MonthlySnapshot, CarUtilization, HighMaintenanceData } from '@/types';
 import { startOfMonth, endOfMonth, subDays, subMonths, differenceInDays } from 'date-fns';
+import { toast } from 'sonner';
 
 export function useSystemConfig(key: string) {
   return useQuery({
@@ -11,10 +12,57 @@ export function useSystemConfig(key: string) {
         .from('system_config')
         .select('value')
         .eq('key', key)
-        .single();
+        .maybeSingle();
       
-      if (error && error.code !== 'PGRST116') throw error;
-      return data?.value;
+      if (error) throw error;
+      return data?.value || null;
+    },
+  });
+}
+
+export function useUpdateSystemConfig() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: any }) => {
+      // Try to update first
+      const { data: existing } = await supabase
+        .from('system_config')
+        .select('id')
+        .eq('key', key)
+        .maybeSingle();
+
+      // Convert value to JSONB format (store numbers as JSON numbers)
+      const jsonValue = typeof value === 'number' ? value : Number(value);
+
+      if (existing) {
+        const { error } = await supabase
+          .from('system_config')
+          .update({ 
+            value: jsonValue,
+            updated_at: new Date().toISOString()
+          })
+          .eq('key', key);
+        
+        if (error) throw error;
+      } else {
+        // Insert if doesn't exist
+        const { error } = await supabase
+          .from('system_config')
+          .insert({ 
+            key,
+            value: jsonValue
+          });
+        
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['system-config', variables.key] });
+      toast.success('Settings updated successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update settings: ${error.message}`);
     },
   });
 }

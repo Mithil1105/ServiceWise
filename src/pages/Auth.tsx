@@ -139,7 +139,7 @@ export default function Auth() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary mb-4">
             <Truck className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground">Patidar Travels</h1>
+          <h1 className="text-3xl font-bold text-foreground">ServiceWise</h1>
           <p className="text-muted-foreground mt-2">Fleet Management System</p>
         </div>
 
