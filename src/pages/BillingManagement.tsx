@@ -755,12 +755,6 @@ export default function BillingManagement() {
                   <div className="mt-4 pt-4 border-t">
                     <h5 className="font-semibold text-xs text-muted-foreground mb-2">KM DETAILS</h5>
                     <div className="space-y-1 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Calculation Method:</span>{' '}
-                        <span className="font-medium">
-                          {selectedBill.km_calculation_method === 'odometer' ? 'Odometer Reading' : 'Manual Entry'}
-                        </span>
-                      </div>
                       {selectedBill.start_odometer_reading && selectedBill.end_odometer_reading && (
                         <div>
                           <span className="text-muted-foreground">Odometer Reading:</span>{' '}
@@ -811,12 +805,30 @@ export default function BillingManagement() {
                       return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) || 1;
                     })();
                     
+                    // Get car info from booking if available
+                    const relatedBooking = bookings?.find(b => b.id === selectedBill.booking_id);
+                    const assignedVehicle = relatedBooking?.booking_vehicles?.find((bv: any) => 
+                      bv.car?.vehicle_number === vehicle.vehicle_number
+                    );
+                    const carInfo = assignedVehicle?.car;
+                    
                     return (
                       <div key={idx} className="border rounded-lg p-4 bg-muted/20">
                         <div className="grid grid-cols-2 gap-4 mb-4">
                           <div>
                             <p className="text-xs text-muted-foreground mb-1">Vehicle Number</p>
                             <p className="font-semibold text-base">{vehicle.vehicle_number}</p>
+                            {(carInfo?.brand || carInfo?.model) && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {carInfo.brand && <span>{carInfo.brand}</span>}
+                                {carInfo.brand && carInfo.model && ' '}
+                                {carInfo.model && <span>{carInfo.model}</span>}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-2">
+                              <span className="text-muted-foreground">Total KM Driven:</span>{' '}
+                              <span className="font-semibold">{selectedBill.total_km_driven.toLocaleString()} km</span>
+                            </p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground mb-1">Driver Details</p>
@@ -1432,21 +1444,40 @@ export default function BillingManagement() {
               <div className="mb-8">
                 <h4 className="font-semibold text-sm text-muted-foreground mb-4">VEHICLE & RATE DETAILS</h4>
                 <div className="space-y-4">
-                  {selectedCompanyBill.vehicle_details.map((vehicle: any, idx: number) => (
-                    <div key={idx} className="border rounded-lg p-4 bg-muted/20">
-                      <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Vehicle Number</p>
-                          <p className="font-semibold text-base">{vehicle.vehicle_number}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Driver Details</p>
-                          <p className="font-medium">{vehicle.driver_name || 'Not Assigned'}</p>
-                          {vehicle.driver_phone && (
-                            <p className="text-xs text-muted-foreground">{vehicle.driver_phone}</p>
-                          )}
-                        </div>
-                      </div>
+                  {selectedCompanyBill.vehicle_details.map((vehicle: any, idx: number) => {
+                        // Get car info from booking if available
+                        const relatedBooking = bookings?.find(b => b.id === selectedCompanyBill.booking_id);
+                        const assignedVehicle = relatedBooking?.booking_vehicles?.find((bv: any) => 
+                          bv.car?.vehicle_number === vehicle.vehicle_number
+                        );
+                        const carInfo = assignedVehicle?.car;
+                        
+                        return (
+                          <div key={idx} className="border rounded-lg p-4 bg-muted/20">
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">Vehicle Number</p>
+                                <p className="font-semibold text-base">{vehicle.vehicle_number}</p>
+                                {(carInfo?.brand || carInfo?.model) && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {carInfo.brand && <span>{carInfo.brand}</span>}
+                                    {carInfo.brand && carInfo.model && ' '}
+                                    {carInfo.model && <span>{carInfo.model}</span>}
+                                  </p>
+                                )}
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  <span className="text-muted-foreground">Total KM Driven:</span>{' '}
+                                  <span className="font-semibold">{selectedCompanyBill.total_km_driven.toLocaleString()} km</span>
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">Driver Details</p>
+                                <p className="font-medium">{vehicle.driver_name || 'Not Assigned'}</p>
+                                {vehicle.driver_phone && (
+                                  <p className="text-xs text-muted-foreground">{vehicle.driver_phone}</p>
+                                )}
+                              </div>
+                            </div>
                       <div className="border-t pt-4">
                         <div className="flex justify-between pt-2 border-t-2 font-semibold text-base">
                           <span>Vehicle Amount:</span>
@@ -1460,7 +1491,8 @@ export default function BillingManagement() {
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
