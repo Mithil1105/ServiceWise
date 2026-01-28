@@ -1,62 +1,202 @@
-# 🚗 ServiceWise
+# 🚗 ServiceWise - Fleet Management & Operations System
 
-A comprehensive fleet management and operations system built for travel and transportation companies. ServiceWise provides end-to-end management of vehicles, bookings, drivers, services, and maintenance operations.
+A comprehensive fleet management and operations system built for travel and transportation companies. ServiceWise provides end-to-end management of vehicles, bookings, drivers, services, maintenance operations, billing, and financial tracking.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)
 ![React](https://img.shields.io/badge/React-18.3-blue)
 ![Supabase](https://img.shields.io/badge/Supabase-Backend-green)
+![Vercel](https://img.shields.io/badge/Vercel-Deployment-black)
 
 ## 📋 Table of Contents
 
+- [Overview](#-overview)
 - [Features](#-features)
 - [Tech Stack](#-tech-stack)
+- [Architecture](#-architecture)
 - [Prerequisites](#-prerequisites)
 - [Installation](#-installation)
 - [Environment Variables](#-environment-variables)
 - [Database Setup](#-database-setup)
 - [Edge Functions](#-edge-functions)
 - [Project Structure](#-project-structure)
+- [Key Workflows](#-key-workflows)
+- [User Roles & Permissions](#-user-roles--permissions)
 - [Development](#-development)
 - [Deployment](#-deployment)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
 - [License](#-license)
 
+## 🎯 Overview
+
+ServiceWise is a complete fleet management solution designed to streamline operations for travel and transportation companies. It handles everything from vehicle registration and booking management to automated billing, financial tracking, and maintenance scheduling.
+
+### Key Capabilities
+
+- **Complete Fleet Management**: Track vehicles, drivers, documents, and vehicle health
+- **Booking System**: Calendar-based booking management with multiple rate types
+- **Automated Billing**: Generate customer and company bills with PDF export
+- **Financial Management**: Track advance payments, transfers, and company bills
+- **Service & Maintenance**: Automated service scheduling and critical queue management
+- **Real-time Tracking**: Odometer readings, incidents, and downtime monitoring
+- **Comprehensive Reporting**: Analytics dashboard with visualizations
+- **Role-Based Access**: Admin, Manager, and Supervisor roles with secure access control
+
+### Target Users
+
+- Travel & Transportation Companies
+- Fleet Operators
+- Taxi/Cab Services
+- Car Rental Companies
+- Corporate Transport Departments
+
 ## ✨ Features
 
-### 🎯 Core Functionality
+### 🚗 Fleet Management
 
-- **Fleet Management**: Complete vehicle tracking, documentation, and status management
-- **Booking System**: Calendar-based booking management with invoice generation
-- **Driver Management**: Driver profiles, assignments, and activity tracking
-- **Service & Maintenance**: Automated service scheduling, critical queue management, and maintenance history
-- **Odometer Tracking**: Real-time odometer readings and mileage tracking
-- **Incident Management**: Track and manage vehicle incidents and accidents
-- **Downtime Reporting**: Monitor vehicle downtime and availability
+- **Vehicle Registration**: Complete vehicle information (brand, model, year, VIN, fuel type, seats)
+- **Vehicle Status**: Active/Inactive status management
+- **Vehicle Documents**: Store insurance, registration, permits, PUC certificates
+- **Vehicle Notes**: Maintenance notes and special instructions
 - **Vehicle Health Score**: AI-powered health scoring based on service history and incidents
-- **Reports & Analytics**: Comprehensive reporting dashboard with visualizations
-- **User Management**: Role-based access control (Admin, Manager, Supervisor)
+- **Driver Assignments**: Assign drivers to specific vehicles
+- **Odometer Tracking**: Record and track odometer readings with timestamps
+- **Search & Filter**: Advanced search and filtering capabilities
 
-### 🔐 Security & Access Control
+### 📅 Booking Management
 
-- **Role-Based Access Control (RBAC)**: Admin, Manager, and Supervisor roles
-- **Row Level Security (RLS)**: Database-level security policies
-- **JWT Authentication**: Secure token-based authentication
-- **Protected Routes**: Route-level authorization
+- **Create Bookings**: Customer details, trip dates, pickup/dropoff locations
+- **Booking Status**: Draft → Confirmed → Ongoing → Completed → Cancelled
+- **Calendar View**: Visual calendar interface for booking management
+- **Vehicle Assignment**: Assign vehicles from fleet to bookings
+- **Multiple Rate Types**:
+  - Fixed Total Amount
+  - Per Day Rate
+  - Per KM Rate
+  - Hybrid (Per Day + Per KM)
+- **Advance Payment**: Capture advance payment details (amount, method, account type, collected by)
+- **Booking Editing**: Modify booking details before completion
+- **Booking Cancellation**: Cancel confirmed bookings
+- **Booking History**: View complete booking history
 
-### 📊 Dashboard Features
+### 💰 Billing & Invoicing System
 
-- Real-time fleet statistics
-- Critical service alerts
-- Booking calendar view
-- Vehicle health monitoring
-- Supervisor activity tracking
-- Customizable reports
+#### Customer Bills
+- **Auto-Generation**: Automatically generated after trip completion
+- **KM Calculation**: Odometer-based or manual entry
+- **Rate Calculation**: Automatic calculation with minimum KM thresholds
+- **Multiple Vehicles**: Support for multiple vehicles per booking
+- **Driver Allowance**: Track driver allowances separately
+- **PDF Generation**: Generate professional PDF bills
+- **Download & Share**: Download PDFs and share via WhatsApp
+- **Bill Status**: Draft → Sent → Paid workflow
+- **Payment Reminders**: Automated reminder system for unpaid bills
+
+#### Company Bills
+- **Internal Accounting**: Separate bills for company accounting
+- **Advance Tracking**: Track advance payments and transfers
+- **Transfer Requirements**: Monitor required transfers from personal/cash accounts
+- **Driver Allowance Deductions**: Track driver allowances separately
+- **PDF Generation**: Generate company bill PDFs
+- **Bill Interlinking**: Link customer and company bills
+
+#### Standalone Bills
+- Create bills without bookings
+- Manual vehicle and rate entry
+- Full billing functionality
+
+### 💳 Financial Management
+
+- **Advance Payment Tracking**:
+  - Payment method tracking (cash/online)
+  - Account type tracking (company/personal/cash)
+  - Collected by tracking
+- **Transfer Management**:
+  - Track transfers from personal accounts/cash to company accounts
+  - Pending transfers queue
+  - Transfer completion workflow
+  - Transfer history with filtering
+  - Overdue transfers tracking
+- **Bank Account Management**: Manage company and personal bank accounts
+- **Financial Reports**:
+  - Pending transfers summary
+  - Completed transfers summary
+  - Company bills overview
+  - Date range filtering
+  - Manager-wise filtering
+
+### 🔧 Service & Maintenance Management
+
+- **Service Rules**: Define service templates (e.g., "Oil Change every 5000 km")
+- **Vehicle-Specific Rules**: Assign rules to specific vehicles
+- **Service Records**: Log services with complete details
+- **Critical Queue**: Vehicles needing immediate service
+- **Service Scheduling**: Automated reminders based on rules
+- **Service History**: Complete maintenance history per vehicle
+- **Service Cost Tracking**: Track service expenses
+
+### 🚨 Incident Management
+
+- **Incident Logging**: Record accidents, breakdowns, violations
+- **Incident Details**: Date, location, description, severity
+- **Vehicle Association**: Link incidents to vehicles
+- **Resolution Tracking**: Track incident resolution status
+- **Incident History**: View all incidents with filtering
+
+### ⏸️ Downtime Tracking
+
+- **Downtime Logging**: Track when vehicles are unavailable
+- **Downtime Reasons**: Service, repair, accident, etc.
+- **Downtime Reports**: Analyze vehicle availability
+- **Impact Analysis**: See downtime impact on bookings
+
+### 👨‍✈️ Driver Management
+
+- **Driver Profiles**: Name, phone, license details
+- **Driver Assignments**: Assign to vehicles/bookings
+- **Driver Activity Tracking**: Monitor driver activities
+- **License Expiry Tracking**: Track license expiration dates
+- **Driver Performance Metrics**: Performance analytics
+
+### 📊 Odometer Tracking
+
+- **Odometer Entry**: Record readings with date/time
+- **Reading History**: View all readings per vehicle
+- **Mileage Calculation**: Automatic calculation between readings
+- **Odometer-Based Billing**: Use readings for bill generation
+
+### 📈 Reports & Analytics
+
+- **Dashboard**: Real-time fleet statistics
+- **Vehicle Reports**: Detailed vehicle reports
+- **Booking Reports**: Booking analytics
+- **Financial Reports**: Revenue, expenses, transfers
+- **Service Reports**: Maintenance analytics
+- **Custom Date Ranges**: Filter reports by date
+
+### 👥 User Management & Security
+
+- **Role-Based Access Control**:
+  - **Admin**: Full system access
+  - **Manager**: Operational access
+  - **Supervisor**: Limited access
+- **User Creation**: Create users with role assignment
+- **Profile Management**: User profiles and settings
+- **Activity Logging**: Track user actions
+
+### ⚙️ Settings & Configuration
+
+- **System Settings**: Configure application-wide settings
+- **Service Rules**: Manage service templates
+- **Bank Accounts**: Manage bank account details
+- **Threshold Settings**: Configure minimum KM thresholds
+- **Brand Management**: Manage vehicle brands
 
 ## 🛠 Tech Stack
 
 ### Frontend
+
 - **React 18.3** - UI library
 - **TypeScript 5.8** - Type safety
 - **Vite 5.4** - Build tool and dev server
@@ -68,20 +208,53 @@ A comprehensive fleet management and operations system built for travel and tran
 - **React Hook Form 7.61** - Form management
 - **Zod 3.25** - Schema validation
 - **date-fns 3.6** - Date manipulation
-
-### Backend
-- **Supabase** - Backend-as-a-Service
-  - PostgreSQL database
-  - Authentication
-  - Row Level Security (RLS)
-  - Edge Functions (Deno)
-  - Storage
-
-### Additional Libraries
-- **jsPDF 3.0** - PDF generation for invoices
+- **jsPDF 3.0** - PDF generation
 - **html2canvas 1.4** - Screenshot capture
 - **QRCode.react 4.2** - QR code generation
 - **Lucide React** - Icon library
+
+### Backend
+
+- **Supabase** - Backend-as-a-Service
+  - PostgreSQL database
+  - Authentication (JWT-based)
+  - Row Level Security (RLS)
+  - Edge Functions (Deno)
+  - Storage (for PDFs and documents)
+
+### Additional Libraries
+
+- **Google Maps API** - Location services
+- **WhatsApp Web API** - Bill sharing
+
+## 🏗 Architecture
+
+### Frontend Architecture
+
+- **Component-Based**: Modular React components
+- **Custom Hooks**: Reusable data fetching and business logic
+- **Type Safety**: Full TypeScript coverage
+- **State Management**: TanStack Query for server state
+- **Form Management**: React Hook Form with Zod validation
+- **Routing**: React Router with protected routes
+
+### Backend Architecture
+
+- **Database**: PostgreSQL via Supabase
+- **Authentication**: Supabase Auth (JWT)
+- **Security**: Row Level Security (RLS) policies
+- **API**: Supabase Client for database operations
+- **Storage**: Supabase Storage for files
+- **Serverless**: Edge Functions for custom logic
+
+### Security Architecture
+
+- **Authentication**: JWT-based authentication via Supabase
+- **Authorization**: Role-based access control (RBAC)
+- **Database Security**: Row Level Security (RLS) policies
+- **Route Protection**: Protected routes based on user roles
+- **API Security**: Edge functions with JWT verification
+- **Input Validation**: Zod schemas for all inputs
 
 ## 📦 Prerequisites
 
@@ -130,19 +303,12 @@ VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 Run the SQL script to create an admin account:
 
-```bash
-# In Supabase SQL Editor
--- Run: supabase/migrations/set_admin_account.sql
-```
-
-Or manually:
-
 ```sql
 -- Replace with your admin email
 INSERT INTO public.user_roles (user_id, role)
 SELECT id, 'admin'::public.app_role
 FROM auth.users
-WHERE email = 'admin@patidartravels.com'
+WHERE email = 'admin@yourcompany.com'
 ON CONFLICT DO NOTHING;
 ```
 
@@ -193,7 +359,7 @@ Edge functions automatically receive these environment variables from Supabase:
 
 ### Running Migrations
 
-All database migrations are located in `supabase/migrations/`. Run them in order:
+All database migrations are located in `supabase/migrations/`. Run them in chronological order:
 
 1. **20251228154117_6442342c-352b-4e53-92db-7df155ac3e9b.sql** - Core schema (profiles, roles, cars, services)
 2. **20251228165518_69c1b17e-ebbe-46f3-b8fa-5034cf4ab3fa.sql** - Additional tables
@@ -209,6 +375,12 @@ All database migrations are located in `supabase/migrations/`. Run them in order
 - `bookings` - Booking records
 - `customers` - Customer information
 
+#### Billing Tables
+- `bills` - Customer bills
+- `company_bills` - Internal company bills
+- `transfers` - Transfer tracking
+- `bank_accounts` - Bank account management
+
 #### Service & Maintenance
 - `service_rules` - Service templates
 - `car_service_rules` - Vehicle-specific service rules
@@ -221,7 +393,6 @@ All database migrations are located in `supabase/migrations/`. Run them in order
 - `car_documents` - Vehicle documents
 - `car_notes` - Vehicle notes
 - `car_assignments` - Driver-vehicle assignments
-- `invoices` - Booking invoices
 - `supervisor_activity_log` - Supervisor activity tracking
 
 ### Row Level Security (RLS)
@@ -315,8 +486,69 @@ servicewise/
 ├── package.json
 ├── tailwind.config.ts      # Tailwind configuration
 ├── tsconfig.json           # TypeScript configuration
+├── vercel.json             # Vercel deployment configuration
 └── vite.config.ts          # Vite configuration
 ```
+
+## 🔄 Key Workflows
+
+### Booking to Bill Flow
+
+1. **Create Booking** → Enter customer details, trip dates, vehicle selection
+2. **Assign Vehicle** → Select vehicle from fleet
+3. **Set Rates** → Configure rate type and amounts
+4. **Capture Advance** → Record advance payment details
+5. **Complete Trip** → Mark booking as completed
+6. **Generate Bill** → Auto-generate customer bill with KM calculation
+7. **Generate Company Bill** → Auto-generate internal bill
+8. **Track Transfers** → Monitor advance payment transfers
+9. **Complete Transfers** → Mark transfers as completed
+
+### Service Management Flow
+
+1. **Define Service Rules** → Create service templates
+2. **Assign to Vehicles** → Link rules to specific vehicles
+3. **Track Odometer** → Record odometer readings
+4. **Auto-Detect Service Needs** → System flags vehicles needing service
+5. **Log Service** → Record service completion
+6. **Update Health Score** → Recalculate vehicle health
+
+### Transfer Management Flow
+
+1. **Advance Payment Received** → If cash or personal account → Transfer required
+2. **View Pending Transfers** → Financials page → Pending Transfers tab
+3. **Complete Transfer** → Enter transfer date, cashier name, notes
+4. **Transfer History** → View completed transfers with filtering
+
+## 👥 User Roles & Permissions
+
+### Admin Role
+- ✅ Full system access
+- ✅ User management (create/edit/delete users)
+- ✅ System settings configuration
+- ✅ All operational features
+- ✅ Financial management
+- ✅ Reports and analytics
+
+### Manager Role
+- ✅ Operational access
+- ✅ Booking management
+- ✅ Bill generation
+- ✅ Fleet management
+- ✅ Service management
+- ✅ Driver management
+- ✅ Financial tracking
+- ⚠️ Limited settings access
+
+### Supervisor Role
+- ✅ Limited operational access
+- ✅ View bookings
+- ✅ View fleet status
+- ✅ Log services
+- ✅ Record odometer readings
+- ✅ View reports (read-only)
+- ❌ No billing access
+- ❌ No user management
 
 ## 💻 Development
 
@@ -401,7 +633,11 @@ This creates an optimized production build in the `dist/` directory.
    vercel
    ```
 
-3. Configure environment variables in Vercel dashboard
+3. Configure environment variables in Vercel dashboard:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+
+4. The `vercel.json` file is already configured for SPA routing
 
 #### Netlify
 
@@ -410,7 +646,19 @@ This creates an optimized production build in the `dist/` directory.
    npm install -g netlify-cli
    ```
 
-2. Deploy:
+2. Create `netlify.toml`:
+   ```toml
+   [build]
+     command = "npm run build"
+     publish = "dist"
+   
+   [[redirects]]
+     from = "/*"
+     to = "/index.html"
+     status = 200
+   ```
+
+3. Deploy:
    ```bash
    netlify deploy --prod
    ```
@@ -462,6 +710,12 @@ See `TROUBLESHOOTING_401.md` for detailed troubleshooting steps.
 - Check `config.toml` settings
 - Review function logs in Supabase Dashboard
 
+#### 5. Routing Issues (404 Errors)
+
+- Ensure `vercel.json` is present in root directory
+- Verify rewrites configuration is correct
+- Check deployment platform routing settings
+
 ### Getting Help
 
 - Check existing documentation files:
@@ -469,6 +723,7 @@ See `TROUBLESHOOTING_401.md` for detailed troubleshooting steps.
   - `TROUBLESHOOTING_401.md` - 401 error troubleshooting
   - `DEPLOY_EDGE_FUNCTION.md` - Edge function deployment guide
   - `ENV_VARIABLES_GUIDE.md` - Environment variables guide
+  - `REFERENCE_ERROR_FIXES.md` - Common error fixes
 
 - Review Supabase documentation: [supabase.com/docs](https://supabase.com/docs)
 
