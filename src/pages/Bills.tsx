@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { formatDateTimeFull } from '@/lib/date';
 import { QRCodeSVG } from 'qrcode.react';
+import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,6 +58,7 @@ export default function Bills() {
   const { data: booking, isLoading: loadingBooking } = useBooking(id);
   const { data: bills, isLoading: loadingBills, refetch: refetchBills } = useBillsByBooking(id);
   const { data: companyBills } = useCompanyBills({ bookingId: id });
+  const { data: allBankAccounts } = useBankAccounts();
   const { data: billsNeedingReminder } = useBillsNeedingReminder();
   const updateBillStatus = useUpdateBillStatus();
   const uploadPDF = useUploadBillPDF();
@@ -70,7 +72,13 @@ export default function Bills() {
   const [billViewTab, setBillViewTab] = useState<'customer' | 'company'>('customer');
 
   const selectedBill = bills?.find(b => b.id === selectedBillId) || bills?.[0];
-  const selectedCompanyBill = companyBills?.find(cb => cb.customer_bill_id === selectedBill?.id);
+  // Find company bill that matches the selected customer bill
+  const selectedCompanyBill = selectedBill 
+    ? companyBills?.find(cb => cb.customer_bill_id === selectedBill.id)
+    : null;
+  
+  // Check if there are any company bills for this booking
+  const hasCompanyBills = companyBills && companyBills.length > 0;
 
   // Check if there are bills needing reminder for this booking
   const needsReminder = bills?.some(bill => 
@@ -289,13 +297,12 @@ export default function Bills() {
         <Tabs value={billViewTab} onValueChange={(v) => setBillViewTab(v as 'customer' | 'company')} className="space-y-4">
           <TabsList className="print:hidden">
             <TabsTrigger value="customer">Customer Bill</TabsTrigger>
-            {selectedCompanyBill ? (
-              <TabsTrigger value="company">Company Bill</TabsTrigger>
-            ) : companyBills && companyBills.length > 0 ? (
-              <TabsTrigger value="company" disabled className="opacity-50">
-                Company Bill (No match)
+            {hasCompanyBills && (
+              <TabsTrigger value="company">
+                Company Bill
+                {!selectedCompanyBill && <span className="ml-1 text-xs opacity-70">(No match)</span>}
               </TabsTrigger>
-            ) : null}
+            )}
           </TabsList>
 
           {/* Customer Bill Tab */}
@@ -744,8 +751,9 @@ export default function Bills() {
           </TabsContent>
 
           {/* Company Bill Tab */}
-          {selectedCompanyBill && (
+          {hasCompanyBills && (
             <TabsContent value="company" className="space-y-0">
+              {selectedCompanyBill ? (
               <Card ref={billRef} className="print:shadow-none print:border-0">
                 <CardContent className="p-8 print:p-6">
                   {/* Company Bill Header */}
@@ -838,34 +846,163 @@ export default function Bills() {
                             <span className="font-medium capitalize">{selectedCompanyBill.advance_payment_method}</span>
                           </div>
                         )}
-                        {selectedCompanyBill.advance_account_type && (
-                          <div>
-                            <span className="text-muted-foreground">Account Type:</span>{' '}
-                            <span className="font-medium capitalize">{selectedCompanyBill.advance_account_type}</span>
-                          </div>
-                        )}
                         {selectedCompanyBill.advance_collected_by && (
                           <div>
                             <span className="text-muted-foreground">Collected By:</span>{' '}
                             <span className="font-medium">{selectedCompanyBill.advance_collected_by}</span>
                           </div>
                         )}
+                        {/* Show which account received the advance - ALWAYS SHOW IF ADVANCE > 0 */}
+                        {selectedCompanyBill.advance_amount > 0 && (
+                          <>
+                            {(() => {
+                              // Check if all transfers are completed
+                              const transferRequirements = selectedCompanyBill.transfer_requirements || [];
+                              const hasPendingTransfers = transferRequirements.some((t: any) => t.status === 'pending');
+                              
+                              if (selectedCompanyBill.advance_account_type === 'cash') {
+                                return (
+                                  <div className={`p-4 rounded-lg border-2 mt-3 ${
+                                    hasPendingTransfers 
+                                      ? 'bg-warning/20 border-warning' 
+                                      : 'bg-info/20 border-info'
+                                  }`}>
+                                    <p className={`font-bold text-base mb-2 ${
+                                      hasPendingTransfers ? 'text-warning' : 'text-info'
+                                    }`}>💰 CASH PAYMENT</p>
+                                    <p className="text-sm text-muted-foreground mb-2">
+                                      Advance of <span className="font-bold">{formatCurrency(selectedCompanyBill.advance_amount)}</span> was received in cash.
+                                    </p>
+                                    {hasPendingTransfers && (
+                                      <p className="text-sm font-bold text-warning bg-warning/20 p-2 rounded mt-2">
+                                        ⚠️ TRANSFER REQUIRED: Cash needs to be deposited to a company account.
+                                      </p>
+                                    )}
+                                    {!hasPendingTransfers && transferRequirements.length > 0 && (
+                                      <p className="text-sm text-success font-medium mt-2">
+                                        ✅ All transfers completed
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              } else if (selectedCompanyBill.advance_account_type === 'personal') {
+                                const account = selectedCompanyBill.advance_account_id 
+                                  ? allBankAccounts?.find(acc => acc.id === selectedCompanyBill.advance_account_id)
+                                  : null;
+                                return (
+                                  <div className={`p-4 rounded-lg border-2 mt-3 ${
+                                    hasPendingTransfers 
+                                      ? 'bg-warning/20 border-warning' 
+                                      : 'bg-info/20 border-info'
+                                  }`}>
+                                    <p className={`font-bold text-base mb-2 ${
+                                      hasPendingTransfers ? 'text-warning' : 'text-info'
+                                    }`}>🏦 PERSONAL ACCOUNT PAYMENT</p>
+                                    <p className="text-sm text-muted-foreground mb-2">
+                                      Advance of <span className="font-bold">{formatCurrency(selectedCompanyBill.advance_amount)}</span> was received in:
+                                    </p>
+                                    <p className="text-base font-bold mt-1 mb-2">
+                                      {account?.account_name || 'Personal Account'}
+                                      {account?.account_number && ` (${account.account_number})`}
+                                    </p>
+                                    {hasPendingTransfers && (
+                                      <p className="text-sm font-bold text-warning bg-warning/20 p-2 rounded mt-2">
+                                        ⚠️ TRANSFER REQUIRED: {formatCurrency(selectedCompanyBill.advance_amount)} needs to be transferred from "{account?.account_name || 'Personal Account'}" to a company account.
+                                      </p>
+                                    )}
+                                    {!hasPendingTransfers && transferRequirements.length > 0 && (
+                                      <p className="text-sm text-success font-medium mt-2">
+                                        ✅ All transfers completed
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              } else if (selectedCompanyBill.advance_account_type === 'company' && selectedCompanyBill.advance_account_id) {
+                                const account = allBankAccounts?.find(acc => acc.id === selectedCompanyBill.advance_account_id);
+                                return (
+                                  <div className="bg-success/20 p-4 rounded-lg border-2 border-success mt-3">
+                                    <p className="font-bold text-success text-base mb-2">✅ COMPANY ACCOUNT PAYMENT</p>
+                                    <p className="text-sm text-muted-foreground mb-2">
+                                      Advance of <span className="font-bold">{formatCurrency(selectedCompanyBill.advance_amount)}</span> was received in:
+                                    </p>
+                                    <p className="text-base font-bold mt-1">
+                                      {account?.account_name || 'Company Account'}
+                                      {account?.account_number && ` (${account.account_number})`}
+                                    </p>
+                                    <p className="text-sm text-success font-medium mt-2">
+                                      ✓ No transfer required - already in company account.
+                                    </p>
+                                  </div>
+                                );
+                              } else if (selectedCompanyBill.advance_payment_method === 'online') {
+                                return (
+                                  <div className="bg-info/20 p-4 rounded-lg border-2 border-info mt-3">
+                                    <p className="font-bold text-info text-base mb-2">💳 ONLINE PAYMENT</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      Advance of <span className="font-bold">{formatCurrency(selectedCompanyBill.advance_amount)}</span> was received via online payment.
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </>
+                        )}
                       </div>
+                      {/* Show transfer requirements section */}
                       {selectedCompanyBill.transfer_requirements && selectedCompanyBill.transfer_requirements.length > 0 && (
                         <div className="mt-4 pt-4 border-t">
                           <h5 className="font-semibold text-xs text-muted-foreground mb-2">TRANSFER REQUIREMENTS</h5>
                           <div className="space-y-2 text-xs">
-                            {selectedCompanyBill.transfer_requirements.map((transfer: any, idx: number) => (
-                              <div key={idx} className="bg-warning/10 p-2 rounded">
-                                <p className="font-medium">
-                                  {transfer.status === 'pending' ? '⚠️ Pending Transfer' : '✅ Transfer Completed'}
-                                </p>
-                                <p>Amount: {formatCurrency(transfer.amount)}</p>
-                                <p>From: {transfer.from_account_type === 'cash' ? 'Cash' : transfer.from_account_name || 'Personal Account'}</p>
-                                {transfer.collected_by_name && <p>Collected by: {transfer.collected_by_name}</p>}
-                                {transfer.cashier_name && <p>Cashier: {transfer.cashier_name}</p>}
-                              </div>
-                            ))}
+                            {selectedCompanyBill.transfer_requirements.map((transfer: any, idx: number) => {
+                              const fromAccount = transfer.from_account_id 
+                                ? allBankAccounts?.find(acc => acc.id === transfer.from_account_id)
+                                : null;
+                              return (
+                                <div key={idx} className={`p-3 rounded-lg border ${
+                                  transfer.status === 'pending' 
+                                    ? 'bg-warning/10 border-warning/20' 
+                                    : 'bg-success/10 border-success/20'
+                                }`}>
+                                  <p className="font-medium mb-2">
+                                    {transfer.status === 'pending' ? '⚠️ Pending Transfer' : '✅ Transfer Completed'}
+                                  </p>
+                                  <div className="space-y-1">
+                                    <p><span className="text-muted-foreground">Amount:</span> <span className="font-semibold">{formatCurrency(transfer.amount)}</span></p>
+                                    <p>
+                                      <span className="text-muted-foreground">From:</span>{' '}
+                                      <span className="font-medium">
+                                        {transfer.from_account_type === 'cash' 
+                                          ? 'Cash' 
+                                          : fromAccount 
+                                            ? `${fromAccount.account_name}${fromAccount.account_number ? ` (${fromAccount.account_number})` : ''}`
+                                            : 'Personal Account'}
+                                      </span>
+                                    </p>
+                                    <p>
+                                      <span className="text-muted-foreground">To:</span>{' '}
+                                      <span className="font-medium">Company Account</span>
+                                    </p>
+                                    {transfer.collected_by_name && (
+                                      <p><span className="text-muted-foreground">Collected by:</span> {transfer.collected_by_name}</p>
+                                    )}
+                                    {transfer.cashier_name && (
+                                      <p><span className="text-muted-foreground">Cashier:</span> {transfer.cashier_name}</p>
+                                    )}
+                                    {transfer.status === 'completed' && transfer.transfer_date && (
+                                      <p className="text-success font-medium mt-2">
+                                        ✅ Transferred on: {format(new Date(transfer.transfer_date), 'MMM dd, yyyy')}
+                                      </p>
+                                    )}
+                                    {transfer.status === 'pending' && (
+                                      <p className="text-warning font-medium mt-2">
+                                        ⚠️ Action Required: Transfer {formatCurrency(transfer.amount)} to company account.
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -954,6 +1091,17 @@ export default function Bills() {
                   </div>
                 </CardContent>
               </Card>
+              ) : (
+                <Card>
+                  <CardContent className="p-12 text-center">
+                    <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                    <p className="text-muted-foreground mb-2">No company bill found for this customer bill</p>
+                    <p className="text-xs text-muted-foreground">
+                      Company bill may not have been generated yet or doesn't match the selected customer bill.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
           )}
         </Tabs>
@@ -981,7 +1129,14 @@ export default function Bills() {
           setGenerateBillOpen(false);
           refetchBills();
           // Also refetch company bills
-          queryClient.invalidateQueries({ queryKey: ['company-bills', { bookingId: booking.id }] });
+          queryClient.invalidateQueries({ queryKey: ['company-bills'] });
+          // Reset tab to customer if company bill doesn't exist yet
+          setTimeout(() => {
+            const updatedCompanyBills = queryClient.getQueryData(['company-bills', { bookingId: booking.id }]);
+            if (!updatedCompanyBills || (updatedCompanyBills as any[]).length === 0) {
+              setBillViewTab('customer');
+            }
+          }, 500);
         }}
       />
 

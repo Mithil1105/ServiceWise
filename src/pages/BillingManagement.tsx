@@ -29,7 +29,10 @@ import {
   Eye
 } from 'lucide-react';
 import { useAllBills, useUpdateBillStatus, useUploadBillPDF, useBillsNeedingReminder, useMarkReminderSent } from '@/hooks/use-bills';
+import { useCompanyBills, useUploadCompanyBillPDF } from '@/hooks/use-company-bills';
+import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import { useBookings } from '@/hooks/use-bookings';
+import { supabase } from '@/integrations/supabase/client';
 import { GenerateBillDialog } from '@/components/bookings/GenerateBillDialog';
 import { CreateStandaloneBillDialog } from '@/components/bookings/CreateStandaloneBillDialog';
 import { TRIP_TYPE_LABELS, RATE_TYPE_LABELS, type Bill } from '@/types/booking';
@@ -37,6 +40,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import patidarLogo from '@/assets/patidar-logo.jpg';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -50,13 +54,18 @@ export default function BillingManagement() {
   const navigate = useNavigate();
   const billRef = useRef<HTMLDivElement>(null);
   const { data: allBills, isLoading: loadingBills, refetch: refetchBills } = useAllBills();
+  const { data: companyBills, refetch: refetchCompanyBills } = useCompanyBills();
+  const { data: allBankAccounts } = useBankAccounts();
   const { data: bookings } = useBookings();
   const { data: billsNeedingReminder } = useBillsNeedingReminder();
   const updateBillStatus = useUpdateBillStatus();
   const uploadPDF = useUploadBillPDF();
+  const uploadCompanyPDF = useUploadCompanyBillPDF();
   const markReminderSent = useMarkReminderSent();
 
+  const [billTypeTab, setBillTypeTab] = useState<'customer' | 'company'>('customer');
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
+  const [selectedCompanyBillId, setSelectedCompanyBillId] = useState<string | null>(null);
   const [generateBillOpen, setGenerateBillOpen] = useState(false);
   const [selectBookingOpen, setSelectBookingOpen] = useState(false);
   const [standaloneBillOpen, setStandaloneBillOpen] = useState(false);
@@ -72,6 +81,7 @@ export default function BillingManagement() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   const selectedBill = allBills?.find(b => b.id === selectedBillId);
+  const selectedCompanyBill = companyBills?.find(cb => cb.id === selectedCompanyBillId);
 
   // Filter bills
   const filteredBills = useMemo(() => {
@@ -96,6 +106,26 @@ export default function BillingManagement() {
       return true;
     });
   }, [allBills, search, statusFilter, bookingFilter]);
+
+  // Filter company bills
+  const filteredCompanyBills = useMemo(() => {
+    if (!companyBills) return [];
+    return companyBills.filter(bill => {
+      // Booking filter
+      if (bookingFilter !== 'all' && bill.booking_id !== bookingFilter) return false;
+      
+      // Search filter
+      if (search) {
+        const searchLower = search.toLowerCase();
+        const matchesBillNumber = bill.bill_number.toLowerCase().includes(searchLower);
+        const matchesCustomer = bill.customer_name.toLowerCase().includes(searchLower);
+        const matchesPhone = bill.customer_phone.includes(search);
+        if (!matchesBillNumber && !matchesCustomer && !matchesPhone) return false;
+      }
+      
+      return true;
+    });
+  }, [companyBills, search, bookingFilter]);
 
   const formatCurrency = (amount: number | null | undefined) => {
     if (amount === null || amount === undefined) return '₹0';
@@ -171,17 +201,80 @@ export default function BillingManagement() {
   };
 
   const handleDownloadPdf = async () => {
-    if (!selectedBill) return;
+    if (billTypeTab === 'customer' && selectedBill) {
+      const blob = await generatePdfBlob(selectedBill);
+      if (!blob) return;
+      
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${selectedBill.bill_number}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } else if (billTypeTab === 'company' && selectedCompanyBill) {
+      const blob = await generateCompanyBillPdfBlob(selectedCompanyBill);
+      if (!blob) return;
+      
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${selectedCompanyBill.bill_number}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const generateCompanyBillPdfBlob = async (companyBill: any): Promise<Blob | null> => {
+    if (!billRef.current) return null;
     
-    const blob = await generatePdfBlob(selectedBill);
-    if (!blob) return;
-    
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${selectedBill.bill_number}.pdf`;
-    link.click();
-    URL.revokeObjectURL(url);
+    setGeneratingPdf(true);
+    try {
+      const canvas = await html2canvas(billRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgWidthInMM = imgWidth * ratio;
+      const imgHeightInMM = imgHeight * ratio;
+      
+      const xOffset = (pdfWidth - imgWidthInMM) / 2;
+      const yOffset = (pdfHeight - imgHeightInMM) / 2;
+      
+      pdf.addImage(imgData, 'PNG', xOffset, yOffset, imgWidthInMM, imgHeightInMM);
+      
+      let heightLeft = imgHeightInMM;
+      let position = yOffset;
+      
+      while (heightLeft > 0) {
+        position = heightLeft - pdfHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', xOffset, position, imgWidthInMM, imgHeightInMM);
+        heightLeft -= pdfHeight;
+      }
+      
+      const blob = pdf.output('blob');
+      
+      // Upload to storage
+      const file = new File([blob], `${companyBill.bill_number}.pdf`, { type: 'application/pdf' });
+      await uploadCompanyPDF.mutateAsync({ billId: companyBill.id, pdfFile: file });
+      
+      return blob;
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      return null;
+    } finally {
+      setGeneratingPdf(false);
+    }
   };
 
   const handleShareWhatsApp = async () => {
@@ -425,6 +518,19 @@ export default function BillingManagement() {
         </CardContent>
       </Card>
 
+      {/* Tabs for Customer and Company Bills */}
+      <Tabs value={billTypeTab} onValueChange={(v) => {
+        setBillTypeTab(v as 'customer' | 'company');
+        setSelectedBillId(null);
+        setSelectedCompanyBillId(null);
+      }}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="customer">Customer Bills</TabsTrigger>
+          <TabsTrigger value="company">Company Bills</TabsTrigger>
+        </TabsList>
+
+        {/* Customer Bills Tab */}
+        <TabsContent value="customer" className="space-y-4">
       {/* Bills Table */}
       <Card>
         <CardContent className="p-0">
@@ -514,7 +620,7 @@ export default function BillingManagement() {
       </Card>
 
       {/* Bill Detail View */}
-      {selectedBill && (
+      {selectedBill && billTypeTab === 'customer' && (
         <>
           <div className="flex gap-2 print:hidden">
             <Button variant="outline" onClick={handlePrint}>
@@ -566,6 +672,21 @@ export default function BillingManagement() {
                 Send Reminder
               </Button>
             )}
+            {(() => {
+              const relatedCompanyBill = companyBills?.find(cb => cb.customer_bill_id === selectedBill.id);
+              if (relatedCompanyBill) {
+                return (
+                  <Button variant="outline" onClick={() => {
+                    setBillTypeTab('company');
+                    setSelectedCompanyBillId(relatedCompanyBill.id);
+                  }}>
+                    <Eye className="h-4 w-4 mr-2" />
+                    View Company Bill
+                  </Button>
+                );
+              }
+              return null;
+            })()}
           </div>
 
           <Card className="print:shadow-none print:border-none" ref={billRef}>
@@ -929,6 +1050,467 @@ export default function BillingManagement() {
           </Card>
         </>
       )}
+        </TabsContent>
+
+        {/* Company Bills Tab */}
+        <TabsContent value="company" className="space-y-4">
+      {/* Company Bills Table */}
+      <Card>
+        <CardContent className="p-0">
+          {filteredCompanyBills.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bill Number</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Total Amount</TableHead>
+                    <TableHead>Advance</TableHead>
+                    <TableHead>Net Amount</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCompanyBills.map((bill) => {
+                    const netAmount = bill.total_amount - (bill.total_driver_allowance || 0) - (bill.advance_amount || 0);
+                    return (
+                      <TableRow 
+                        key={bill.id} 
+                        className={`cursor-pointer hover:bg-muted/50 ${selectedCompanyBillId === bill.id ? 'bg-muted' : ''}`}
+                        onClick={() => {
+                          setSelectedCompanyBillId(bill.id);
+                          // Link to customer bill if exists
+                          if (bill.customer_bill_id) {
+                            const customerBill = allBills?.find(b => b.id === bill.customer_bill_id);
+                            if (customerBill) {
+                              setSelectedBillId(customerBill.id);
+                            }
+                          }
+                        }}
+                      >
+                        <TableCell className="font-mono text-sm font-medium">
+                          {bill.bill_number}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{bill.customer_name}</p>
+                            <p className="text-xs text-muted-foreground">{bill.customer_phone}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <p>{formatDateOnly(bill.created_at)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatTime12hr(bill.created_at)}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {formatCurrency(bill.total_amount)}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {formatCurrency(bill.advance_amount)}
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          {formatCurrency(netAmount)}
+                        </TableCell>
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={() => setSelectedCompanyBillId(bill.id)}>
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>View Company Bill</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-64 gap-4">
+              <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <p className="text-muted-foreground">No company bills found</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Company Bill Detail View */}
+      {selectedCompanyBill && billTypeTab === 'company' && (
+        <>
+          <div className="flex gap-2 print:hidden">
+            <Button variant="outline" onClick={handlePrint}>
+              <Printer className="h-4 w-4 mr-2" />
+              Print
+            </Button>
+            <Button variant="outline" onClick={handleDownloadPdf} disabled={generatingPdf}>
+              {generatingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              Download PDF
+            </Button>
+            <Popover open={shareOpen} onOpenChange={setShareOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline">
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2" align="end">
+                <div className="space-y-1">
+                  <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => window.print()}>
+                    <Mail className="h-4 w-4 mr-2 text-blue-600" />
+                    Email
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+            {selectedCompanyBill.customer_bill_id && (
+              <Button variant="outline" onClick={() => {
+                const customerBill = allBills?.find(b => b.id === selectedCompanyBill.customer_bill_id);
+                if (customerBill) {
+                  setBillTypeTab('customer');
+                  setSelectedBillId(customerBill.id);
+                }
+              }}>
+                <Eye className="h-4 w-4 mr-2" />
+                View Customer Bill
+              </Button>
+            )}
+          </div>
+
+          <Card className="print:shadow-none print:border-none" ref={billRef}>
+            <CardContent className="p-8">
+              {/* Company Bill Header */}
+              <div className="flex items-start justify-between mb-8 pb-6 border-b">
+                <div className="flex items-center gap-4">
+                  <img src={patidarLogo} alt="Patidar Travels" className="h-16 w-16 object-contain" />
+                  <div>
+                    <h2 className="text-2xl font-bold text-red-600">PATIDAR TRAVELS PVT. LTD.</h2>
+                    <p className="text-sm text-muted-foreground mt-1">Internal Company Bill</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <h3 className="text-xl font-semibold">COMPANY BILL</h3>
+                  <p className="text-lg font-mono mt-1">{selectedCompanyBill.bill_number}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Generated: {formatDateOnly(selectedCompanyBill.created_at)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Company Bill Details */}
+              <div className="grid grid-cols-2 gap-8 mb-8">
+                <div>
+                  <h4 className="font-semibold text-sm text-muted-foreground mb-3">BOOKING DETAILS</h4>
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Customer:</span>{' '}
+                      <span className="font-medium">{selectedCompanyBill.customer_name}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Phone:</span>{' '}
+                      <span className="font-medium">{selectedCompanyBill.customer_phone}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Trip Duration:</span>{' '}
+                      <span className="font-medium">
+                        {(() => {
+                          const start = new Date(selectedCompanyBill.start_at);
+                          const end = new Date(selectedCompanyBill.end_at);
+                          const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) || 1;
+                          return `${days} ${days === 1 ? 'day' : 'days'}`;
+                        })()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Start Date & Time:</span>{' '}
+                      <span className="font-medium">{formatDateTime(selectedCompanyBill.start_at)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">End Date & Time:</span>{' '}
+                      <span className="font-medium">{formatDateTime(selectedCompanyBill.end_at)}</span>
+                    </div>
+                    {selectedCompanyBill.pickup && (
+                      <div>
+                        <span className="text-muted-foreground">Pickup:</span>{' '}
+                        <span className="font-medium">{selectedCompanyBill.pickup}</span>
+                      </div>
+                    )}
+                    {selectedCompanyBill.dropoff && (
+                      <div>
+                        <span className="text-muted-foreground">Dropoff:</span>{' '}
+                        <span className="font-medium">{selectedCompanyBill.dropoff}</span>
+                      </div>
+                    )}
+                    {selectedCompanyBill.total_km_driven > 0 && (
+                      <div>
+                        <span className="text-muted-foreground">Total KM Driven:</span>{' '}
+                        <span className="font-semibold text-base">{selectedCompanyBill.total_km_driven.toLocaleString()} km</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-muted-foreground mb-3">ADVANCE PAYMENT DETAILS</h4>
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Advance Amount:</span>{' '}
+                      <span className="font-medium">{formatCurrency(selectedCompanyBill.advance_amount)}</span>
+                      {selectedCompanyBill.advance_amount === 0 && (
+                        <span className="text-xs text-muted-foreground ml-1">(No advance received)</span>
+                      )}
+                    </div>
+                    {selectedCompanyBill.advance_payment_method && (
+                      <div>
+                        <span className="text-muted-foreground">Payment Method:</span>{' '}
+                        <span className="font-medium capitalize">{selectedCompanyBill.advance_payment_method}</span>
+                      </div>
+                    )}
+                    {selectedCompanyBill.advance_collected_by && (
+                      <div>
+                        <span className="text-muted-foreground">Collected By:</span>{' '}
+                        <span className="font-medium">{selectedCompanyBill.advance_collected_by}</span>
+                      </div>
+                    )}
+                        {selectedCompanyBill.advance_amount > 0 && (
+                      <>
+                        {(() => {
+                          // Check if all transfers are completed
+                          const transferRequirements = selectedCompanyBill.transfer_requirements || [];
+                          const hasPendingTransfers = transferRequirements.some((t: any) => t.status === 'pending');
+                          
+                          if (selectedCompanyBill.advance_account_type === 'cash') {
+                            return (
+                              <div className={`p-4 rounded-lg border-2 mt-3 ${
+                                hasPendingTransfers 
+                                  ? 'bg-warning/20 border-warning' 
+                                  : 'bg-info/20 border-info'
+                              }`}>
+                                <p className={`font-bold text-base mb-2 ${
+                                  hasPendingTransfers ? 'text-warning' : 'text-info'
+                                }`}>💰 CASH PAYMENT</p>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  Advance of <span className="font-bold">{formatCurrency(selectedCompanyBill.advance_amount)}</span> was received in cash.
+                                </p>
+                                {hasPendingTransfers && (
+                                  <p className="text-sm font-bold text-warning bg-warning/20 p-2 rounded mt-2">
+                                    ⚠️ TRANSFER REQUIRED: Cash needs to be deposited to a company account.
+                                  </p>
+                                )}
+                                {!hasPendingTransfers && transferRequirements.length > 0 && (
+                                  <p className="text-sm text-success font-medium mt-2">
+                                    ✅ All transfers completed
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          } else if (selectedCompanyBill.advance_account_type === 'personal') {
+                            const account = selectedCompanyBill.advance_account_id 
+                              ? allBankAccounts?.find(acc => acc.id === selectedCompanyBill.advance_account_id)
+                              : null;
+                            return (
+                              <div className={`p-4 rounded-lg border-2 mt-3 ${
+                                hasPendingTransfers 
+                                  ? 'bg-warning/20 border-warning' 
+                                  : 'bg-info/20 border-info'
+                              }`}>
+                                <p className={`font-bold text-base mb-2 ${
+                                  hasPendingTransfers ? 'text-warning' : 'text-info'
+                                }`}>🏦 PERSONAL ACCOUNT PAYMENT</p>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  Advance of <span className="font-bold">{formatCurrency(selectedCompanyBill.advance_amount)}</span> was received in:
+                                </p>
+                                <p className="text-base font-bold mt-1 mb-2">
+                                  {account?.account_name || 'Personal Account'}
+                                  {account?.account_number && ` (${account.account_number})`}
+                                </p>
+                                {hasPendingTransfers && (
+                                  <p className="text-sm font-bold text-warning bg-warning/20 p-2 rounded mt-2">
+                                    ⚠️ TRANSFER REQUIRED: {formatCurrency(selectedCompanyBill.advance_amount)} needs to be transferred from "{account?.account_name || 'Personal Account'}" to a company account.
+                                  </p>
+                                )}
+                                {!hasPendingTransfers && transferRequirements.length > 0 && (
+                                  <p className="text-sm text-success font-medium mt-2">
+                                    ✅ All transfers completed
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          } else if (selectedCompanyBill.advance_account_type === 'company' && selectedCompanyBill.advance_account_id) {
+                            const account = allBankAccounts?.find(acc => acc.id === selectedCompanyBill.advance_account_id);
+                            return (
+                              <div className="bg-success/20 p-4 rounded-lg border-2 border-success mt-3">
+                                <p className="font-bold text-success text-base mb-2">✅ COMPANY ACCOUNT PAYMENT</p>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  Advance of <span className="font-bold">{formatCurrency(selectedCompanyBill.advance_amount)}</span> was received in:
+                                </p>
+                                <p className="text-base font-bold mt-1">
+                                  {account?.account_name || 'Company Account'}
+                                  {account?.account_number && ` (${account.account_number})`}
+                                </p>
+                                <p className="text-sm text-success font-medium mt-2">
+                                  ✓ No transfer required - already in company account.
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </>
+                    )}
+                  </div>
+                  {selectedCompanyBill.transfer_requirements && selectedCompanyBill.transfer_requirements.length > 0 && (
+                    <div className="mt-4 pt-4 border-t">
+                      <h5 className="font-semibold text-xs text-muted-foreground mb-2">TRANSFER REQUIREMENTS</h5>
+                      <div className="space-y-2 text-xs">
+                        {selectedCompanyBill.transfer_requirements.map((transfer: any, idx: number) => {
+                          const fromAccount = transfer.from_account_id 
+                            ? allBankAccounts?.find(acc => acc.id === transfer.from_account_id)
+                            : null;
+                          return (
+                            <div key={idx} className={`p-3 rounded-lg border ${
+                              transfer.status === 'pending' 
+                                ? 'bg-warning/10 border-warning/20' 
+                                : 'bg-success/10 border-success/20'
+                            }`}>
+                              <p className="font-medium mb-2">
+                                {transfer.status === 'pending' ? '⚠️ Pending Transfer' : '✅ Transfer Completed'}
+                              </p>
+                              <div className="space-y-1">
+                                <p><span className="text-muted-foreground">Amount:</span> <span className="font-semibold">{formatCurrency(transfer.amount)}</span></p>
+                                <p>
+                                  <span className="text-muted-foreground">From:</span>{' '}
+                                  <span className="font-medium">
+                                    {transfer.from_account_type === 'cash' 
+                                      ? 'Cash' 
+                                      : fromAccount 
+                                        ? `${fromAccount.account_name}${fromAccount.account_number ? ` (${fromAccount.account_number})` : ''}`
+                                        : 'Personal Account'}
+                                  </span>
+                                </p>
+                                <p>
+                                  <span className="text-muted-foreground">To:</span>{' '}
+                                  <span className="font-medium">Company Account</span>
+                                </p>
+                                {transfer.collected_by_name && (
+                                  <p><span className="text-muted-foreground">Collected by:</span> {transfer.collected_by_name}</p>
+                                )}
+                                {transfer.cashier_name && (
+                                  <p><span className="text-muted-foreground">Cashier:</span> {transfer.cashier_name}</p>
+                                )}
+                                {transfer.status === 'completed' && transfer.transfer_date && (
+                                  <p className="text-success font-medium mt-2">
+                                    ✅ Transferred on: {format(new Date(transfer.transfer_date), 'MMM dd, yyyy')}
+                                  </p>
+                                )}
+                                {transfer.status === 'pending' && (
+                                  <p className="text-warning font-medium mt-2">
+                                    ⚠️ Action Required: Transfer {formatCurrency(transfer.amount)} to company account.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Separator className="my-6" />
+
+              {/* Company Bill Vehicle Details */}
+              <div className="mb-8">
+                <h4 className="font-semibold text-sm text-muted-foreground mb-4">VEHICLE & RATE DETAILS</h4>
+                <div className="space-y-4">
+                  {selectedCompanyBill.vehicle_details.map((vehicle: any, idx: number) => (
+                    <div key={idx} className="border rounded-lg p-4 bg-muted/20">
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">Vehicle Number</p>
+                          <p className="font-semibold text-base">{vehicle.vehicle_number}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">Driver Details</p>
+                          <p className="font-medium">{vehicle.driver_name || 'Not Assigned'}</p>
+                          {vehicle.driver_phone && (
+                            <p className="text-xs text-muted-foreground">{vehicle.driver_phone}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="border-t pt-4">
+                        <div className="flex justify-between pt-2 border-t-2 font-semibold text-base">
+                          <span>Vehicle Amount:</span>
+                          <span>{formatCurrency(vehicle.final_amount)}</span>
+                        </div>
+                        {vehicle.driver_allowance_total > 0 && (
+                          <div className="flex justify-between pt-2 text-sm text-muted-foreground">
+                            <span>Driver Allowance (deducted):</span>
+                            <span>- {formatCurrency(vehicle.driver_allowance_total)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Company Bill Payment Summary */}
+              <div className="mb-8">
+                <h4 className="font-semibold text-sm text-muted-foreground mb-4">PAYMENT SUMMARY</h4>
+                <div className="bg-muted/30 rounded-lg p-6">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Subtotal (All Vehicles):</span>
+                      <span className="font-semibold text-base">{formatCurrency(selectedCompanyBill.total_amount)}</span>
+                    </div>
+                    {selectedCompanyBill.total_driver_allowance > 0 && (
+                      <div className="flex justify-between items-center text-muted-foreground">
+                        <span>
+                          Driver Allowance (Deducted)
+                          <span className="text-xs block italic">* Customer pays directly to driver</span>
+                        </span>
+                        <span className="font-semibold text-base">- {formatCurrency(selectedCompanyBill.total_driver_allowance)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Advance Received:</span>
+                      <span className={`font-semibold ${selectedCompanyBill.advance_amount > 0 ? 'text-success' : 'text-muted-foreground'}`}>
+                        {formatCurrency(selectedCompanyBill.advance_amount)}
+                        {selectedCompanyBill.advance_amount === 0 && <span className="text-xs ml-1">(No advance received)</span>}
+                      </span>
+                    </div>
+                    <Separator className="my-3" />
+                    <div className="flex justify-between items-center pt-2">
+                      <span className="text-lg font-bold">Net Amount:</span>
+                      <span className="text-2xl font-bold text-primary">
+                        {formatCurrency(selectedCompanyBill.total_amount - selectedCompanyBill.total_driver_allowance - selectedCompanyBill.advance_amount)}
+                      </span>
+                    </div>
+                    {selectedCompanyBill.internal_notes && (
+                      <div className="mt-4 pt-4 border-t">
+                        <p className="text-xs text-muted-foreground font-medium mb-1">Internal Notes:</p>
+                        <p className="text-xs text-muted-foreground">{selectedCompanyBill.internal_notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+        </TabsContent>
+      </Tabs>
 
       {/* Select Booking Dialog */}
       <Dialog open={selectBookingOpen} onOpenChange={setSelectBookingOpen}>
@@ -981,7 +1563,17 @@ export default function BillingManagement() {
           {/* Bookings List */}
           <div className="flex-1 overflow-y-auto mt-4">
             {(() => {
-              const eligibleBookings = bookings?.filter(b => ['ongoing', 'completed'].includes(b.status)) || [];
+              // Get booking IDs that already have bills
+              const bookingsWithBills = new Set(
+                allBills?.filter(b => b.booking_id).map(b => b.booking_id) || []
+              );
+              
+              // Filter out bookings that already have bills and only show ongoing/completed
+              const eligibleBookings = bookings?.filter(b => 
+                ['ongoing', 'completed'].includes(b.status) && 
+                !bookingsWithBills.has(b.id)
+              ) || [];
+              
               const filteredBookings = eligibleBookings.filter(booking => {
                 if (!bookingSearch) return true;
                 const searchLower = bookingSearch.toLowerCase();
@@ -1035,7 +1627,7 @@ export default function BillingManagement() {
                   <div className="text-center py-8">
                     <p className="text-sm text-muted-foreground">
                       {eligibleBookings.length === 0
-                        ? 'No eligible bookings found. Bookings must be in "ongoing" or "completed" status.'
+                        ? 'No eligible bookings found. Bookings must be in "ongoing" or "completed" status and not already have bills generated.'
                         : 'No bookings match your search.'}
                     </p>
                   </div>

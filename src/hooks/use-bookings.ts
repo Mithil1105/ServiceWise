@@ -285,6 +285,11 @@ export function useCreateBooking() {
       dropoff?: string;
       notes?: string;
       status?: BookingStatus;
+      advance_amount?: number;
+      advance_payment_method?: 'cash' | 'online' | null;
+      advance_collected_by?: string | null;
+      advance_account_type?: 'company' | 'personal' | null;
+      advance_account_id?: string | null;
     }) => {
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
@@ -337,7 +342,14 @@ export function useUpdateBooking() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...data }: Partial<Booking> & { id: string }) => {
+    mutationFn: async ({ id, ...data }: Partial<Booking> & { 
+      id: string;
+      advance_amount?: number;
+      advance_payment_method?: 'cash' | 'online' | null;
+      advance_collected_by?: string | null;
+      advance_account_type?: 'company' | 'personal' | null;
+      advance_account_id?: string | null;
+    }) => {
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
 

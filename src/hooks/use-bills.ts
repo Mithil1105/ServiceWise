@@ -364,8 +364,17 @@ export function useGenerateBill() {
         }
       }
 
-      // Get advance from booking level (not vehicle level)
-      const bookingAdvance = booking.advance_amount || 0;
+      // Get advance from booking level first, fallback to first requested vehicle if booking level is 0
+      // This provides backward compatibility for old bookings where advance was stored in requested_vehicles
+      let bookingAdvance = booking.advance_amount || 0;
+      
+      // If booking-level advance is 0, check first requested vehicle (for backward compatibility)
+      if (bookingAdvance === 0 && booking.booking_requested_vehicles && booking.booking_requested_vehicles.length > 0) {
+        const firstRequestedVehicle = booking.booking_requested_vehicles[0];
+        if (firstRequestedVehicle.advance_amount && Number(firstRequestedVehicle.advance_amount) > 0) {
+          bookingAdvance = Number(firstRequestedVehicle.advance_amount);
+        }
+      }
       
       // Balance = total amount - advance (driver allowance is paid directly to driver, not included in balance)
       const balanceAmount = totalAmount - bookingAdvance;

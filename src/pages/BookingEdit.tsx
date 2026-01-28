@@ -16,6 +16,8 @@ import { BookingStatusBadge } from '@/components/bookings/BookingStatusBadge';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { TRIP_TYPE_LABELS, RATE_TYPE_LABELS, BOOKING_STATUS_LABELS, type TripType, type RateType, type BookingStatus } from '@/types/booking';
+import { useSystemConfig } from '@/hooks/use-dashboard';
+import { useBankAccounts } from '@/hooks/use-bank-accounts';
 
 interface VehicleAssignment {
   id?: string;
@@ -41,6 +43,10 @@ export default function BookingEdit() {
   const updateBooking = useUpdateBooking();
   const assignVehicle = useAssignVehicle();
   const removeVehicle = useRemoveVehicle();
+  const { data: minKmPerKm } = useSystemConfig('minimum_km_per_km');
+  const { data: minKmHybridPerDay } = useSystemConfig('minimum_km_hybrid_per_day');
+  const { data: companyAccounts } = useBankAccounts('company');
+  const { data: personalAccounts } = useBankAccounts('personal');
 
   // Form state - initialized from booking data
   const [customerName, setCustomerName] = useState('');
@@ -53,6 +59,13 @@ export default function BookingEdit() {
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<BookingStatus>('inquiry');
   const [initialized, setInitialized] = useState(false);
+  
+  // Advance payment state
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advancePaymentMethod, setAdvancePaymentMethod] = useState<'cash' | 'online' | ''>('');
+  const [advanceCollectedBy, setAdvanceCollectedBy] = useState('');
+  const [advanceAccountType, setAdvanceAccountType] = useState<'company' | 'personal' | ''>('');
+  const [advanceAccountId, setAdvanceAccountId] = useState<string | null>(null);
 
   // Confirmation dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ type: 'status' | 'dates' | 'vehicle' | null; message: string }>({ type: null, message: '' });
@@ -75,6 +88,13 @@ export default function BookingEdit() {
     setNotes(booking.notes || '');
     setStatus(booking.status);
     
+    // Initialize advance payment
+    setAdvanceAmount(booking.advance_amount ? booking.advance_amount.toString() : '');
+    setAdvancePaymentMethod(booking.advance_payment_method || '');
+    setAdvanceCollectedBy(booking.advance_collected_by || '');
+    setAdvanceAccountType(booking.advance_account_type || '');
+    setAdvanceAccountId(booking.advance_account_id || null);
+    
     // Initialize vehicles
     if (booking.booking_vehicles) {
       setSelectedVehicles(booking.booking_vehicles.map(v => ({
@@ -96,6 +116,9 @@ export default function BookingEdit() {
     }
     setInitialized(true);
   }
+  
+  // Check if advance can be edited (only if advance is 0 or booking is cancelled)
+  const canEditAdvance = !booking?.advance_amount || booking.advance_amount === 0 || booking?.status === 'cancelled';
 
   // Parse dates
   const startDate = startAt ? new Date(startAt) : null;
@@ -110,17 +133,36 @@ export default function BookingEdit() {
     return availableCars.filter(c => c.is_available && !selectedIds.has(c.car_id));
   }, [availableCars, selectedVehicles]);
 
-  // Calculate totals
+  // Calculate totals with threshold logic
   const calculateVehicleTotal = (v: VehicleAssignment): number => {
     if (!startDate || !endDate) return 0;
     const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) || 1;
     
+    // Use booking's estimated_km if available, otherwise fall back to vehicle's estimated_km
+    const estimatedKm = booking?.estimated_km || Number(v.estimated_km) || 0;
+    const thresholdKmPerDay = minKmPerKm ? Number(minKmPerKm) : 300;
+    const thresholdHybridPerDay = minKmHybridPerDay ? Number(minKmHybridPerDay) : 300;
+    
     switch (v.rate_type) {
-      case 'total': return Number(v.rate_total) || 0;
-      case 'per_day': return days * (Number(v.rate_per_day) || 0);
-      case 'per_km': return (Number(v.rate_per_km) || 0) * (Number(v.estimated_km) || 0);
-      case 'hybrid': return (days * (Number(v.rate_per_day) || 0)) + ((Number(v.rate_per_km) || 0) * (Number(v.estimated_km) || 0));
-      default: return 0;
+      case 'total': 
+        return Number(v.rate_total) || 0;
+      
+      case 'per_day': 
+        return days * (Number(v.rate_per_day) || 0);
+      
+      case 'per_km': 
+        // Apply threshold: days × threshold_km_per_day = minimum KM
+        const totalMinKm = thresholdKmPerDay * days;
+        const kmToCharge = Math.max(estimatedKm, totalMinKm);
+        return (Number(v.rate_per_km) || 0) * kmToCharge;
+      
+      case 'hybrid': 
+        // Apply threshold for hybrid: days × threshold_hybrid_per_day = minimum KM
+        const hybridMinKm = Math.max(estimatedKm, thresholdHybridPerDay * days);
+        return (days * (Number(v.rate_per_day) || 0)) + ((Number(v.rate_per_km) || 0) * hybridMinKm);
+      
+      default: 
+        return 0;
     }
   };
 
@@ -195,6 +237,15 @@ export default function BookingEdit() {
       });
       setPendingAction(() => async () => {
         setStatus(newStatus);
+      });
+    } else if (newStatus === 'cancelled') {
+      setConfirmDialog({
+        type: 'status',
+        message: `Are you sure you want to cancel this booking? This action cannot be undone.`,
+      });
+      setPendingAction(() => async () => {
+        setStatus('cancelled');
+        await executeSubmit();
       });
     } else {
       setStatus(newStatus);
@@ -278,6 +329,14 @@ export default function BookingEdit() {
         dropoff: dropoff.trim() || null,
         notes: notes.trim() || null,
         status,
+        // Only update advance if it can be edited
+        ...(canEditAdvance ? {
+          advance_amount: Number(advanceAmount) || 0,
+          advance_payment_method: advancePaymentMethod || null,
+          advance_collected_by: advanceCollectedBy.trim() || null,
+          advance_account_type: advanceAccountType || null,
+          advance_account_id: advanceAccountId || null,
+        } : {}),
       });
 
       // Handle vehicle changes
@@ -624,7 +683,7 @@ export default function BookingEdit() {
                           </div>
                           <div>
                             <span className="text-muted-foreground">Est. KM:</span>
-                            <p className="font-medium">{booking?.estimated_km || 0} km</p>
+                            <p className="font-medium">{booking?.estimated_km || Number(vehicle.estimated_km) || 0} km</p>
                           </div>
                         </>
                       )}
@@ -686,26 +745,168 @@ export default function BookingEdit() {
         </Card>
       )}
 
+      {/* Advance Payment Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Advance Payment</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!canEditAdvance && booking?.advance_amount && booking.advance_amount > 0 ? (
+            <div className="bg-muted p-4 rounded-lg border">
+              <p className="text-sm font-medium mb-2">
+                Advance Amount: <span className="font-bold">{formatCurrency(booking.advance_amount)}</span>
+              </p>
+              {booking.advance_payment_method && (
+                <p className="text-sm text-muted-foreground">
+                  Payment Method: <span className="capitalize">{booking.advance_payment_method}</span>
+                </p>
+              )}
+              {booking.advance_account_type && (
+                <p className="text-sm text-muted-foreground">
+                  Account Type: <span className="capitalize">{booking.advance_account_type}</span>
+                </p>
+              )}
+              {booking.advance_collected_by && (
+                <p className="text-sm text-muted-foreground">
+                  Collected By: {booking.advance_collected_by}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                Advance payment has already been recorded. To modify advance payment, cancel the booking first.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Advance Amount (₹)</Label>
+                  <Input
+                    type="number"
+                    value={advanceAmount}
+                    onChange={e => setAdvanceAmount(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>
+                    Payment Method
+                    {advanceAmount && Number(advanceAmount) > 0 && <span className="text-destructive"> *</span>}
+                  </Label>
+                  <Select
+                    value={advancePaymentMethod}
+                    onValueChange={v => {
+                      setAdvancePaymentMethod(v as 'cash' | 'online' | '');
+                      if (v === 'cash') {
+                        setAdvanceAccountType('');
+                        setAdvanceAccountId(null);
+                      } else if (v === 'online') {
+                        setAdvanceCollectedBy('');
+                      }
+                    }}
+                    disabled={!advanceAmount || Number(advanceAmount) <= 0}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="online">Online</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {advancePaymentMethod === 'cash' && (
+                <div className="space-y-2">
+                  <Label>Collected By</Label>
+                  <Input
+                    value={advanceCollectedBy}
+                    onChange={e => setAdvanceCollectedBy(e.target.value)}
+                    placeholder="Enter name"
+                  />
+                </div>
+              )}
+
+              {advancePaymentMethod === 'online' && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Account Type</Label>
+                    <Select
+                      value={advanceAccountType}
+                      onValueChange={v => {
+                        setAdvanceAccountType(v as 'company' | 'personal' | '');
+                        setAdvanceAccountId(null);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select account type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="company">Company Account</SelectItem>
+                        <SelectItem value="personal">Personal Account</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {advanceAccountType && (
+                    <div className="space-y-2">
+                      <Label>Select Account</Label>
+                      <Select
+                        value={advanceAccountId || ''}
+                        onValueChange={v => setAdvanceAccountId(v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(advanceAccountType === 'company' ? companyAccounts : personalAccounts)?.map(account => (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.account_name} {account.account_number && `(${account.account_number})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Actions */}
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
-            <Select value={status} onValueChange={v => handleStatusChange(v as BookingStatus)}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="inquiry">Inquiry</SelectItem>
-                <SelectItem value="tentative">Tentative</SelectItem>
-                <SelectItem value="confirmed">Confirmed</SelectItem>
-                <SelectItem value="ongoing">Ongoing</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select value={status} onValueChange={v => handleStatusChange(v as BookingStatus)}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inquiry">Inquiry</SelectItem>
+                  <SelectItem value="tentative">Tentative</SelectItem>
+                  <SelectItem value="confirmed">Confirmed</SelectItem>
+                  <SelectItem value="ongoing">Ongoing</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {/* Cancel Booking Button - Show if confirmed/ongoing */}
+              {booking && (booking.status === 'confirmed' || booking.status === 'ongoing') && (
+                <Button 
+                  variant="destructive" 
+                  onClick={() => handleStatusChange('cancelled')}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel Booking
+                </Button>
+              )}
+            </div>
 
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => navigate(-1)}>Cancel</Button>
+              <Button variant="outline" onClick={() => navigate(-1)}>Back</Button>
               <Button onClick={handleSubmit} disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Save Changes

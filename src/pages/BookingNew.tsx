@@ -457,6 +457,12 @@ export default function BookingNew() {
         dropoff: dropoff.trim() || undefined,
         notes: notes.trim() || undefined,
         status: status as BookingStatus,
+        // Save advance payment at booking level
+        advance_amount: Number(advanceAmount) || 0,
+        advance_payment_method: advancePaymentMethod || null,
+        advance_collected_by: advanceCollectedBy.trim() || null,
+        advance_account_type: advanceAccountType || null,
+        advance_account_id: advanceAccountId || null,
       });
 
       // Save requested vehicles (if admin/manager) and create mapping for linking

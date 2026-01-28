@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTransfers, usePendingTransfers, useCompletedTransfers, useCompleteTransfer } from '@/hooks/use-transfers';
 import { useCompanyBills } from '@/hooks/use-company-bills';
+import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -24,6 +26,7 @@ const formatCurrency = (amount: number | null | undefined) => {
 };
 
 export default function Financials() {
+  const navigate = useNavigate();
   const { user, profile } = useAuth();
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
@@ -44,6 +47,7 @@ export default function Financials() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
   });
+  const { data: allBankAccounts } = useBankAccounts();
   const completeTransfer = useCompleteTransfer();
 
   // Calculate summary stats
@@ -69,6 +73,7 @@ export default function Financials() {
       setTransferDate(new Date().toISOString().split('T')[0]);
       setCashierName('');
       setTransferNotes('');
+      // Queries will be invalidated by the mutation's onSuccess
     } catch (error) {
       console.error('Error completing transfer:', error);
     }
@@ -273,7 +278,7 @@ export default function Financials() {
                     <TableHead>Booking Ref</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Amount</TableHead>
-                    <TableHead>Account Type</TableHead>
+                    <TableHead>From Account</TableHead>
                     <TableHead>Collected By</TableHead>
                     <TableHead>Transfer Date</TableHead>
                     <TableHead>Completed By</TableHead>
@@ -282,26 +287,43 @@ export default function Financials() {
                 </TableHeader>
                 <TableBody>
                   {completedTransfers && completedTransfers.length > 0 ? (
-                    completedTransfers.map((transfer) => (
-                      <TableRow key={transfer.id}>
-                        <TableCell>{transfer.bookings?.booking_ref || 'N/A'}</TableCell>
-                        <TableCell>{transfer.bookings?.customer_name || 'N/A'}</TableCell>
-                        <TableCell className="font-medium">{formatCurrency(transfer.amount)}</TableCell>
-                        <TableCell>
-                          <Badge variant={transfer.from_account_type === 'cash' ? 'default' : 'secondary'}>
-                            {transfer.from_account_type === 'cash' ? 'Cash' : 'Personal'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{transfer.collected_by_name}</TableCell>
-                        <TableCell>
-                          {transfer.transfer_date ? format(new Date(transfer.transfer_date), 'MMM dd, yyyy') : 'N/A'}
-                        </TableCell>
-                        <TableCell>{transfer.completed_by_user_id ? 'User' : 'N/A'}</TableCell>
-                        <TableCell>
-                          <Badge variant="success">Completed</Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    completedTransfers.map((transfer) => {
+                      const fromAccount = transfer.from_account_id && allBankAccounts
+                        ? allBankAccounts.find(acc => acc.id === transfer.from_account_id)
+                        : null;
+                      
+                      return (
+                        <TableRow key={transfer.id}>
+                          <TableCell>{transfer.bookings?.booking_ref || 'N/A'}</TableCell>
+                          <TableCell>{transfer.bookings?.customer_name || 'N/A'}</TableCell>
+                          <TableCell className="font-medium">{formatCurrency(transfer.amount)}</TableCell>
+                          <TableCell>
+                            {transfer.from_account_type === 'cash' ? (
+                              <Badge variant="default">Cash</Badge>
+                            ) : fromAccount ? (
+                              <div className="text-sm">
+                                <div className="font-medium">{fromAccount.account_name}</div>
+                                {fromAccount.account_number && (
+                                  <div className="text-xs text-muted-foreground">{fromAccount.account_number}</div>
+                                )}
+                              </div>
+                            ) : (
+                              <Badge variant="secondary">Personal Account</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{transfer.collected_by_name || 'N/A'}</TableCell>
+                          <TableCell>
+                            {transfer.transfer_date ? format(new Date(transfer.transfer_date), 'MMM dd, yyyy') : 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            {(transfer as any).completed_by_name || transfer.cashier_name || 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="success">Completed</Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   ) : (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
@@ -333,30 +355,82 @@ export default function Financials() {
                     <TableHead>Customer</TableHead>
                     <TableHead>Total Amount</TableHead>
                     <TableHead>Advance Amount</TableHead>
+                    <TableHead>Transfer Status</TableHead>
                     <TableHead>Created Date</TableHead>
+                    <TableHead>Last Updated</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {companyBills && companyBills.length > 0 ? (
-                    companyBills.map((bill) => (
-                      <TableRow key={bill.id}>
-                        <TableCell className="font-medium">{bill.bill_number}</TableCell>
-                        <TableCell>{bill.bookings?.booking_ref || 'N/A'}</TableCell>
-                        <TableCell>{bill.customer_name}</TableCell>
-                        <TableCell>{formatCurrency(bill.total_amount)}</TableCell>
-                        <TableCell>{formatCurrency(bill.advance_amount)}</TableCell>
-                        <TableCell>{format(new Date(bill.created_at), 'MMM dd, yyyy')}</TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="outline">
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    companyBills.map((bill) => {
+                      // Check transfer status
+                      const transferRequirements = bill.transfer_requirements || [];
+                      const hasPendingTransfers = transferRequirements.some((t: any) => t.status === 'pending');
+                      const hasCompletedTransfers = transferRequirements.some((t: any) => t.status === 'completed');
+                      const transferStatus = hasPendingTransfers 
+                        ? 'pending' 
+                        : hasCompletedTransfers 
+                          ? 'completed' 
+                          : bill.advance_amount > 0 && (bill.advance_account_type === 'cash' || bill.advance_account_type === 'personal')
+                            ? 'pending'
+                            : 'none';
+                      
+                      return (
+                        <TableRow 
+                          key={bill.id}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => {
+                            if (bill.booking_id) {
+                              navigate(`/bookings/${bill.booking_id}/bills`);
+                            }
+                          }}
+                        >
+                          <TableCell className="font-medium">{bill.bill_number}</TableCell>
+                          <TableCell>{bill.bookings?.booking_ref || 'N/A'}</TableCell>
+                          <TableCell>{bill.customer_name}</TableCell>
+                          <TableCell>{formatCurrency(bill.total_amount)}</TableCell>
+                          <TableCell>{formatCurrency(bill.advance_amount)}</TableCell>
+                          <TableCell>
+                            {transferStatus === 'pending' ? (
+                              <Badge variant="warning">
+                                Pending Transfer
+                              </Badge>
+                            ) : transferStatus === 'completed' ? (
+                              <Badge variant="success">
+                                Transfer Completed
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary">No Transfer Needed</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{format(new Date(bill.created_at), 'MMM dd, yyyy')}</TableCell>
+                          <TableCell>
+                            {bill.updated_at && bill.updated_at !== bill.created_at ? (
+                              format(new Date(bill.updated_at), 'MMM dd, yyyy HH:mm')
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => {
+                                if (bill.booking_id) {
+                                  navigate(`/bookings/${bill.booking_id}/bills`);
+                                }
+                              }}
+                            >
+                              View
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                         No company bills generated yet
                       </TableCell>
                     </TableRow>
