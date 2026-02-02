@@ -22,7 +22,6 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import serviceWiseLogo from '@/assets/SWlogo.png';
 
 const navItems = [
   { title: 'Dashboard', href: '/app', icon: LayoutDashboard },
@@ -72,7 +71,7 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
       {/* Header with Logo */}
       <div className="p-4 flex items-center gap-3 flex-shrink-0">
         <img 
-          src={serviceWiseLogo} 
+          src="/SWlogo.png" 
           alt="ServiceWise" 
           className="h-10 w-auto object-contain flex-shrink-0"
         />

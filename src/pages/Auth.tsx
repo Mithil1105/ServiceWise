@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Truck, AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -136,9 +136,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary mb-4">
-            <Truck className="h-8 w-8 text-primary-foreground" />
-          </div>
+          <img src="/SWlogo.png" alt="ServiceWise" className="h-16 w-auto mx-auto mb-4 object-contain" />
           <h1 className="text-3xl font-bold text-foreground">ServiceWise</h1>
           <p className="text-muted-foreground mt-2">Fleet Management System</p>
         </div>

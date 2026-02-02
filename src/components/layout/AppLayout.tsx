@@ -71,7 +71,7 @@ export default function AppLayout() {
               <Menu className="h-5 w-5" />
               <span className="sr-only">Toggle menu</span>
             </Button>
-            <span className="text-lg font-semibold">ServiceWise</span>
+            <img src="/SWlogo.png" alt="ServiceWise" className="h-8 w-auto object-contain" />
           </div>
         </header>
       )}
