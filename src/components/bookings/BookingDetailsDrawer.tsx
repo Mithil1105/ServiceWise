@@ -81,23 +81,12 @@ export function BookingDetailsDrawer({
     enabled: !!booking?.id && open,
   });
 
-  if (!booking) return null;
-
-  const formatCurrency = (amount: number | null) => {
-    if (amount === null || amount === undefined) return '₹0';
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatDateTime = (date: string) => {
-    return formatDateTimeFull(date);
-  };
-
   // Calculate amounts: Priority 1) Bills, 2) Assigned vehicles, 3) Requested vehicles
+  // Must run unconditionally (before any early return) to satisfy Rules of Hooks
   const { totalAmount, totalAdvance } = useMemo(() => {
+    if (!booking) {
+      return { totalAmount: 0, totalAdvance: 0 };
+    }
     // First priority: Use bill amounts if bills exist
     if (bills && bills.length > 0) {
       const latestBill = bills[0]; // Most recent bill
@@ -165,10 +154,26 @@ export function BookingDetailsDrawer({
     };
   }, [bills, booking, minKmPerKm, minKmHybridPerDay]);
 
-  const totalEstimatedKm = booking.booking_vehicles?.reduce(
+  const totalEstimatedKm = booking?.booking_vehicles?.reduce(
     (sum, v) => sum + (v.estimated_km || 0),
     0
   ) || 0;
+
+  // Early return after all hooks to avoid conditional hook calls (React rules of hooks)
+  if (!booking) return null;
+
+  const formatCurrency = (amount: number | null) => {
+    if (amount === null || amount === undefined) return '₹0';
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatDateTime = (date: string) => {
+    return formatDateTimeFull(date);
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

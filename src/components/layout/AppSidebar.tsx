@@ -45,7 +45,11 @@ const adminItems = [
   { title: 'Users', href: '/users', icon: Users },
 ];
 
-export default function AppSidebar() {
+interface AppSidebarProps {
+  onNavigate?: () => void;
+}
+
+export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
   const { profile, role, signOut, isAdmin, isManager, isSupervisor } = useAuth();
   const location = useLocation();
 
@@ -57,22 +61,28 @@ export default function AppSidebar() {
     return true;
   });
 
+  const handleNavClick = () => {
+    if (onNavigate) {
+      onNavigate();
+    }
+  };
+
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar flex flex-col border-r border-sidebar-border">
+    <aside className="h-full w-64 bg-sidebar flex flex-col border-r border-sidebar-border md:fixed md:left-0 md:top-0 md:h-screen min-h-0">
       {/* Header with Logo */}
-      <div className="p-4 flex items-center gap-3">
+      <div className="p-4 flex items-center gap-3 flex-shrink-0">
         <img 
           src={serviceWiseLogo} 
           alt="ServiceWise" 
-          className="h-10 w-auto object-contain"
+          className="h-10 w-auto object-contain flex-shrink-0"
         />
-        <span className="text-lg font-semibold text-sidebar-foreground">ServiceWise</span>
+        <span className="text-lg font-semibold text-sidebar-foreground truncate">ServiceWise</span>
       </div>
 
-      <Separator className="bg-sidebar-border" />
+      <Separator className="bg-sidebar-border flex-shrink-0" />
 
-      {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      {/* Navigation - scrollable when content overflows */}
+      <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
         {filteredNavItems.map((item) => {
           const isActive = location.pathname === item.href || 
             (item.href !== '/' && location.pathname.startsWith(item.href));
@@ -81,6 +91,7 @@ export default function AppSidebar() {
             <NavLink
               key={item.href}
               to={item.href}
+              onClick={handleNavClick}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
                 isActive
@@ -88,10 +99,10 @@ export default function AppSidebar() {
                   : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
               )}
             >
-              <item.icon className="h-4 w-4" />
-              {item.title}
+              <item.icon className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">{item.title}</span>
               {item.href === '/critical' && (
-                <Badge variant="error" className="ml-auto text-[10px] px-1.5 py-0">
+                <Badge variant="error" className="ml-auto text-[10px] px-1.5 py-0 flex-shrink-0">
                   !
                 </Badge>
               )}
@@ -113,6 +124,7 @@ export default function AppSidebar() {
                 <NavLink
                   key={item.href}
                   to={item.href}
+                  onClick={handleNavClick}
                   className={cn(
                     'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
                     isActive
@@ -120,8 +132,8 @@ export default function AppSidebar() {
                       : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
                   )}
                 >
-                  <item.icon className="h-4 w-4" />
-                  {item.title}
+                  <item.icon className="h-4 w-4 flex-shrink-0" />
+                  <span className="truncate">{item.title}</span>
                 </NavLink>
               );
             })}
@@ -129,10 +141,10 @@ export default function AppSidebar() {
         )}
       </nav>
 
-      <Separator className="bg-sidebar-border" />
+      <Separator className="bg-sidebar-border flex-shrink-0" />
 
       {/* User Info */}
-      <div className="p-3">
+      <div className="p-3 flex-shrink-0">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center">
             <span className="text-sm font-medium text-sidebar-foreground">

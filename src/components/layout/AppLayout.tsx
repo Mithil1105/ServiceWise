@@ -1,10 +1,16 @@
+import { useState } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import AppSidebar from './AppSidebar';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Menu } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export default function AppLayout() {
   const { user, loading, role } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   if (loading) {
     return (
@@ -40,9 +46,39 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <AppSidebar />
-      <main className="ml-64 min-h-screen">
-        <div className="p-6">
+      {/* Desktop Sidebar */}
+      <div className="hidden md:block">
+        <AppSidebar />
+      </div>
+
+      {/* Mobile Sidebar Sheet */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="w-64 p-0 h-full flex flex-col overflow-hidden">
+          <AppSidebar onNavigate={() => setMobileMenuOpen(false)} />
+        </SheetContent>
+      </Sheet>
+
+      {/* Mobile Header with Hamburger */}
+      {isMobile && (
+        <header className="md:hidden sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="flex h-14 items-center px-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setMobileMenuOpen(true)}
+              className="mr-2"
+            >
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Toggle menu</span>
+            </Button>
+            <span className="text-lg font-semibold">ServiceWise</span>
+          </div>
+        </header>
+      )}
+
+      {/* Main Content */}
+      <main className="md:ml-64 min-h-screen">
+        <div className="p-4 md:p-6">
           <Outlet />
         </div>
       </main>

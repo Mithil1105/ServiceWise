@@ -175,7 +175,18 @@ export default function BookingNew() {
 
   const handleAddSelectedVehicles = () => {
     if (!availableCars) return;
-    const carsToAdd = availableCars.filter(c => selectedCarIds.has(c.car_id));
+    // Only add cars that are still available to prevent double-booking
+    const carsToAdd = availableCars.filter(
+      c => selectedCarIds.has(c.car_id) && c.is_available
+    );
+    const skipped = [...selectedCarIds].filter(
+      id => !availableCars.find(c => c.car_id === id && c.is_available)
+    ).length;
+    if (skipped > 0) {
+      toast.warning(
+        `${skipped} vehicle${skipped === 1 ? '' : 's'} no longer available and ${skipped === 1 ? 'was' : 'were'} not added.`
+      );
+    }
     const newVehicles: VehicleAssignment[] = carsToAdd.map(car => ({
       car_id: car.car_id,
       vehicle_number: car.vehicle_number,

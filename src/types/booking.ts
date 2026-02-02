@@ -267,7 +267,7 @@ export const BOOKING_STATUS_COLORS: Record<BookingStatus, { bg: string; text: st
   confirmed: { bg: 'bg-blue-500/10', text: 'text-blue-600', border: 'border-blue-500/30' },
   ongoing: { bg: 'bg-purple-500/10', text: 'text-purple-600', border: 'border-purple-500/30' },
   completed: { bg: 'bg-success/10', text: 'text-success', border: 'border-success/30' },
-  cancelled: { bg: 'bg-muted', text: 'text-muted-foreground', border: 'border-muted-foreground/30' },
+  cancelled: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300/50' },
 };
 
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
