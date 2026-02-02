@@ -1,4 +1,4 @@
-# ServiceWise (Traveltrak Ops) — Project Description & MVP
+# ServiceWise — Project Description & MVP
 
 **Document version:** 1.0  
 **Last updated:** February 2026  

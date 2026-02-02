@@ -210,7 +210,7 @@ export function GenerateBillDialog({
         queryClient.invalidateQueries({ queryKey: ['company-bills', { bookingId }] });
         queryClient.invalidateQueries({ queryKey: ['company-bills'] });
         setTimeout(() => {
-          navigate(`/bookings/${bookingId}/bills`);
+          navigate(`/app/bookings/${bookingId}/bills`);
         }, 500); // Small delay to ensure queries are invalidated
         onSuccess?.();
       }
@@ -483,7 +483,7 @@ export function GenerateBillDialog({
             queryClient.invalidateQueries({ queryKey: ['company-bills', { bookingId }] });
             queryClient.invalidateQueries({ queryKey: ['company-bills'] });
             setTimeout(() => {
-              navigate(`/bookings/${bookingId}/bills`);
+              navigate(`/app/bookings/${bookingId}/bills`);
             }, 500); // Small delay to ensure queries are invalidated
             onSuccess?.();
           }}

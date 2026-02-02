@@ -78,7 +78,7 @@ export default function Services() {
           <p className="text-muted-foreground">Service records across all vehicles</p>
         </div>
         <Button asChild>
-          <Link to="/services/new">
+          <Link to="/app/services/new">
             <Plus className="h-4 w-4 mr-2" />
             Add Service Record
           </Link>
@@ -150,7 +150,7 @@ export default function Services() {
                         </TableCell>
                         <TableCell>
                           <Link
-                            to={`/fleet/${record.car_id}`}
+                            to={`/app/fleet/${record.car_id}`}
                             className="font-medium text-accent hover:underline"
                           >
                             {car?.vehicle_number || 'Unknown'}
@@ -192,7 +192,7 @@ export default function Services() {
               </p>
               {!search && carFilter === 'all' && (
                 <Button asChild>
-                  <Link to="/services/new">
+                  <Link to="/app/services/new">
                     <Plus className="h-4 w-4 mr-2" />
                     Add Service Record
                   </Link>

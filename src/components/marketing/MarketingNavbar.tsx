@@ -12,9 +12,7 @@ const navLinks = [
   { to: '/roles', label: 'Roles & Permissions' },
   { to: '/how-it-works', label: 'How it Works' },
   { to: '/security', label: 'Security' },
-  { to: '/tech', label: 'Tech & Deployment' },
   { to: '/pricing', label: 'Pricing' },
-  { to: '/faq', label: 'FAQ' },
   { to: '/contact', label: 'Contact Us' },
 ];
 
@@ -26,8 +24,8 @@ export function MarketingNavbar() {
     <>
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="flex items-center gap-2 font-semibold text-foreground">
-            <span className="text-lg">ServiceWise</span>
+          <Link to="/" className="flex items-center gap-2 font-semibold text-foreground" aria-label="ServiceWise home">
+            <img src="/SWlogo.png" alt="ServiceWise" className="h-8 w-auto object-contain" />
           </Link>
 
           <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
@@ -75,7 +73,10 @@ export function MarketingNavbar() {
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="right" className="w-[280px] sm:w-[320px]">
-          <div className="flex flex-col gap-4 pt-6">
+          <Link to="/" onClick={() => setMobileOpen(false)} className="inline-flex pt-2 pb-4" aria-label="ServiceWise home">
+            <img src="/SWlogo.png" alt="ServiceWise" className="h-8 w-auto object-contain" />
+          </Link>
+          <div className="flex flex-col gap-4 pt-2">
             {navLinks.map(({ to, label }) => (
               <Link
                 key={to}

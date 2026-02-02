@@ -36,7 +36,7 @@ export default function Auth() {
 
   useEffect(() => {
     if (!loading && user) {
-      navigate('/');
+      navigate('/app');
     }
   }, [user, loading, navigate]);
 
@@ -73,7 +73,7 @@ export default function Auth() {
         title: 'Welcome back!',
         description: 'You have successfully logged in.',
       });
-      navigate('/');
+      navigate('/app');
     }
   };
 

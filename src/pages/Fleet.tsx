@@ -206,7 +206,7 @@ export default function Fleet() {
         </div>
         {(isAdmin || isManager) && (
           <Button asChild>
-            <Link to="/fleet/new">
+            <Link to="/app/fleet/new">
               <Plus className="h-4 w-4 mr-2" />
               Add Vehicle
             </Link>
@@ -346,7 +346,7 @@ export default function Fleet() {
                       <TableCell>
                         <div className="flex items-center justify-end gap-2">
                           <Button variant="ghost" size="icon" asChild>
-                            <Link to={`/fleet/${car.id}`}>
+                            <Link to={`/app/fleet/${car.id}`}>
                               <Eye className="h-4 w-4" />
                             </Link>
                           </Button>
@@ -378,7 +378,7 @@ export default function Fleet() {
               </p>
               {!search && statusFilter === 'all' && fuelFilter === 'all' && (
                 <Button asChild>
-                  <Link to="/fleet/new">
+                  <Link to="/app/fleet/new">
                     <Plus className="h-4 w-4 mr-2" />
                     Add Vehicle
                   </Link>

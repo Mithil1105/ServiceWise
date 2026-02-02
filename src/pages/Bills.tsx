@@ -213,7 +213,7 @@ export default function Bills() {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <p className="text-muted-foreground">Booking not found</p>
-        <Button variant="outline" onClick={() => navigate('/bookings')}>Go to Bookings</Button>
+        <Button variant="outline" onClick={() => navigate('/app/bookings')}>Go to Bookings</Button>
       </div>
     );
   }

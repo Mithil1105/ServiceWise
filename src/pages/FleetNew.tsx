@@ -150,7 +150,7 @@ export default function FleetNew() {
         title: 'Vehicle added',
         description: 'Vehicle and documents saved successfully.',
       });
-      navigate('/fleet');
+      navigate('/app/fleet');
     } catch (error) {
       // Error is handled by the mutation
     } finally {
@@ -198,7 +198,7 @@ export default function FleetNew() {
     <div className="space-y-6 animate-fade-in max-w-2xl">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link to="/fleet">
+          <Link to="/app/fleet">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -529,7 +529,7 @@ export default function FleetNew() {
 
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" asChild>
-                <Link to="/fleet">Cancel</Link>
+                <Link to="/app/fleet">Cancel</Link>
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? (

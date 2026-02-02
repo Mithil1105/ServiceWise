@@ -332,7 +332,7 @@ export default function VehicleHealthScore() {
                   <TableRow key={vehicle.carId}>
                     <TableCell>
                       <Link
-                        to={`/fleet/${vehicle.carId}`}
+                        to={`/app/fleet/${vehicle.carId}`}
                         className="font-medium hover:text-primary"
                       >
                         {vehicle.vehicleNumber}
@@ -386,7 +386,7 @@ export default function VehicleHealthScore() {
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="sm" asChild>
-                        <Link to={`/fleet/${vehicle.carId}`}>
+                        <Link to={`/app/fleet/${vehicle.carId}`}>
                           View →
                         </Link>
                       </Button>

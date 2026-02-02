@@ -129,11 +129,11 @@ export default function Bookings() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => navigate('/bookings/calendar')}>
+          <Button variant="outline" onClick={() => navigate('/app/bookings/calendar')}>
             <Calendar className="h-4 w-4 mr-2" />
             Calendar View
           </Button>
-          <Button onClick={() => navigate('/bookings/new')}>
+          <Button onClick={() => navigate('/app/bookings/new')}>
             <Plus className="h-4 w-4 mr-2" />
             New Booking
           </Button>
@@ -294,7 +294,7 @@ export default function Bookings() {
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" onClick={() => navigate(`/bookings/${booking.id}/edit`)}>
+                                <Button variant="ghost" size="icon" onClick={() => navigate(`/app/bookings/${booking.id}/edit`)}>
                                   <Edit className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
@@ -325,7 +325,7 @@ export default function Bookings() {
           ) : (
             <div className="flex flex-col items-center justify-center h-64 gap-4">
               <p className="text-muted-foreground">No bookings found</p>
-              <Button onClick={() => navigate('/bookings/new')}>
+              <Button onClick={() => navigate('/app/bookings/new')}>
                 <Plus className="h-4 w-4 mr-2" />
                 Create First Booking
               </Button>
@@ -341,13 +341,13 @@ export default function Bookings() {
         onOpenChange={setDrawerOpen}
         onEdit={() => {
           setDrawerOpen(false);
-          if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/edit`);
+          if (selectedBooking) navigate(`/app/bookings/${selectedBooking.id}/edit`);
         }}
         onViewInvoice={() => {
-          if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/bills`);
+          if (selectedBooking) navigate(`/app/bookings/${selectedBooking.id}/bills`);
         }}
         onViewHistory={() => {
-          if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/history`);
+          if (selectedBooking) navigate(`/app/bookings/${selectedBooking.id}/history`);
         }}
       />
     </div>

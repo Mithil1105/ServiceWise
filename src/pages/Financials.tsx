@@ -382,7 +382,7 @@ export default function Financials() {
                           className="cursor-pointer hover:bg-muted/50"
                           onClick={() => {
                             if (bill.booking_id) {
-                              navigate(`/bookings/${bill.booking_id}/bills`);
+                              navigate(`/app/bookings/${bill.booking_id}/bills`);
                             }
                           }}
                         >
@@ -418,7 +418,7 @@ export default function Financials() {
                               variant="outline"
                               onClick={() => {
                                 if (bill.booking_id) {
-                                  navigate(`/bookings/${bill.booking_id}/bills`);
+                                  navigate(`/app/bookings/${bill.booking_id}/bills`);
                                 }
                               }}
                             >

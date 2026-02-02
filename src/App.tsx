@@ -32,6 +32,15 @@ import BillingManagement from "./pages/BillingManagement";
 import Drivers from "./pages/Drivers";
 import Supervisors from "./pages/Supervisors";
 import NotFound from "./pages/NotFound";
+import MarketingLayout from "./pages/marketing/MarketingLayout";
+import Index from "./pages/Index";
+import ProductPage from "./pages/marketing/ProductPage";
+import FeaturesPage from "./pages/marketing/FeaturesPage";
+import RolesPage from "./pages/marketing/RolesPage";
+import HowItWorksPage from "./pages/marketing/HowItWorksPage";
+import SecurityPage from "./pages/marketing/SecurityPage";
+import PricingPage from "./pages/marketing/PricingPage";
+import ContactPage from "./pages/marketing/ContactPage";
 
 const queryClient = new QueryClient();
 
@@ -43,33 +52,46 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Marketing (public) */}
+            <Route element={<MarketingLayout />}>
+              <Route path="/" element={<Index />} />
+              <Route path="/product" element={<ProductPage />} />
+              <Route path="/features" element={<FeaturesPage />} />
+              <Route path="/roles" element={<RolesPage />} />
+              <Route path="/how-it-works" element={<HowItWorksPage />} />
+              <Route path="/security" element={<SecurityPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/contact" element={<ContactPage />} />
+            </Route>
+            {/* App login (no layout) */}
             <Route path="/auth" element={<Auth />} />
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/fleet" element={<Fleet />} />
-              <Route path="/fleet/new" element={<FleetNew />} />
-              <Route path="/fleet/:id" element={<FleetDetail />} />
-              <Route path="/drivers" element={<Drivers />} />
-              <Route path="/odometer" element={<Odometer />} />
-              <Route path="/vehicle-report/:id" element={<VehicleReport />} />
-              <Route path="/services" element={<Services />} />
-              <Route path="/services/new" element={<ServiceNew />} />
-              <Route path="/critical" element={<CriticalQueue />} />
-              <Route path="/incidents" element={<Incidents />} />
-              <Route path="/downtime-report" element={<DowntimeReport />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/financials" element={<Financials />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/users" element={<UserManagement />} />
-              <Route path="/supervisors" element={<Supervisors />} />
-              <Route path="/bookings" element={<Bookings />} />
-              <Route path="/bookings/calendar" element={<BookingCalendar />} />
-              <Route path="/bookings/new" element={<BookingNew />} />
-              <Route path="/bookings/:id/edit" element={<BookingEdit />} />
-              <Route path="/bookings/:id/invoice" element={<BookingInvoice />} />
-              <Route path="/bookings/:id/bills" element={<Bills />} />
-              <Route path="/bookings/:id/history" element={<BookingHistory />} />
-              <Route path="/billing" element={<BillingManagement />} />
+            {/* App (dashboard) - under /app */}
+            <Route path="/app" element={<AppLayout />}>
+              <Route index element={<Dashboard />} />
+              <Route path="fleet" element={<Fleet />} />
+              <Route path="fleet/new" element={<FleetNew />} />
+              <Route path="fleet/:id" element={<FleetDetail />} />
+              <Route path="drivers" element={<Drivers />} />
+              <Route path="odometer" element={<Odometer />} />
+              <Route path="vehicle-report/:id" element={<VehicleReport />} />
+              <Route path="services" element={<Services />} />
+              <Route path="services/new" element={<ServiceNew />} />
+              <Route path="critical" element={<CriticalQueue />} />
+              <Route path="incidents" element={<Incidents />} />
+              <Route path="downtime-report" element={<DowntimeReport />} />
+              <Route path="reports" element={<Reports />} />
+              <Route path="financials" element={<Financials />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="users" element={<UserManagement />} />
+              <Route path="supervisors" element={<Supervisors />} />
+              <Route path="bookings" element={<Bookings />} />
+              <Route path="bookings/calendar" element={<BookingCalendar />} />
+              <Route path="bookings/new" element={<BookingNew />} />
+              <Route path="bookings/:id/edit" element={<BookingEdit />} />
+              <Route path="bookings/:id/invoice" element={<BookingInvoice />} />
+              <Route path="bookings/:id/bills" element={<Bills />} />
+              <Route path="bookings/:id/history" element={<BookingHistory />} />
+              <Route path="billing" element={<BillingManagement />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

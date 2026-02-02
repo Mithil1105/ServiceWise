@@ -110,7 +110,7 @@ export default function Settings() {
           Only administrators can access settings.
         </p>
         <Button asChild>
-          <Link to="/">Back to Dashboard</Link>
+          <Link to="/app">Back to Dashboard</Link>
         </Button>
       </div>
     );

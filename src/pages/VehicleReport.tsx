@@ -283,7 +283,7 @@ export default function VehicleReport() {
       <div className="text-center py-12">
         <h2 className="text-xl font-semibold mb-2">Vehicle not found</h2>
         <Button asChild>
-          <Link to="/odometer">Back to Odometer</Link>
+          <Link to="/app/odometer">Back to Odometer</Link>
         </Button>
       </div>
     );
@@ -295,7 +295,7 @@ export default function VehicleReport() {
       <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
-            <Link to="/odometer">
+            <Link to="/app/odometer">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>

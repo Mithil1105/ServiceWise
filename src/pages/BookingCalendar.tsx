@@ -102,10 +102,10 @@ export default function BookingCalendar() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => navigate('/bookings')}>
+          <Button variant="outline" onClick={() => navigate('/app/bookings')}>
             List View
           </Button>
-          <Button onClick={() => navigate('/bookings/new')}>
+          <Button onClick={() => navigate('/app/bookings/new')}>
             <Plus className="h-4 w-4 mr-2" />
             New Booking
           </Button>
@@ -244,7 +244,7 @@ export default function BookingCalendar() {
                     <AvailabilityPopover
                       startAt={startOfDay(day)}
                       endAt={endOfDay(day)}
-                      onCheckAvailability={() => navigate(`/bookings/new?date=${format(day, 'yyyy-MM-dd')}`)}
+                      onCheckAvailability={() => navigate(`/app/bookings/new?date=${format(day, 'yyyy-MM-dd')}`)}
                     />
                   </PopoverContent>
                 </Popover>
@@ -275,10 +275,10 @@ export default function BookingCalendar() {
         onOpenChange={setDrawerOpen}
         onEdit={() => {
           setDrawerOpen(false);
-          if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/edit`);
+          if (selectedBooking) navigate(`/app/bookings/${selectedBooking.id}/edit`);
         }}
         onViewInvoice={() => {
-          if (selectedBooking) navigate(`/bookings/${selectedBooking.id}/bills`);
+          if (selectedBooking) navigate(`/app/bookings/${selectedBooking.id}/bills`);
         }}
       />
     </div>

@@ -62,7 +62,7 @@ export default function SupervisorDashboard() {
             <div className="text-2xl font-bold">{assignments.length}</div>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/services/new')}>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/services/new')}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Wrench className="h-4 w-4" />
@@ -73,7 +73,7 @@ export default function SupervisorDashboard() {
             <div className="text-lg font-medium">Log Service</div>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/odometer')}>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/odometer')}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Gauge className="h-4 w-4" />

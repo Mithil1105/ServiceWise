@@ -477,7 +477,7 @@ export default function DowntimeReport() {
                     </TableCell>
                     <TableCell>
                       <Link
-                        to={`/fleet/${vehicle.carId}`}
+                        to={`/app/fleet/${vehicle.carId}`}
                         className="font-medium hover:text-primary"
                       >
                         {vehicle.vehicleNumber}
@@ -495,7 +495,7 @@ export default function DowntimeReport() {
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="sm" asChild>
-                        <Link to={`/fleet/${vehicle.carId}`}>
+                        <Link to={`/app/fleet/${vehicle.carId}`}>
                           View Details →
                         </Link>
                       </Button>
@@ -589,7 +589,7 @@ export default function DowntimeReport() {
                     <TableRow key={log.id}>
                       <TableCell>
                         <Link
-                          to={`/fleet/${log.car_id}`}
+                          to={`/app/fleet/${log.car_id}`}
                           className="font-medium hover:text-primary"
                         >
                           {car?.vehicle_number || 'Unknown'}

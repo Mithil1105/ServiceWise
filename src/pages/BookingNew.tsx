@@ -559,7 +559,7 @@ export default function BookingNew() {
         });
       }
 
-      navigate('/bookings/calendar');
+      navigate('/app/bookings/calendar');
     } catch (error) {
       // Error handled in mutation
     } finally {
@@ -1377,7 +1377,7 @@ export default function BookingNew() {
             </Select>
 
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => navigate('/bookings/calendar')}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => navigate('/app/bookings/calendar')}>Cancel</Button>
               <Button onClick={handleSubmit} disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Create Booking

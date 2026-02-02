@@ -448,7 +448,7 @@ export default function Incidents() {
                     </TableCell>
                     <TableCell>
                       <Link
-                        to={`/fleet/${incident.car_id}`}
+                        to={`/app/fleet/${incident.car_id}`}
                         className="font-medium hover:text-primary"
                       >
                         {incident.cars?.vehicle_number}

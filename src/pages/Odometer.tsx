@@ -286,7 +286,7 @@ export default function Odometer() {
                         <TableRow key={entry.id}>
                           <TableCell>
                             <Link
-                              to={`/fleet/${entry.car_id}`}
+                              to={`/app/fleet/${entry.car_id}`}
                               className="font-medium text-accent hover:underline"
                             >
                               {car?.vehicle_number || 'Unknown'}
@@ -300,7 +300,7 @@ export default function Odometer() {
                           </TableCell>
                           <TableCell>
                             <Link
-                              to={`/vehicle-report/${entry.car_id}`}
+                              to={`/app/vehicle-report/${entry.car_id}`}
                               className="text-sm text-accent hover:underline"
                             >
                               View Full History →

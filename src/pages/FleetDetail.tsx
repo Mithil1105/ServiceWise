@@ -252,7 +252,7 @@ export default function FleetDetail() {
       <div className="text-center py-12">
         <h2 className="text-xl font-semibold mb-2">Vehicle not found</h2>
         <Button asChild>
-          <Link to="/fleet">Back to Fleet</Link>
+          <Link to="/app/fleet">Back to Fleet</Link>
         </Button>
       </div>
     );
@@ -263,7 +263,7 @@ export default function FleetDetail() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
-            <Link to="/fleet">
+            <Link to="/app/fleet">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>

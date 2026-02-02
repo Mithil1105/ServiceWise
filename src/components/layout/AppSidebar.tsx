@@ -25,24 +25,24 @@ import { Separator } from '@/components/ui/separator';
 import serviceWiseLogo from '@/assets/SWlogo.png';
 
 const navItems = [
-  { title: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { title: 'Bookings', href: '/bookings', icon: CalendarDays, adminOnly: true },
-  { title: 'Billing', href: '/billing', icon: Receipt, adminOnly: true },
-  { title: 'Fleet', href: '/fleet', icon: Car },
-  { title: 'Drivers', href: '/drivers', icon: UserCheck },
-  { title: 'Odometer', href: '/odometer', icon: Gauge },
-  { title: 'Services', href: '/services', icon: Wrench },
-  { title: 'Critical Queue', href: '/critical', icon: AlertTriangle },
-  { title: 'Incidents', href: '/incidents', icon: AlertCircle },
-  { title: 'Downtime Report', href: '/downtime-report', icon: Clock },
-  { title: 'Reports', href: '/reports', icon: FileText },
+  { title: 'Dashboard', href: '/app', icon: LayoutDashboard },
+  { title: 'Bookings', href: '/app/bookings', icon: CalendarDays, adminOnly: true },
+  { title: 'Billing', href: '/app/billing', icon: Receipt, adminOnly: true },
+  { title: 'Fleet', href: '/app/fleet', icon: Car },
+  { title: 'Drivers', href: '/app/drivers', icon: UserCheck },
+  { title: 'Odometer', href: '/app/odometer', icon: Gauge },
+  { title: 'Services', href: '/app/services', icon: Wrench },
+  { title: 'Critical Queue', href: '/app/critical', icon: AlertTriangle },
+  { title: 'Incidents', href: '/app/incidents', icon: AlertCircle },
+  { title: 'Downtime Report', href: '/app/downtime-report', icon: Clock },
+  { title: 'Reports', href: '/app/reports', icon: FileText },
 ];
 
 const adminItems = [
-  { title: 'Financials', href: '/financials', icon: DollarSign },
-  { title: 'Supervisors', href: '/supervisors', icon: ClipboardList },
-  { title: 'Settings', href: '/settings', icon: Settings },
-  { title: 'Users', href: '/users', icon: Users },
+  { title: 'Financials', href: '/app/financials', icon: DollarSign },
+  { title: 'Supervisors', href: '/app/supervisors', icon: ClipboardList },
+  { title: 'Settings', href: '/app/settings', icon: Settings },
+  { title: 'Users', href: '/app/users', icon: Users },
 ];
 
 interface AppSidebarProps {
@@ -84,8 +84,8 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
       {/* Navigation - scrollable when content overflows */}
       <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
         {filteredNavItems.map((item) => {
-          const isActive = location.pathname === item.href || 
-            (item.href !== '/' && location.pathname.startsWith(item.href));
+          const isActive = location.pathname === item.href ||
+            (item.href !== '/app' && location.pathname.startsWith(item.href + '/'));
           
           return (
             <NavLink
@@ -101,7 +101,7 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
             >
               <item.icon className="h-4 w-4 flex-shrink-0" />
               <span className="truncate">{item.title}</span>
-              {item.href === '/critical' && (
+              {item.href === '/app/critical' && (
                 <Badge variant="error" className="ml-auto text-[10px] px-1.5 py-0 flex-shrink-0">
                   !
                 </Badge>
@@ -118,7 +118,7 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
               </p>
             </div>
             {adminItems.map((item) => {
-              const isActive = location.pathname.startsWith(item.href);
+              const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + '/');
               
               return (
                 <NavLink

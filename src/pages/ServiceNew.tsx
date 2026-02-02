@@ -262,7 +262,7 @@ export default function ServiceNew() {
         });
       }
 
-      navigate('/services');
+      navigate('/app/services');
     } catch (error) {
       // Error handled by mutation
     } finally {
@@ -459,7 +459,7 @@ export default function ServiceNew() {
     <div className="space-y-6 animate-fade-in max-w-2xl">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link to="/services">
+          <Link to="/app/services">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -798,7 +798,7 @@ export default function ServiceNew() {
 
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" asChild>
-                <Link to="/services">Cancel</Link>
+                <Link to="/app/services">Cancel</Link>
               </Button>
               <Button
                 type="submit"

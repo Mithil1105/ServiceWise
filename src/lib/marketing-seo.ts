@@ -38,20 +38,10 @@ export const MARKETING_SEO: Record<
     description:
       'Secure fleet and booking management. Data protection, access control, and safe deployment for travel operators.',
   },
-  '/tech': {
-    title: 'Tech & Deployment | ServiceWise',
-    description:
-      'Modern stack, reliable hosting, and deployment options for fleet management. Built for travel and fleet teams.',
-  },
   '/pricing': {
     title: 'Pricing | ServiceWise',
     description:
       'Pricing depends on fleet size and modules. Request a tailored quote for your travel or fleet business.',
-  },
-  '/faq': {
-    title: 'FAQ | ServiceWise',
-    description:
-      'Frequently asked questions about ServiceWise: roles, billing, minimum km, supervisors, and more.',
   },
   '/contact': {
     title: 'Contact Us | ServiceWise',

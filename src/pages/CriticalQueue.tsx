@@ -119,7 +119,7 @@ export default function CriticalQueue() {
               </TableCell>
               <TableCell>
                 <Link
-                  to={`/fleet/${item.car_id}`}
+                  to={`/app/fleet/${item.car_id}`}
                   className="font-medium text-accent hover:underline"
                 >
                   {item.vehicle_number}

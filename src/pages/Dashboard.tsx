@@ -253,7 +253,7 @@ export default function Dashboard() {
             <span>Critical Queue</span>
           </CardTitle>
           <Button variant="ghost" size="sm" asChild className="w-full sm:w-auto">
-            <Link to="/critical">
+            <Link to="/app/critical">
               View all <ChevronRight className="h-4 w-4 ml-1" />
             </Link>
           </Button>
@@ -315,7 +315,7 @@ export default function Dashboard() {
                   {overUsedCars.map((car) => (
                     <Link
                       key={car.car_id}
-                      to={`/fleet/${car.car_id}`}
+                      to={`/app/fleet/${car.car_id}`}
                       className="flex items-center justify-between gap-2 p-3 rounded-lg bg-warning/5 hover:bg-warning/10 transition-colors"
                     >
                       <span className="font-medium text-sm truncate">{car.vehicle_number}</span>
@@ -342,7 +342,7 @@ export default function Dashboard() {
                   {underUsedCars.map((car) => (
                     <Link
                       key={car.car_id}
-                      to={`/fleet/${car.car_id}`}
+                      to={`/app/fleet/${car.car_id}`}
                       className="flex items-center justify-between gap-2 p-3 rounded-lg bg-accent/5 hover:bg-accent/10 transition-colors"
                     >
                       <span className="font-medium text-sm truncate">{car.vehicle_number}</span>
@@ -375,7 +375,7 @@ export default function Dashboard() {
                 {activeCars.slice(0, 5).map((car) => (
                   <Link
                     key={car.id}
-                    to={`/fleet/${car.id}`}
+                    to={`/app/fleet/${car.id}`}
                     className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
                     <div className="min-w-0 flex-1">
@@ -411,7 +411,7 @@ export default function Dashboard() {
                 <Car className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p className="text-sm md:text-base">No vehicles in fleet</p>
                 <Button asChild className="mt-4" variant="outline" size="sm">
-                  <Link to="/fleet/new">Add First Vehicle</Link>
+                  <Link to="/app/fleet/new">Add First Vehicle</Link>
                 </Button>
               </div>
             )}
@@ -427,25 +427,25 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="space-y-2 md:space-y-3">
             <Button asChild className="w-full justify-start" variant="outline" size="sm">
-              <Link to="/fleet/new">
+              <Link to="/app/fleet/new">
                 <Car className="h-4 w-4 mr-2 flex-shrink-0" />
                 Add New Vehicle
               </Link>
             </Button>
             <Button asChild className="w-full justify-start" variant="outline" size="sm">
-              <Link to="/odometer">
+              <Link to="/app/odometer">
                 <Gauge className="h-4 w-4 mr-2 flex-shrink-0" />
                 Update Odometer
               </Link>
             </Button>
             <Button asChild className="w-full justify-start" variant="outline" size="sm">
-              <Link to="/services/new">
+              <Link to="/app/services/new">
                 <Wrench className="h-4 w-4 mr-2 flex-shrink-0" />
                 Add Service Record
               </Link>
             </Button>
             <Button asChild className="w-full justify-start" variant="outline" size="sm">
-              <Link to="/incidents">
+              <Link to="/app/incidents">
                 <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
                 Log Incident
               </Link>
@@ -501,7 +501,7 @@ export default function Dashboard() {
               Dismiss for today
             </Button>
             <Button asChild className="w-full sm:w-auto" size="sm">
-              <Link to="/critical" onClick={() => setShowCriticalPopup(false)}>
+              <Link to="/app/critical" onClick={() => setShowCriticalPopup(false)}>
                 Open Critical Queue
               </Link>
             </Button>

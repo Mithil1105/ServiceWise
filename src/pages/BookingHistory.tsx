@@ -105,10 +105,10 @@ export default function BookingHistory() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => navigate(`/bookings/${id}/edit`)}>
+          <Button variant="outline" onClick={() => navigate(`/app/bookings/${id}/edit`)}>
             Edit Booking
           </Button>
-          <Button onClick={() => navigate('/bookings/new')}>
+          <Button onClick={() => navigate('/app/bookings/new')}>
             <Plus className="h-4 w-4 mr-1" />
             New Booking
           </Button>

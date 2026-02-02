@@ -58,6 +58,7 @@
     --sidebar-ring: 173 58% 45%;
 
     /* Custom Tokens */
+    --gradient-hero: radial-gradient(1200px circle at top, hsl(var(--accent) / 0.12), transparent 50%), linear-gradient(to bottom, hsl(var(--background)), hsl(var(--secondary) / 0.25));
     --gradient-primary: linear-gradient(135deg, hsl(222 47% 20%), hsl(222 47% 28%));
     --gradient-accent: linear-gradient(135deg, hsl(173 58% 39%), hsl(173 58% 50%));
     --shadow-sm: 0 1px 2px 0 hsl(222 47% 11% / 0.05);
@@ -178,11 +179,39 @@
   .section-title {
     @apply text-lg font-semibold text-foreground mb-4;
   }
+
+  .section-container {
+    @apply mx-auto max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .section-padding {
+    @apply py-16 md:py-24;
+  }
+
+  .bento-card {
+    @apply rounded-2xl border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg;
+  }
+
+  .btn-accent {
+    @apply bg-accent text-accent-foreground hover:bg-accent/90;
+  }
+
+  .btn-outline-hero {
+    @apply border border-border bg-background/60 backdrop-blur hover:bg-background;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-accent to-primary bg-clip-text text-transparent;
+  }
 }
 
 @layer utilities {
   .animate-fade-in {
     animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.4s ease-out;
   }
 
   .animate-slide-up {
@@ -200,6 +229,17 @@
   @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   @keyframes slideUp {

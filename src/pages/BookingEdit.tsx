@@ -372,7 +372,7 @@ export default function BookingEdit() {
         }
       }
 
-      navigate('/bookings/calendar');
+      navigate('/app/bookings/calendar');
     } catch (error) {
       // Error handled in mutations
     } finally {
@@ -416,11 +416,11 @@ export default function BookingEdit() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate(`/bookings/${id}/history`)}>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/app/bookings/${id}/history`)}>
             <History className="h-4 w-4 mr-1" />
             History
           </Button>
-          <Button size="sm" onClick={() => navigate('/bookings/new')}>
+          <Button size="sm" onClick={() => navigate('/app/bookings/new')}>
             <Plus className="h-4 w-4 mr-1" />
             New Booking
           </Button>
