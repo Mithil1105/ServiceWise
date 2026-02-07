@@ -98,104 +98,72 @@ export default function ContactPage() {
 
   return (
     <div className="animate-fade-in">
-      <section className="border-b bg-muted/30 py-12 sm:py-16">
+      {/* Top: title + form & contact info */}
+      <section className="border-b bg-muted/30 py-10 sm:py-14">
         <div className="container max-w-6xl px-4 sm:px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-            <div>
-              <SectionHeading
-                title="Request Demo"
-                subtitle="Tell us about your fleet. We’ll show a demo that matches your work."
-                as="h1"
-              />
-            </div>
-            <div className="flex justify-center lg:justify-end">
-              <img src="/SWlogo.png" alt="" className="w-full max-w-[200px] h-auto object-contain" aria-hidden />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Contact Options */}
-      <section className="py-12 sm:py-16 bg-muted/20 border-b">
-        <div className="container max-w-6xl px-4 sm:px-6">
-          <h2 className="text-2xl font-bold mb-8">Contact Options</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="flex gap-4">
-              <div className="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Mail className="h-5 w-5 text-primary" aria-hidden />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Email</h3>
-                <a href={`mailto:${contactOptions.email}`} className="text-muted-foreground hover:text-primary transition-colors break-all">
-                  {contactOptions.email}
-                </a>
-              </div>
-            </div>
-            <div className="flex gap-4">
-              <div className="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Phone className="h-5 w-5 text-primary" aria-hidden />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Phone / WhatsApp</h3>
-                <ul className="space-y-2">
-                  {contactOptions.phones.map((phone, i) => {
-                    const tel = phone.replace(/\s/g, '');
-                    const wa = tel.startsWith('+') ? tel.slice(1).replace(/\D/g, '') : tel.replace(/\D/g, '');
-                    return (
-                      <li key={i} className="text-muted-foreground text-sm">
-                        {phone}
-                        <span className="ml-2">
-                          <a href={`tel:${tel}`} className="text-primary hover:underline">Call</a>
-                          {' · '}
-                          <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">WhatsApp</a>
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </div>
-            <div className="flex gap-4">
-              <div className="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <MapPin className="h-5 w-5 text-primary" aria-hidden />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Location</h3>
-                <a href={contactOptions.locationUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors block text-sm leading-relaxed">
-                  {contactOptions.location}
-                </a>
+          <SectionHeading
+            title="Request Demo"
+            subtitle="Tell us about your fleet. We’ll show a demo that matches your work."
+            as="h1"
+            className="text-center mb-10"
+          />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
+            {/* Contact info – left */}
+            <div className="space-y-6">
+              <h2 className="text-xl font-bold">Contact Options</h2>
+              <div className="space-y-6">
+                <div className="flex gap-4">
+                  <div className="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Mail className="h-5 w-5 text-primary" aria-hidden />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground mb-1">Email</h3>
+                    <a href={`mailto:${contactOptions.email}`} className="text-muted-foreground hover:text-primary transition-colors break-all text-sm">
+                      {contactOptions.email}
+                    </a>
+                  </div>
+                </div>
+                <div className="flex gap-4">
+                  <div className="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Phone className="h-5 w-5 text-primary" aria-hidden />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground mb-2">Phone / WhatsApp</h3>
+                    <ul className="space-y-2">
+                      {contactOptions.phones.map((phone, i) => {
+                        const tel = phone.replace(/\s/g, '');
+                        const wa = tel.startsWith('+') ? tel.slice(1).replace(/\D/g, '') : tel.replace(/\D/g, '');
+                        return (
+                          <li key={i} className="text-muted-foreground text-sm">
+                            {phone}
+                            <span className="ml-2">
+                              <a href={`tel:${tel}`} className="text-primary hover:underline">Call</a>
+                              {' · '}
+                              <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">WhatsApp</a>
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </div>
+                <div className="flex gap-4">
+                  <div className="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <MapPin className="h-5 w-5 text-primary" aria-hidden />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground mb-1">Location</h3>
+                    <a href={contactOptions.locationUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors block text-sm leading-relaxed">
+                      {contactOptions.location}
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-12 sm:py-16">
-        <div className="container max-w-6xl px-4 sm:px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            <div className="space-y-8">
-              <div>
-                <h2 className="text-xl font-semibold mb-4">What the demo covers</h2>
-                <ul className="space-y-3 list-disc list-inside text-muted-foreground">
-                  {demoBullets.map((b, i) => (
-                    <li key={i}>{b}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold mb-4">What happens next</h2>
-                <ul className="space-y-4">
-                  {whatHappensNext.map((item, i) => (
-                    <li key={i} className="flex items-center gap-3 text-sm">
-                      <item.icon className="h-5 w-5 text-primary shrink-0" aria-hidden />
-                      {item.step}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+            {/* Form – right */}
             <Card className="w-full overflow-hidden shadow-md border">
               <CardContent className="p-6">
+                <h2 className="text-xl font-bold mb-4">Send a request</h2>
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
                     <Label htmlFor="companyName">Company name *</Label>
@@ -293,6 +261,34 @@ export default function ContactPage() {
           </div>
         </div>
       </section>
+
+      {/* What the demo covers + What happens next – below */}
+      <section className="py-12 sm:py-16 bg-muted/20 border-b">
+        <div className="container max-w-6xl px-4 sm:px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div>
+              <h2 className="text-xl font-semibold mb-4">What the demo covers</h2>
+              <ul className="space-y-3 list-disc list-inside text-muted-foreground">
+                {demoBullets.map((b, i) => (
+                  <li key={i}>{b}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold mb-4">What happens next</h2>
+              <ul className="space-y-4">
+                {whatHappensNext.map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm">
+                    <item.icon className="h-5 w-5 text-primary shrink-0" aria-hidden />
+                    {item.step}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <PageFAQ items={PAGE_FAQS.contact} />
     </div>
   );

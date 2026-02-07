@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { OdometerEntry } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/lib/auth-context';
 
 export function useOdometerEntries(carId?: string) {
   return useQuery({
@@ -45,6 +46,7 @@ export function useLatestOdometer(carId: string) {
 export function useCreateOdometerEntry() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { profile } = useAuth();
 
   return useMutation({
     mutationFn: async (entry: {
@@ -52,10 +54,10 @@ export function useCreateOdometerEntry() {
       odometer_km: number;
       reading_at?: string;
     }) => {
-      // Get current user
+      const orgId = profile?.organization_id;
+      if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Check if new reading is valid (must be >= last reading)
       const { data: lastEntry } = await supabase
         .from('odometer_entries')
         .select('odometer_km')
@@ -71,6 +73,7 @@ export function useCreateOdometerEntry() {
       const { data, error } = await supabase
         .from('odometer_entries')
         .insert({
+          organization_id: orgId,
           car_id: entry.car_id,
           odometer_km: entry.odometer_km,
           reading_at: entry.reading_at || new Date().toISOString(),
@@ -81,7 +84,6 @@ export function useCreateOdometerEntry() {
       
       if (error) throw error;
 
-      // Log supervisor activity if user is supervisor
       const { data: userRole } = await supabase
         .from('user_roles')
         .select('role')
@@ -90,6 +92,7 @@ export function useCreateOdometerEntry() {
 
       if (userRole?.role === 'supervisor') {
         await supabase.from('supervisor_activity_log').insert({
+          organization_id: orgId,
           supervisor_id: user?.id,
           car_id: entry.car_id,
           action_type: 'odometer_updated',

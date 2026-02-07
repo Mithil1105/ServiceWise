@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useOrg } from '@/hooks/use-org';
 
 export type DocumentType = 'rc' | 'puc' | 'insurance' | 'warranty' | 'permits' | 'fitness';
 
@@ -81,6 +82,7 @@ export function useExpiringDriverLicenses(daysAhead: number = 30) {
 
 export function useUpsertCarDocument() {
   const queryClient = useQueryClient();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async ({
@@ -116,9 +118,11 @@ export function useUpsertCarDocument() {
         file_name = file.name;
       }
 
+      if (!orgId) throw new Error('Organization not found');
       const { data, error } = await supabase
         .from('car_documents')
         .upsert({
+          organization_id: orgId,
           car_id: carId,
           document_type: documentType,
           expiry_date: expiryDate || null,

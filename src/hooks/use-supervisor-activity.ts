@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrg } from '@/hooks/use-org';
 
 export interface SupervisorActivity {
   id: string;
@@ -63,6 +64,7 @@ export function useSupervisorActivityLogs(supervisorId?: string) {
 // Log an activity
 export function useLogSupervisorActivity() {
   const queryClient = useQueryClient();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async ({
@@ -74,12 +76,14 @@ export function useLogSupervisorActivity() {
       actionType: string;
       actionDetails?: Record<string, string | number | boolean | null>;
     }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('supervisor_activity_log')
         .insert([{
+          organization_id: orgId,
           supervisor_id: user.id,
           car_id: carId || null,
           action_type: actionType,

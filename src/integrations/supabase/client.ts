@@ -3,15 +3,39 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
+function assertSupabaseEnv() {
+  if (import.meta.env.DEV) {
+    if (!SUPABASE_URL) console.warn('[Supabase] Missing VITE_SUPABASE_URL');
+    if (!SUPABASE_ANON_KEY) console.warn('[Supabase] Missing VITE_SUPABASE_ANON_KEY');
+    if (SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.startsWith('eyJ')) {
+      console.warn(
+        '[Supabase] VITE_SUPABASE_ANON_KEY must be the anon JWT key starting with "eyJ..." (not sb_publishable_...)'
+      );
+    }
+    if (SUPABASE_URL) {
+      console.info(
+        '[Supabase] Using project:',
+        SUPABASE_URL.replace(/^https?:\/\//, '').split('.')[0],
+        '— If you see ERR_NAME_NOT_RESOLVED, the project may be paused or the URL wrong. Check https://supabase.com/dashboard'
+      );
+    }
+  }
+}
+assertSupabaseEnv();
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error(
+    'Missing Supabase env vars: VITE_SUPABASE_URL and/or VITE_SUPABASE_ANON_KEY. Use the anon JWT (eyJ...) from Dashboard → Settings → API.'
+  );
+}
+
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+    detectSessionInUrl: true,
+  },
 });

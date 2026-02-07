@@ -1,0 +1,27 @@
+---
+description: Never push/commit without explicit permission; always list Supabase deployments after changes
+alwaysApply: true
+---
+
+# Git and Supabase Deployment Workflow
+
+## Git: No Push or Commit Unless Asked
+
+- **Do not run** `git commit` or `git push` unless the user explicitly says to commit or push (e.g. "commit this", "push to remote", "commit and push").
+- Making code changes does **not** imply permission to commit or push.
+- If the user asks to "save" or "apply" changes, that means save files only—not git operations.
+
+## Supabase: Deployment List After Every Change
+
+After **every** prompt where you change code that affects Supabase, end your response with a clear **deployment checklist**:
+
+1. **Edge Functions to redeploy**  
+   List only the functions whose source files you modified (e.g. under `supabase/functions/<name>/`).  
+   Example: *"Redeploy: `org-create-trial`, `org-join-by-code`"*  
+   If none were changed: *"No Edge Functions to redeploy."*
+
+2. **Migrations / SQL**  
+   If you added or changed files under `supabase/migrations/`, say which need to be run (e.g. *"Run migration: `20260204140000_phase6_org_admin_user_management.sql`"*).  
+   If none: *"No new migrations to run."*
+
+Keep the list short and copy-paste friendly (e.g. `supabase functions deploy org-create-trial`).

@@ -3,8 +3,11 @@ export type AppRole = 'admin' | 'manager' | 'supervisor';
 export interface Profile {
   id: string;
   name: string;
+  organization_id: string | null;
   created_at: string;
   updated_at: string;
+  /** Phase 6: false when org admin deactivated the user */
+  is_active?: boolean;
 }
 
 export interface UserRole {

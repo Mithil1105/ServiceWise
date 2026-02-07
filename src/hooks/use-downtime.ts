@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { DowntimeLog } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { useOrg } from '@/hooks/use-org';
 
 export function useDowntimeLogs(carId?: string) {
   return useQuery({
@@ -61,6 +62,7 @@ export function useCarsInDowntime() {
 export function useStartDowntime() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (params: {
@@ -69,11 +71,13 @@ export function useStartDowntime() {
       notes?: string;
       estimated_uptime_at?: string;
     }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
       
       const { data, error } = await supabase
         .from('downtime_logs')
         .insert({
+          organization_id: orgId,
           car_id: params.car_id,
           reason: params.reason,
           notes: params.notes,

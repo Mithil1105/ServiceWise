@@ -57,6 +57,7 @@ export function CreateStandaloneBillDialog({
   const { data: personalAccounts = [] } = useBankAccounts('personal');
   const createBankAccount = useCreateBankAccount();
   const { user, profile } = useAuth();
+  const orgId = profile?.organization_id ?? null;
   const [errors, setErrors] = useState<Record<string, string>>({});
   
   // Bank account dialog state
@@ -406,10 +407,12 @@ export function CreateStandaloneBillDialog({
         billNumber = `PT-BILL-${year}-000001`;
       }
       
+      if (!orgId) throw new Error('Organization not found');
       // Create bill
       const { data: bill, error: billError } = await supabase
         .from('bills')
         .insert({
+          organization_id: orgId,
           booking_id: null, // Standalone bill
           bill_number: billNumber,
           status: 'draft', // Create as draft, but PDF won't show draft badge

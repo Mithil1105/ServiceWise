@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useOrg } from '@/hooks/use-org';
 
 export interface CarAssignment {
   id: string;
@@ -144,6 +145,7 @@ export function useSupervisors() {
 // Assign car to supervisor
 export function useAssignCarToSupervisor() {
   const queryClient = useQueryClient();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async ({
@@ -155,9 +157,11 @@ export function useAssignCarToSupervisor() {
       supervisorId: string;
       notes?: string;
     }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data, error } = await supabase
         .from('car_assignments')
         .insert({
+          organization_id: orgId,
           car_id: carId,
           supervisor_id: supervisorId,
           notes: notes || null,

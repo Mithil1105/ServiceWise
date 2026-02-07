@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import type { Bill, VehicleBillDetail, BookingWithDetails, BookingRequestedVehicle, BookingVehicle } from '@/types/booking';
 import { useSystemConfig } from './use-dashboard';
 import { isoAtNoonUtcFromDateInput } from '@/lib/date';
+import { useAuth } from '@/lib/auth-context';
 
 /**
  * Get all bills (for billing management page)
@@ -148,6 +149,7 @@ function calculateVehicleBillAmount(
  */
 export function useGenerateBill() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
   const { data: minKmPerKm } = useSystemConfig('minimum_km_per_km');
   const { data: minKmHybridPerDay } = useSystemConfig('minimum_km_hybrid_per_day');
 
@@ -169,6 +171,8 @@ export function useGenerateBill() {
       startDate?: string;
       endDate?: string;
     }) => {
+      const orgId = profile?.organization_id;
+      if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
       
       // Use provided dates or fall back to booking dates
@@ -401,6 +405,7 @@ export function useGenerateBill() {
       const { data: bill, error: billError } = await supabase
         .from('bills')
         .insert({
+          organization_id: orgId,
           booking_id: booking.id,
           bill_number: billNumber,
           status: 'draft',
@@ -502,6 +507,7 @@ export function useGenerateBill() {
         const { data: companyBill, error: companyBillError } = await supabase
           .from('company_bills')
           .insert({
+            organization_id: orgId,
             booking_id: booking.id,
             customer_bill_id: bill.id,
             bill_number: companyBillNumber,

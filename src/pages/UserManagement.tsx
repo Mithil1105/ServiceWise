@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase as supabaseClient } from '@/integrations/supabase/client';
 import { useCars } from '@/hooks/use-cars';
 import {
   useCarAssignments,
@@ -52,10 +52,16 @@ import {
   X,
   Plus,
   Eye,
-  EyeOff
+  EyeOff,
+  KeyRound,
+  Ban
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { useOrg } from '@/hooks/use-org';
+import { invokeAuthed } from '@/lib/functions-invoke';
 import { formatDateDMY } from '@/lib/date';
+import { usePendingJoinRequests } from '@/hooks/use-join-organization';
 import type { AppRole, Profile } from '@/types';
 
 interface UserWithRole extends Profile {
@@ -64,81 +70,72 @@ interface UserWithRole extends Profile {
 }
 
 interface NewUserForm {
-  name: string;
+  fullName: string;
   email: string;
-  password: string;
+  tempPassword: string;
   role: AppRole | 'none';
+  generatePassword: boolean;
 }
 
-function useUsersWithRoles() {
+function useUsersWithRoles(orgId: string | null) {
   return useQuery({
-    queryKey: ['users-with-roles'],
-    queryFn: async () => {
-      const { data: profiles, error: profilesError } = await supabase
+    queryKey: ['users-with-roles', orgId],
+    queryFn: async (): Promise<UserWithRole[]> => {
+      if (!orgId) return [];
+      const { data: members, error: membersError } = await supabaseClient
+        .from('organization_members')
+        .select('user_id, role')
+        .eq('organization_id', orgId)
+        .eq('status', 'active');
+
+      if (membersError) throw membersError;
+      if (!members?.length) return [];
+
+      const userIds = members.map((m) => m.user_id);
+      const { data: profiles, error: profilesError } = await supabaseClient
         .from('profiles')
         .select('*')
-        .order('created_at', { ascending: false });
+        .in('id', userIds);
 
       if (profilesError) throw profilesError;
-
-      const { data: roles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('*');
-
-      if (rolesError) throw rolesError;
-
-      const usersWithRoles: UserWithRole[] = (profiles || []).map((profile) => {
-        const userRole = roles?.find((r) => r.user_id === profile.id);
-        return {
-          ...profile,
-          role: userRole?.role as AppRole | null,
-        };
-      });
-
-      return usersWithRoles;
+      const roleByUserId = new Map(members.map((m) => [m.user_id, m.role as AppRole]));
+      return (profiles || []).map((p) => ({
+        ...p,
+        role: roleByUserId.get(p.id) ?? null,
+      })) as UserWithRole[];
     },
+    enabled: !!orgId,
   });
 }
 
 function useAssignRole() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: AppRole | 'none' }) => {
+      if (!orgId) throw new Error('Organization not found');
       if (role === 'none') {
-        const { error } = await supabase
-          .from('user_roles')
+        const { error } = await supabaseClient
+          .from('organization_members')
           .delete()
+          .eq('organization_id', orgId)
           .eq('user_id', userId);
-
         if (error) throw error;
       } else {
-        const { data: existing } = await supabase
-          .from('user_roles')
-          .select('id')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        if (existing) {
-          const { error } = await supabase
-            .from('user_roles')
-            .update({ role })
-            .eq('user_id', userId);
-
-          if (error) throw error;
-        } else {
-          const { error } = await supabase
-            .from('user_roles')
-            .insert({ user_id: userId, role });
-
-          if (error) throw error;
-        }
+        const { error } = await supabaseClient
+          .from('organization_members')
+          .update({ role })
+          .eq('organization_id', orgId)
+          .eq('user_id', userId);
+        if (error) throw error;
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
       queryClient.invalidateQueries({ queryKey: ['supervisors'] });
+      queryClient.invalidateQueries({ queryKey: ['organization_members'] });
       toast({
         title: 'Role updated',
         description: 'User role has been updated successfully.',
@@ -159,141 +156,134 @@ function useCreateUser() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (userData: Omit<NewUserForm, 'role'> & { role?: AppRole }) => {
-      // Get current session
-      let { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    mutationFn: async (userData: {
+      email: string;
+      fullName?: string;
+      tempPassword?: string;
+      role: AppRole;
+    }) => {
+      const body: Record<string, unknown> = {
+        email: userData.email.trim().toLowerCase(),
+        role: userData.role,
+      };
+      if (userData.fullName?.trim()) body.fullName = userData.fullName.trim();
+      if (userData.tempPassword?.trim() && userData.tempPassword.length >= 6) body.tempPassword = userData.tempPassword;
 
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        throw new Error(`Session error: ${sessionError.message}`);
-      }
-
-      // If session is expired or about to expire, refresh it
-      if (sessionData.session) {
-        const expiresAt = sessionData.session.expires_at;
-        const now = Math.floor(Date.now() / 1000);
-
-        // Refresh if token expires in less than 60 seconds
-        if (expiresAt && expiresAt - now < 60) {
-          console.log('Token expiring soon, refreshing...');
-          const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
-          if (refreshError) {
-            console.error('Refresh error:', refreshError);
-            throw new Error('Session expired. Please log out and log back in.');
-          }
-          sessionData = refreshedSession;
-        }
-      }
-
-      const token = sessionData.session?.access_token;
-
-      if (!token) {
-        console.error('No access token found');
-        throw new Error('Not authenticated. Please log out and log back in.');
-      }
-
-      console.log('Token available:', token ? 'Yes' : 'No');
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!supabaseUrl) {
-        throw new Error('Supabase URL is not configured');
-      }
-
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/create-user-v3`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-          },
-          body: JSON.stringify(userData),
-        }
+      const data = await invokeAuthed<{ success?: boolean; userId?: string; email?: string; tempPassword?: string }>(
+        'org-admin-create-user',
+        body
       );
-
-      // Handle non-JSON responses
-      let result;
-      try {
-        result = await response.json();
-      } catch (e) {
-        // If response isn't JSON, it might be an HTML error page
-        const text = await response.text();
-        console.error('Create user error (non-JSON):', { status: response.status, text });
-        throw new Error(`Failed to create user (${response.status}). Is the edge function deployed?`);
-      }
-
-      if (!response.ok) {
-        // Provide more detailed error message
-        const errorMessage = result.error || `Failed to create user (${response.status})`;
-        console.error('Create user error:', {
-          status: response.status,
-          statusText: response.statusText,
-          result,
-          url: `${supabaseUrl}/functions/v1/create-user`
-        });
-
-        // More helpful error messages
-        if (response.status === 401) {
-          throw new Error('Unauthorized. Please check: 1) You are logged in as admin, 2) Edge function is deployed');
-        } else if (response.status === 404) {
-          throw new Error('Edge function not found. Please deploy the create-user function first.');
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      return result;
+      return data ?? {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
       queryClient.invalidateQueries({ queryKey: ['supervisors'] });
+      queryClient.invalidateQueries({ queryKey: ['organization_members'] });
+      toast({ title: 'User created', description: 'New user has been created successfully.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error creating user', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
+function useResetPassword() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (payload: { targetUserId: string; newPassword?: string }) => {
+      const body: Record<string, unknown> = { targetUserId: payload.targetUserId };
+      if (payload.newPassword?.trim() && payload.newPassword.length >= 6) body.newPassword = payload.newPassword;
+
+      const data = await invokeAuthed<{ success: boolean; userId: string; newPassword?: string }>(
+        'org-admin-reset-password',
+        body
+      );
+      return data ?? { success: true, userId: body.targetUserId as string };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
       toast({
-        title: 'User created',
-        description: 'New user has been created successfully.',
+        title: 'Password reset',
+        description: data.newPassword ? 'New password generated. Copy it and share securely.' : 'Password updated.',
       });
     },
     onError: (error: Error) => {
+      toast({ title: 'Error resetting password', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
+function useSetActive() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (payload: { targetUserId: string; isActive: boolean }) => {
+      const data = await invokeAuthed('org-admin-set-active', payload);
+      return data ?? {};
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
+      queryClient.invalidateQueries({ queryKey: ['supervisors'] });
+      queryClient.invalidateQueries({ queryKey: ['organization_members'] });
       toast({
-        title: 'Error creating user',
-        description: error.message,
-        variant: 'destructive',
+        title: variables.isActive ? 'User activated' : 'User deactivated',
+        description: variables.isActive ? 'The user can sign in again.' : 'The user can no longer sign in.',
       });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
     },
   });
 }
 
 export default function UserManagement() {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, isManager, user } = useAuth();
+  const { orgId } = useOrg();
+  const queryClient = useQueryClient();
+  const { data: pendingRequests = [], refetch: refetchPending } = usePendingJoinRequests(orgId);
+  const [pendingAction, setPendingAction] = useState<{ id: string; action: 'approve' | 'block' } | null>(null);
   const [search, setSearch] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedSupervisor, setSelectedSupervisor] = useState('');
   const [selectedCar, setSelectedCar] = useState('');
   const [newUser, setNewUser] = useState<NewUserForm>({
-    name: '',
+    fullName: '',
     email: '',
-    password: '',
+    tempPassword: '',
     role: 'none',
+    generatePassword: true,
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [createdTempPassword, setCreatedTempPassword] = useState<string | null>(null);
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetPasswordResult, setResetPasswordResult] = useState<string | null>(null);
 
-  const { data: users, isLoading } = useUsersWithRoles();
+  const { data: users, isLoading } = useUsersWithRoles(orgId);
   const { data: cars } = useCars();
   const { data: assignments, isLoading: assignmentsLoading } = useCarAssignments();
   const { data: supervisors } = useSupervisors();
   const assignRole = useAssignRole();
   const createUser = useCreateUser();
+  const resetPassword = useResetPassword();
+  const setActive = useSetActive();
   const assignCar = useAssignCarToSupervisor();
   const unassignCar = useUnassignCarFromSupervisor();
 
-  if (!isAdmin) {
+  const isOrgAdmin = isAdmin || isManager;
+  const { toast } = useToast();
+
+  if (!isOrgAdmin) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <Shield className="h-16 w-16 text-muted-foreground mb-4" />
-        <h2 className="text-2xl font-bold mb-2">Admin Access Required</h2>
+        <h2 className="text-2xl font-bold mb-2">Org admin access required</h2>
         <p className="text-muted-foreground mb-4">
-          Only administrators can manage users.
+          Only org administrators and managers can manage users.
         </p>
         <Button asChild>
           <Link to="/app">Back to Dashboard</Link>
@@ -312,25 +302,70 @@ export default function UserManagement() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const userData: Omit<NewUserForm, 'role'> & { role?: AppRole } = {
-      name: newUser.name,
-      email: newUser.email,
-      password: newUser.password,
-    };
-
-    if (newUser.role !== 'none') {
-      userData.role = newUser.role as AppRole;
-    }
-
-    createUser.mutate(userData, {
-      onSuccess: () => {
-        setIsAddDialogOpen(false);
-        setNewUser({ name: '', email: '', password: '', role: 'none' });
-        setShowPassword(false);
+    if (newUser.role === 'none') return;
+    createUser.mutate(
+      {
+        email: newUser.email,
+        fullName: newUser.fullName || undefined,
+        tempPassword: newUser.generatePassword ? undefined : newUser.tempPassword || undefined,
+        role: newUser.role as AppRole,
       },
-    });
+      {
+        onSuccess: (data) => {
+          if (data.tempPassword) {
+            setCreatedTempPassword(data.tempPassword);
+          } else {
+            setIsAddDialogOpen(false);
+            setNewUser({ fullName: '', email: '', tempPassword: '', role: 'none', generatePassword: true });
+            setShowPassword(false);
+            setCreatedTempPassword(null);
+          }
+        },
+      }
+    );
   };
+
+  const closeAddDialog = () => {
+    setIsAddDialogOpen(false);
+    setNewUser({ fullName: '', email: '', tempPassword: '', role: 'none', generatePassword: true });
+    setShowPassword(false);
+    setCreatedTempPassword(null);
+  };
+
+  const handleResetPassword = (targetUserId: string) => {
+    setResetPasswordUserId(targetUserId);
+    setResetPasswordValue('');
+    setResetPasswordResult(null);
+  };
+
+  const confirmResetPassword = () => {
+    if (!resetPasswordUserId) return;
+    const newPassword =
+      resetPasswordValue.trim().length >= 6 ? resetPasswordValue.trim() : undefined;
+    resetPassword.mutate(
+      {
+        targetUserId: resetPasswordUserId,
+        newPassword,
+      },
+      {
+        onSuccess: (data) => {
+          if (data.newPassword) {
+            setResetPasswordResult(data.newPassword);
+          } else {
+            setResetPasswordUserId(null);
+            setResetPasswordValue('');
+          }
+        },
+      }
+    );
+  };
+
+  const closeResetDialog = () => {
+    setResetPasswordUserId(null);
+    setResetPasswordValue('');
+    setResetPasswordResult(null);
+  };
+
 
   const handleAssignCar = () => {
     if (!selectedSupervisor || !selectedCar) return;
@@ -351,8 +386,99 @@ export default function UserManagement() {
   const assignedCarIds = new Set(assignments?.map((a) => a.car_id) || []);
   const availableCars = cars?.filter((c) => c.status === 'active');
 
+  const handlePendingApprove = async (memberId: string) => {
+    setPendingAction({ id: memberId, action: 'approve' });
+    try {
+      const { error } = await supabaseClient
+        .from('organization_members')
+        .update({ status: 'active' })
+        .eq('id', memberId);
+      if (error) throw error;
+      toast({ title: 'Approved', description: 'The user can now sign in and access the organization.' });
+      queryClient.invalidateQueries({ queryKey: ['organization_members'] });
+      refetchPending();
+      queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
+    } catch (e) {
+      toast({ title: 'Error', description: (e as Error).message, variant: 'destructive' });
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handlePendingBlock = async (memberId: string) => {
+    setPendingAction({ id: memberId, action: 'block' });
+    try {
+      const { error } = await supabaseClient
+        .from('organization_members')
+        .update({ status: 'blocked' })
+        .eq('id', memberId);
+      if (error) throw error;
+      toast({ title: 'Request declined', description: 'The join request has been declined.' });
+      queryClient.invalidateQueries({ queryKey: ['organization_members'] });
+      refetchPending();
+    } catch (e) {
+      toast({ title: 'Error', description: (e as Error).message, variant: 'destructive' });
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
+      {pendingRequests.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pending join requests</CardTitle>
+            <CardDescription>Users who requested to join your organization. Approve or decline.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Requested</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingRequests.map((req) => (
+                  <TableRow key={req.id}>
+                    <TableCell>{req.name ?? req.user_id}</TableCell>
+                    <TableCell>{formatDateDMY(req.created_at)}</TableCell>
+                    <TableCell className="text-right space-x-2">
+                      <Button
+                        size="sm"
+                        variant="default"
+                        disabled={pendingAction?.id === req.id}
+                        onClick={() => handlePendingApprove(req.id)}
+                      >
+                        {pendingAction?.id === req.id && pendingAction?.action === 'approve' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Approve'
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pendingAction?.id === req.id}
+                        onClick={() => handlePendingBlock(req.id)}
+                      >
+                        {pendingAction?.id === req.id && pendingAction?.action === 'block' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Decline'
+                        )}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title flex items-center gap-2">
@@ -372,93 +498,179 @@ export default function UserManagement() {
             <DialogHeader>
               <DialogTitle>Add New User</DialogTitle>
               <DialogDescription>
-                Create a new user account with optional role assignment.
+                Create a user in your organization. They can sign in immediately (no email verification). Share the temp password securely.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleCreateUser}>
+            {createdTempPassword ? (
               <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="Enter full name"
-                    value={newUser.name}
-                    onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                    required
-                  />
+                <p className="text-sm text-muted-foreground">Copy this password and share it securely with the user. It won&apos;t be shown again.</p>
+                <div className="flex gap-2">
+                  <Input readOnly value={createdTempPassword} className="font-mono" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(createdTempPassword);
+                      toast({ title: 'Copied to clipboard' });
+                    }}
+                  >
+                    Copy
+                  </Button>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="Enter email address"
-                    value={newUser.email}
-                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
+                <DialogFooter>
+                  <Button onClick={closeAddDialog}>Done</Button>
+                </DialogFooter>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateUser}>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="fullName">Full name (optional)</Label>
                     <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Enter password (min 6 characters)"
-                      value={newUser.password}
-                      onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                      minLength={6}
-                      required
-                      className="pr-10"
+                      id="fullName"
+                      placeholder="Enter full name"
+                      value={newUser.fullName}
+                      onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="user@company.com"
+                      value={newUser.email}
+                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="generatePassword"
+                      checked={newUser.generatePassword}
+                      onChange={(e) => setNewUser({ ...newUser, generatePassword: e.target.checked })}
+                      className="rounded border-input"
+                    />
+                    <Label htmlFor="generatePassword">Generate temp password</Label>
+                  </div>
+                  {!newUser.generatePassword && (
+                    <div className="space-y-2">
+                      <Label htmlFor="tempPassword">Temp password (min 6 characters)</Label>
+                      <div className="relative">
+                        <Input
+                          id="tempPassword"
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="Enter password"
+                          value={newUser.tempPassword}
+                          onChange={(e) => setNewUser({ ...newUser, tempPassword: e.target.value })}
+                          minLength={6}
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Role</Label>
+                    <Select
+                      value={newUser.role}
+                      onValueChange={(val) => setNewUser({ ...newUser, role: val as AppRole | 'none' })}
                     >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="supervisor">Supervisor</SelectItem>
+                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
-                  <Select
-                    value={newUser.role}
-                    onValueChange={(val) => setNewUser({ ...newUser, role: val as AppRole | 'none' })}
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={closeAddDialog}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={createUser.isPending || newUser.role === 'none'}>
+                    {createUser.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Create User
+                  </Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!resetPasswordUserId} onOpenChange={(open) => !open && closeResetDialog()}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reset password</DialogTitle>
+              <DialogDescription>
+                {resetPasswordResult
+                  ? 'Copy the new password and share it securely with the user.'
+                  : `Reset password for ${users?.find((x) => x.id === resetPasswordUserId)?.name ?? 'this user'}.`}
+              </DialogDescription>
+            </DialogHeader>
+            {resetPasswordResult ? (
+              <div className="space-y-4 py-4">
+                <div className="flex gap-2">
+                  <Input readOnly value={resetPasswordResult} className="font-mono" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(resetPasswordResult);
+                      toast({ title: 'Copied to clipboard' });
+                    }}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Role</SelectItem>
-                      <SelectItem value="supervisor">Supervisor</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    Copy
+                  </Button>
                 </div>
+                <DialogFooter>
+                  <Button onClick={closeResetDialog}>Done</Button>
+                </DialogFooter>
               </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setIsAddDialogOpen(false);
-                    setShowPassword(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createUser.isPending}>
-                  {createUser.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Create User
-                </Button>
-              </DialogFooter>
-            </form>
+            ) : (
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="resetPasswordInput">New password</Label>
+                  <Input
+                    id="resetPasswordInput"
+                    type="password"
+                    placeholder="Leave blank to generate a password, or type a new one (min 6 characters)"
+                    value={resetPasswordValue}
+                    onChange={(e) => setResetPasswordValue(e.target.value)}
+                    minLength={6}
+                    autoComplete="new-password"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave this empty to auto-generate a password. Otherwise enter at least 6 characters.
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={closeResetDialog}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={confirmResetPassword}
+                    disabled={
+                      resetPassword.isPending ||
+                      (resetPasswordValue.length > 0 && resetPasswordValue.length < 6)
+                    }
+                  >
+                    {resetPassword.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Reset password
+                  </Button>
+                </DialogFooter>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>
@@ -493,7 +705,7 @@ export default function UserManagement() {
                 Users ({filteredUsers?.length || 0})
               </CardTitle>
               <CardDescription>
-                Assign roles to users. Admins have full access, managers can manage fleet and services, supervisors only see assigned cars.
+                Assign roles to users. Admins have full access, managers can manage fleet and services, supervisors only see assigned cars. Only org admins can remove members (set role to No Role); members cannot remove themselves.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -507,8 +719,10 @@ export default function UserManagement() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Joined</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Current Role</TableHead>
                       <TableHead>Assign Role</TableHead>
+                      {isOrgAdmin && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -530,6 +744,19 @@ export default function UserManagement() {
                           </div>
                         </TableCell>
                         <TableCell>{formatDateDMY(u.created_at)}</TableCell>
+                        <TableCell>
+                          {u.is_active === false ? (
+                            <Badge variant="destructive" className="gap-1">
+                              <Ban className="h-3 w-3" />
+                              Inactive
+                            </Badge>
+                          ) : (
+                            <Badge variant="muted" className="gap-1">
+                              <UserCheck className="h-3 w-3" />
+                              Active
+                            </Badge>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {u.role ? (
                             <Badge
@@ -567,6 +794,35 @@ export default function UserManagement() {
                             </SelectContent>
                           </Select>
                         </TableCell>
+                        {isOrgAdmin && (
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-1"
+                                onClick={() => handleResetPassword(u.id)}
+                                disabled={resetPassword.isPending}
+                              >
+                                <KeyRound className="h-4 w-4" />
+                                Reset password
+                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  checked={u.is_active !== false}
+                                  onCheckedChange={(checked) => {
+                                    if (u.id === user?.id) return;
+                                    setActive.mutate({ targetUserId: u.id, isActive: checked });
+                                  }}
+                                  disabled={u.id === user?.id || setActive.isPending}
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                  {u.id === user?.id ? '(You)' : u.is_active === false ? 'Inactive' : 'Active'}
+                                </span>
+                              </div>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

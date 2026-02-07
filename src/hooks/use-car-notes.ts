@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { CarNote } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { useOrg } from '@/hooks/use-org';
 
 export function useCarNotes(carId: string) {
   return useQuery({
@@ -24,6 +25,7 @@ export function useCarNotes(carId: string) {
 export function useCreateCarNote() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (params: {
@@ -31,11 +33,13 @@ export function useCreateCarNote() {
       note: string;
       pinned?: boolean;
     }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
       
       const { data, error } = await supabase
         .from('car_notes')
         .insert({
+          organization_id: orgId,
           car_id: params.car_id,
           note: params.note,
           pinned: params.pinned || false,

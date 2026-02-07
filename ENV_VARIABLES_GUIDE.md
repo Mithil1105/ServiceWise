@@ -42,6 +42,22 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 2. Settings > API
 3. Copy the **service_role** key (keep this secret!)
 
+### Resend (emails via Resend API)
+
+To send emails through Resend from Edge Functions (e.g. `resend-send-email`):
+
+1. Get an API key from [Resend](https://resend.com) → API Keys.
+2. Set it as an Edge Function secret:
+   ```bash
+   supabase secrets set RESEND_API_KEY=re_your_key_here
+   ```
+3. **Auth verification emails (signup confirm):** To have Supabase Auth send verification emails via Resend, use Resend SMTP in the Dashboard:
+   - **Supabase Dashboard** → **Auth** → **SMTP Settings** → Enable custom SMTP
+   - **Host:** `smtp.resend.com`
+   - **Port:** `465` (or `587`)
+   - **User:** `resend`
+   - **Password:** your Resend API key (same as above)
+
 ## Summary
 
 | Variable | Where Used | Where to Get | Add to .env? |
@@ -51,6 +67,7 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 | `VITE_SUPABASE_ANON_KEY` | Frontend | Settings > API > anon/public key | ✅ Yes |
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge Functions | Settings > API > service_role key | ❌ No (auto-provided) |
 | `SUPABASE_URL` | Edge Functions | Settings > API > Project URL | ❌ No (auto-provided) |
+| `RESEND_API_KEY` | Edge Functions (resend-send-email, optional) | [Resend](https://resend.com) → API Keys | Supabase secrets only |
 
 ## Security Warning
 

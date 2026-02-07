@@ -101,6 +101,50 @@ Deno.serve(async (req) => {
 
         console.log("Admin verified:", userData.email);
 
+        // Platform admin check (bypasses user limit)
+        const { data: platformAdminRow } = await supabaseAdmin
+            .from("platform_admins")
+            .select("user_id")
+            .eq("user_id", userData.id)
+            .eq("is_active", true)
+            .maybeSingle();
+        const isPlatformAdmin = !!platformAdminRow;
+
+        // Get creator's organization_id from profiles
+        const { data: creatorProfile, error: profileFetchError } = await supabaseAdmin
+            .from("profiles")
+            .select("organization_id")
+            .eq("id", userData.id)
+            .single();
+
+        if (profileFetchError || !creatorProfile?.organization_id) {
+            return new Response(
+                JSON.stringify({ error: "Creator organization not found. Ensure your profile has an organization." }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+        }
+        const organizationId = creatorProfile.organization_id;
+
+        // Enforce user limit via effective entitlements (skip if platform admin)
+        if (!isPlatformAdmin) {
+            const { data: ent, error: entError } = await supabaseAdmin.rpc("get_org_entitlements_internal", {
+                p_org_id: organizationId,
+            });
+            if (!entError && ent) {
+                const maxUsers = ent.max_users as number | null;
+                const usersCount = (ent.users_count as number) ?? 0;
+                if (maxUsers != null && usersCount >= maxUsers) {
+                    return new Response(
+                        JSON.stringify({
+                            error: "User limit reached for your plan",
+                            details: `Limit: ${maxUsers} users. Contact your administrator or upgrade your plan.`,
+                        }),
+                        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                    );
+                }
+            }
+        }
+
         // Parse request
         const { email, password, name, role } = await req.json();
 
@@ -141,21 +185,23 @@ Deno.serve(async (req) => {
             );
         }
 
-        // Create profile
+        // Create profile (same org as creator)
         await supabaseAdmin
             .from("profiles")
             .upsert({
                 id: newUser.user.id,
+                organization_id: organizationId,
                 name: name.trim(),
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
             }, { onConflict: "id" });
 
-        // Assign role
+        // Assign role (same org as creator)
         if (role) {
             const { error: roleError } = await supabaseAdmin
                 .from("user_roles")
                 .insert({
+                    organization_id: organizationId,
                     user_id: newUser.user.id,
                     role: role as "admin" | "manager" | "supervisor",
                     created_at: new Date().toISOString(),

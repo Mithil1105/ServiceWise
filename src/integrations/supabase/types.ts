@@ -14,6 +14,165 @@ export type Database = {
   }
   public: {
     Tables: {
+      organizations: {
+        Row: {
+          id: string
+          name: string
+          slug: string
+          status: string
+          plan: string
+          created_at: string
+          created_by: string | null
+          org_code: string
+          join_code: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          slug: string
+          status?: string
+          plan?: string
+          created_at?: string
+          created_by?: string | null
+          org_code?: string
+          join_code?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          slug?: string
+          status?: string
+          plan?: string
+          created_at?: string
+          created_by?: string | null
+          org_code?: string
+          join_code?: string
+        }
+        Relationships: []
+      }
+      organization_members: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          role: string
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          role?: string
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          role?: string
+          status?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      onboarding_requests: {
+        Row: {
+          id: string
+          user_id: string
+          action: string
+          payload: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          action: string
+          payload?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          action?: string
+          payload?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
+      platform_admins: {
+        Row: { user_id: string; level: string; is_active: boolean; created_at: string }
+        Insert: { user_id: string; level?: string; is_active?: boolean; created_at?: string }
+        Update: { user_id?: string; level?: string; is_active?: boolean; created_at?: string }
+        Relationships: []
+      }
+      plans: {
+        Row: { id: string; name: string; price_monthly_inr: number; max_users: number | null; max_vehicles: number | null; features: Json; is_active: boolean; created_at: string }
+        Insert: { id?: string; name: string; price_monthly_inr?: number; max_users?: number | null; max_vehicles?: number | null; features?: Json; is_active?: boolean; created_at?: string }
+        Update: { id?: string; name?: string; price_monthly_inr?: number; max_users?: number | null; max_vehicles?: number | null; features?: Json; is_active?: boolean; created_at?: string }
+        Relationships: []
+      }
+      org_subscriptions: {
+        Row: { organization_id: string; plan_id: string | null; status: string; trial_ends_at: string | null; current_period_end: string | null; billing_email: string | null; updated_at: string }
+        Insert: { organization_id: string; plan_id?: string | null; status?: string; trial_ends_at?: string | null; current_period_end?: string | null; billing_email?: string | null; updated_at?: string }
+        Update: { organization_id?: string; plan_id?: string | null; status?: string; trial_ends_at?: string | null; current_period_end?: string | null; billing_email?: string | null; updated_at?: string }
+        Relationships: []
+      }
+      org_plan_overrides: {
+        Row: {
+          organization_id: string
+          override_price_monthly: number | null
+          override_max_users: number | null
+          override_max_vehicles: number | null
+          override_features: Json | null
+          override_trial_ends_at: string | null
+          notes: string | null
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          organization_id: string
+          override_price_monthly?: number | null
+          override_max_users?: number | null
+          override_max_vehicles?: number | null
+          override_features?: Json | null
+          override_trial_ends_at?: string | null
+          notes?: string | null
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          organization_id?: string
+          override_price_monthly?: number | null
+          override_max_users?: number | null
+          override_max_vehicles?: number | null
+          override_features?: Json | null
+          override_trial_ends_at?: string | null
+          notes?: string | null
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_announcements: {
+        Row: { id: string; title: string; message: string; type: string; target_type: string; target_id: string | null; starts_at: string; ends_at: string | null; is_active: boolean; created_by: string | null; created_at: string }
+        Insert: { id?: string; title: string; message: string; type?: string; target_type?: string; target_id?: string | null; starts_at?: string; ends_at?: string | null; is_active?: boolean; created_by?: string | null; created_at?: string }
+        Update: { id?: string; title?: string; message?: string; type?: string; target_type?: string; target_id?: string | null; starts_at?: string; ends_at?: string | null; is_active?: boolean; created_by?: string | null; created_at?: string }
+        Relationships: []
+      }
+      organization_settings: {
+        Row: { organization_id: string; buffer_minutes: number; minimum_km_per_km: number; minimum_km_hybrid_per_day: number; support_notes: string | null; updated_at: string }
+        Insert: { organization_id: string; buffer_minutes?: number; minimum_km_per_km?: number; minimum_km_hybrid_per_day?: number; support_notes?: string | null; updated_at?: string }
+        Update: { organization_id?: string; buffer_minutes?: number; minimum_km_per_km?: number; minimum_km_hybrid_per_day?: number; support_notes?: string | null; updated_at?: string }
+        Relationships: []
+      }
+      platform_audit_log: {
+        Row: { id: string; actor_user_id: string; action: string; target_type: string; target_id: string | null; before: Json | null; after: Json | null; created_at: string }
+        Insert: { id?: string; actor_user_id: string; action: string; target_type: string; target_id?: string | null; before?: Json | null; after?: Json | null; created_at?: string }
+        Update: { id?: string; actor_user_id?: string; action?: string; target_type?: string; target_id?: string | null; before?: Json | null; after?: Json | null; created_at?: string }
+        Relationships: []
+      }
       booking_audit_log: {
         Row: {
           action: Database["public"]["Enums"]["booking_audit_action"]
@@ -23,6 +182,7 @@ export type Database = {
           booking_id: string
           created_at: string
           id: string
+          organization_id: string
         }
         Insert: {
           action: Database["public"]["Enums"]["booking_audit_action"]
@@ -32,6 +192,7 @@ export type Database = {
           booking_id: string
           created_at?: string
           id?: string
+          organization_id: string
         }
         Update: {
           action?: Database["public"]["Enums"]["booking_audit_action"]
@@ -41,6 +202,7 @@ export type Database = {
           booking_id?: string
           created_at?: string
           id?: string
+          organization_id?: string
         }
         Relationships: [
           {
@@ -65,6 +227,7 @@ export type Database = {
           estimated_km: number | null
           final_km: number | null
           id: string
+          organization_id: string
           payment_status: Database["public"]["Enums"]["payment_status"]
           rate_per_day: number | null
           rate_per_km: number | null
@@ -85,6 +248,7 @@ export type Database = {
           estimated_km?: number | null
           final_km?: number | null
           id?: string
+          organization_id: string
           payment_status?: Database["public"]["Enums"]["payment_status"]
           rate_per_day?: number | null
           rate_per_km?: number | null
@@ -105,6 +269,7 @@ export type Database = {
           estimated_km?: number | null
           final_km?: number | null
           id?: string
+          organization_id?: string
           payment_status?: Database["public"]["Enums"]["payment_status"]
           rate_per_day?: number | null
           rate_per_km?: number | null
@@ -141,6 +306,7 @@ export type Database = {
           end_at: string
           id: string
           notes: string | null
+          organization_id: string
           pickup: string | null
           start_at: string
           status: Database["public"]["Enums"]["booking_status"]
@@ -158,6 +324,7 @@ export type Database = {
           end_at: string
           id?: string
           notes?: string | null
+          organization_id: string
           pickup?: string | null
           start_at: string
           status?: Database["public"]["Enums"]["booking_status"]
@@ -175,6 +342,7 @@ export type Database = {
           end_at?: string
           id?: string
           notes?: string | null
+          organization_id?: string
           pickup?: string | null
           start_at?: string
           status?: Database["public"]["Enums"]["booking_status"]
@@ -191,6 +359,7 @@ export type Database = {
           car_id: string
           id: string
           notes: string | null
+          organization_id: string
           supervisor_id: string
         }
         Insert: {
@@ -199,6 +368,7 @@ export type Database = {
           car_id: string
           id?: string
           notes?: string | null
+          organization_id: string
           supervisor_id: string
         }
         Update: {
@@ -207,6 +377,7 @@ export type Database = {
           car_id?: string
           id?: string
           notes?: string | null
+          organization_id?: string
           supervisor_id?: string
         }
         Relationships: [
@@ -230,6 +401,7 @@ export type Database = {
           file_path: string | null
           id: string
           notes: string | null
+          organization_id: string
           updated_at: string
         }
         Insert: {
@@ -242,6 +414,7 @@ export type Database = {
           file_path?: string | null
           id?: string
           notes?: string | null
+          organization_id: string
           updated_at?: string
         }
         Update: {
@@ -254,6 +427,7 @@ export type Database = {
           file_path?: string | null
           id?: string
           notes?: string | null
+          organization_id?: string
           updated_at?: string
         }
         Relationships: [
@@ -273,6 +447,7 @@ export type Database = {
           created_by: string | null
           id: string
           note: string
+          organization_id: string
           pinned: boolean
         }
         Insert: {
@@ -281,6 +456,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           note: string
+          organization_id: string
           pinned?: boolean
         }
         Update: {
@@ -289,6 +465,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           note?: string
+          organization_id?: string
           pinned?: boolean
         }
         Relationships: [
@@ -309,6 +486,7 @@ export type Database = {
           id: string
           last_serviced_at: string | null
           last_serviced_km: number | null
+          organization_id: string
           rule_id: string
         }
         Insert: {
@@ -318,6 +496,7 @@ export type Database = {
           id?: string
           last_serviced_at?: string | null
           last_serviced_km?: number | null
+          organization_id: string
           rule_id: string
         }
         Update: {
@@ -327,6 +506,7 @@ export type Database = {
           id?: string
           last_serviced_at?: string | null
           last_serviced_km?: number | null
+          organization_id?: string
           rule_id?: string
         }
         Relationships: [
@@ -354,6 +534,7 @@ export type Database = {
           id: string
           model: string
           notes: string | null
+          organization_id: string
           seats: number | null
           status: string
           updated_at: string
@@ -368,6 +549,7 @@ export type Database = {
           id?: string
           model: string
           notes?: string | null
+          organization_id: string
           seats?: number | null
           status?: string
           updated_at?: string
@@ -382,6 +564,7 @@ export type Database = {
           id?: string
           model?: string
           notes?: string | null
+          organization_id?: string
           seats?: number | null
           status?: string
           updated_at?: string
@@ -397,6 +580,7 @@ export type Database = {
           created_by: string | null
           id: string
           name: string
+          organization_id: string
           phone: string
           updated_at: string
         }
@@ -405,6 +589,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           name: string
+          organization_id: string
           phone: string
           updated_at?: string
         }
@@ -413,6 +598,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           name?: string
+          organization_id?: string
           phone?: string
           updated_at?: string
         }
@@ -427,6 +613,7 @@ export type Database = {
           estimated_uptime_at: string | null
           id: string
           notes: string | null
+          organization_id: string
           reason: string
           source: string
           started_at: string
@@ -439,6 +626,7 @@ export type Database = {
           estimated_uptime_at?: string | null
           id?: string
           notes?: string | null
+          organization_id: string
           reason: string
           source?: string
           started_at?: string
@@ -451,6 +639,7 @@ export type Database = {
           estimated_uptime_at?: string | null
           id?: string
           notes?: string | null
+          organization_id?: string
           reason?: string
           source?: string
           started_at?: string
@@ -476,6 +665,7 @@ export type Database = {
           location: string | null
           name: string
           notes: string | null
+          organization_id: string
           phone: string
           region: string | null
           status: string
@@ -491,6 +681,7 @@ export type Database = {
           location?: string | null
           name: string
           notes?: string | null
+          organization_id: string
           phone: string
           region?: string | null
           status?: string
@@ -506,6 +697,7 @@ export type Database = {
           location?: string | null
           name?: string
           notes?: string | null
+          organization_id?: string
           phone?: string
           region?: string | null
           status?: string
@@ -525,6 +717,7 @@ export type Database = {
           id: string
           incident_at: string
           location: string | null
+          organization_id: string
           resolved: boolean
           resolved_at: string | null
           resolved_notes: string | null
@@ -542,6 +735,7 @@ export type Database = {
           id?: string
           incident_at?: string
           location?: string | null
+          organization_id: string
           resolved?: boolean
           resolved_at?: string | null
           resolved_notes?: string | null
@@ -559,6 +753,7 @@ export type Database = {
           id?: string
           incident_at?: string
           location?: string | null
+          organization_id?: string
           resolved?: boolean
           resolved_at?: string | null
           resolved_notes?: string | null
@@ -626,6 +821,7 @@ export type Database = {
           entered_by: string | null
           id: string
           odometer_km: number
+          organization_id: string
           reading_at: string
         }
         Insert: {
@@ -634,6 +830,7 @@ export type Database = {
           entered_by?: string | null
           id?: string
           odometer_km: number
+          organization_id: string
           reading_at?: string
         }
         Update: {
@@ -642,6 +839,7 @@ export type Database = {
           entered_by?: string | null
           id?: string
           odometer_km?: number
+          organization_id?: string
           reading_at?: string
         }
         Relationships: [
@@ -659,18 +857,21 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          organization_id: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           id: string
           name: string
+          organization_id?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
+          organization_id?: string
           updated_at?: string
         }
         Relationships: []
@@ -723,6 +924,7 @@ export type Database = {
           id: string
           notes: string | null
           odometer_km: number
+          organization_id: string
           rule_id: string | null
           serial_number: string | null
           service_name: string
@@ -742,6 +944,7 @@ export type Database = {
           id?: string
           notes?: string | null
           odometer_km: number
+          organization_id: string
           rule_id?: string | null
           serial_number?: string | null
           service_name: string
@@ -761,6 +964,7 @@ export type Database = {
           id?: string
           notes?: string | null
           odometer_km?: number
+          organization_id?: string
           rule_id?: string | null
           serial_number?: string | null
           service_name?: string
@@ -799,6 +1003,7 @@ export type Database = {
           interval_km: number | null
           is_critical: boolean
           name: string
+          organization_id: string
           updated_at: string
         }
         Insert: {
@@ -811,6 +1016,7 @@ export type Database = {
           interval_km?: number | null
           is_critical?: boolean
           name: string
+          organization_id: string
           updated_at?: string
         }
         Update: {
@@ -823,6 +1029,7 @@ export type Database = {
           interval_km?: number | null
           is_critical?: boolean
           name?: string
+          organization_id?: string
           updated_at?: string
         }
         Relationships: []
@@ -834,6 +1041,7 @@ export type Database = {
           car_id: string | null
           created_at: string
           id: string
+          organization_id: string
           supervisor_id: string
         }
         Insert: {
@@ -842,6 +1050,7 @@ export type Database = {
           car_id?: string | null
           created_at?: string
           id?: string
+          organization_id: string
           supervisor_id: string
         }
         Update: {
@@ -850,6 +1059,7 @@ export type Database = {
           car_id?: string | null
           created_at?: string
           id?: string
+          organization_id?: string
           supervisor_id?: string
         }
         Relationships: [
@@ -866,18 +1076,21 @@ export type Database = {
         Row: {
           id: string
           key: string
+          organization_id: string
           updated_at: string
           value: Json
         }
         Insert: {
           id?: string
           key: string
+          organization_id: string
           updated_at?: string
           value: Json
         }
         Update: {
           id?: string
           key?: string
+          organization_id?: string
           updated_at?: string
           value?: Json
         }
@@ -889,18 +1102,21 @@ export type Database = {
           created_at: string
           expires_at: string
           id: string
+          organization_id: string
         }
         Insert: {
           booking_id: string
           created_at?: string
           expires_at: string
           id?: string
+          organization_id: string
         }
         Update: {
           booking_id?: string
           created_at?: string
           expires_at?: string
           id?: string
+          organization_id?: string
         }
         Relationships: [
           {
@@ -916,18 +1132,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          organization_id: string
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          organization_id: string
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
+          organization_id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
@@ -937,18 +1156,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          organization_id: string
           snooze_until: string
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
+          organization_id: string
           snooze_until: string
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
+          organization_id?: string
           snooze_until?: string
           user_id?: string
         }
@@ -993,6 +1215,10 @@ export type Database = {
           seats: number
           vehicle_number: string
         }[]
+      }
+      get_org_entitlements: {
+        Args: { p_org_id: string | null }
+        Returns: Json
       }
       get_user_role: {
         Args: { _user_id: string }

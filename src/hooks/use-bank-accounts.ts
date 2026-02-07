@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/auth-context';
 
 export interface BankAccount {
   id: string;
@@ -39,6 +40,7 @@ export function useBankAccounts(accountType?: 'company' | 'personal') {
 
 export function useCreateBankAccount() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
 
   return useMutation({
     mutationFn: async (data: {
@@ -49,12 +51,15 @@ export function useCreateBankAccount() {
       account_type: 'company' | 'personal';
       notes?: string | null;
     }) => {
+      const orgId = profile?.organization_id;
+      if (!orgId) throw new Error('Organization not found');
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
 
       const { data: account, error } = await supabase
         .from('bank_accounts')
         .insert({
+          organization_id: orgId,
           account_name: data.account_name,
           account_number: data.account_number || null,
           bank_name: data.bank_name || null,

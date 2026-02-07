@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth-context';
+import { useOrg } from '@/hooks/use-org';
 
 export function useSnooze() {
   const { user } = useAuth();
@@ -37,10 +38,12 @@ export function useIsSnoozed() {
 export function useDismissForToday() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async () => {
       if (!user) throw new Error('Not authenticated');
+      if (!orgId) throw new Error('Organization not found');
       
       // Calculate midnight tonight
       const midnight = new Date();
@@ -49,6 +52,7 @@ export function useDismissForToday() {
       const { error } = await supabase
         .from('user_snoozes')
         .upsert({
+          organization_id: orgId,
           user_id: user.id,
           snooze_until: midnight.toISOString(),
         }, { onConflict: 'user_id' });

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth-context';
 
 export interface Customer {
   id: string;
@@ -46,28 +47,30 @@ export function useSearchCustomers(search: string) {
 
 export function useUpsertCustomer() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
   
   return useMutation({
     mutationFn: async ({ name, phone }: { name: string; phone: string }) => {
-      // Try to update if exists, otherwise insert
+      const orgId = profile?.organization_id;
+      if (!orgId) throw new Error('Organization not found');
       const { data: existing } = await supabase
         .from('customers')
         .select('id')
+        .eq('organization_id', orgId)
         .eq('phone', phone)
         .maybeSingle();
       
       if (existing) {
-        // Update name if phone exists
         const { error } = await supabase
           .from('customers')
           .update({ name })
-          .eq('phone', phone);
+          .eq('phone', phone)
+          .eq('organization_id', orgId);
         if (error) throw error;
       } else {
-        // Insert new customer
         const { error } = await supabase
           .from('customers')
-          .insert({ name, phone });
+          .insert({ organization_id: orgId, name, phone });
         if (error) throw error;
       }
     },

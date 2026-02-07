@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { ServiceRule, ServiceRecord, CarServiceRule, CriticalServiceItem } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { isoAtNoonUtcFromDateInput } from '@/lib/date';
+import { useOrg } from '@/hooks/use-org';
 
 /**
  * Search existing rule names (for autocomplete)
@@ -104,6 +105,7 @@ export function useServiceRecords(carId?: string) {
 export function useCreateServiceRecord() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (record: {
@@ -120,12 +122,14 @@ export function useCreateServiceRecord() {
       warranty_expiry?: string;
       serial_number?: string;
     }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
       
       // Create service record
       const { data, error } = await supabase
         .from('service_records')
         .insert({
+          organization_id: orgId,
           ...record,
           entered_by: user?.id,
         })
@@ -158,6 +162,7 @@ export function useCreateServiceRecord() {
         const { error: odoInsertError } = await supabase
           .from('odometer_entries')
           .insert({
+            organization_id: orgId,
             car_id: record.car_id,
             odometer_km: record.odometer_km,
             reading_at: serviceReadingAt,
@@ -188,6 +193,7 @@ export function useCreateServiceRecord() {
 
       if (userRole?.role === 'supervisor') {
         await supabase.from('supervisor_activity_log').insert({
+          organization_id: orgId,
           supervisor_id: user?.id,
           car_id: record.car_id,
           action_type: 'service_added',
@@ -303,12 +309,15 @@ export function useCriticalServices() {
 export function useCreateServiceRule() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (rule: Omit<Partial<ServiceRule>, 'id' | 'created_at' | 'updated_at'> & { name: string; brand: string }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data, error } = await supabase
         .from('service_rules')
         .insert({
+          organization_id: orgId,
           name: rule.name,
           brand: rule.brand,
           interval_km: rule.interval_km,
@@ -348,9 +357,11 @@ export function useCreateServiceRule() {
 export function useCopyServiceRules() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async ({ fromBrand, toBrand }: { fromBrand: string; toBrand: string }) => {
+      if (!orgId) throw new Error('Organization not found');
       // Get all rules from source brand
       const { data: sourceRules, error: fetchError } = await supabase
         .from('service_rules')
@@ -376,6 +387,7 @@ export function useCopyServiceRules() {
 
       // Insert rules for target brand
       const rulesToInsert = sourceRules.map(rule => ({
+        organization_id: orgId,
         name: rule.name,
         brand: toBrand,
         interval_km: rule.interval_km,
@@ -418,9 +430,11 @@ export function useCopyServiceRules() {
 export function useApplyRulesToBrands() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async ({ fromBrand, toBrands }: { fromBrand: string; toBrands: string[] }) => {
+      if (!orgId) throw new Error('Organization not found');
       // Get all rules from source brand
       const { data: sourceRules, error: fetchError } = await supabase
         .from('service_rules')
@@ -450,6 +464,7 @@ export function useApplyRulesToBrands() {
 
         // Insert rules for target brand
         const rulesToInsert = sourceRules.map(rule => ({
+          organization_id: orgId,
           name: rule.name,
           brand: toBrand,
           interval_km: rule.interval_km,

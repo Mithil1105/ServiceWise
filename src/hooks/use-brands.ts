@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useOrg } from '@/hooks/use-org';
 
 /**
  * Get all distinct brands from cars table
@@ -61,14 +62,17 @@ export function useSearchBrands(search: string) {
  */
 export function useCreateBrand() {
   const queryClient = useQueryClient();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (brandName: string) => {
+      if (!orgId) throw new Error('Organization not found');
       // Check if brand already exists
       const { data: existing } = await supabase
         .from('cars')
         .select('brand')
         .eq('brand', brandName.trim())
+        .eq('organization_id', orgId)
         .limit(1);
 
       if (existing && existing.length > 0) {
@@ -84,6 +88,7 @@ export function useCreateBrand() {
       const { error } = await supabase
         .from('cars')
         .insert({
+          organization_id: orgId,
           vehicle_number: tempVehicleNumber,
           brand: brandName.trim(),
           model: 'Placeholder',

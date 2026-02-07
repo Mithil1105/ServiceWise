@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Transfer } from '@/types/booking';
+import { useOrg } from '@/hooks/use-org';
 
 export function useTransfers(filters?: {
   status?: 'pending' | 'completed';
@@ -275,6 +276,7 @@ export function useTransfersNeedingReminder() {
 
 export function useCreateTransfer() {
   const queryClient = useQueryClient();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (data: {
@@ -290,9 +292,11 @@ export function useCreateTransfer() {
       cashier_name?: string | null;
       notes?: string | null;
     }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data: transfer, error } = await supabase
         .from('transfers')
         .insert({
+          organization_id: orgId,
           booking_id: data.booking_id,
           bill_id: data.bill_id || null,
           amount: data.amount,
@@ -323,6 +327,7 @@ export function useCreateTransfer() {
 
 export function useCompleteTransfer() {
   const queryClient = useQueryClient();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (data: {
@@ -331,6 +336,7 @@ export function useCompleteTransfer() {
       cashier_name?: string | null;
       notes?: string | null;
     }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
 
@@ -382,6 +388,7 @@ export function useCompleteTransfer() {
           const { error: insertError } = await supabase
             .from('transfers')
             .insert({
+              organization_id: orgId,
               booking_id: companyBill.booking_id,
               bill_id: companyBill.customer_bill_id,
               amount: transferReq.amount,

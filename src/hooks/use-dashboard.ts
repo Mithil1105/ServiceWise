@@ -3,33 +3,41 @@ import { supabase } from '@/integrations/supabase/client';
 import type { AttentionItem, MonthlySnapshot, CarUtilization, HighMaintenanceData } from '@/types';
 import { startOfMonth, endOfMonth, subDays, subMonths, differenceInDays } from 'date-fns';
 import { toast } from 'sonner';
+import { useOrg } from '@/hooks/use-org';
 
 export function useSystemConfig(key: string) {
+  const { orgId } = useOrg();
   return useQuery({
-    queryKey: ['system-config', key],
+    queryKey: ['system-config', key, orgId],
     queryFn: async () => {
+      if (!orgId) return null;
       const { data, error } = await supabase
         .from('system_config')
         .select('value')
         .eq('key', key)
+        .eq('organization_id', orgId)
         .maybeSingle();
       
       if (error) throw error;
       return data?.value || null;
     },
+    enabled: !!orgId,
   });
 }
 
 export function useUpdateSystemConfig() {
   const queryClient = useQueryClient();
+  const { orgId } = useOrg();
   
   return useMutation({
     mutationFn: async ({ key, value }: { key: string; value: any }) => {
+      if (!orgId) throw new Error('Organization not found');
       // Try to update first
       const { data: existing } = await supabase
         .from('system_config')
         .select('id')
         .eq('key', key)
+        .eq('organization_id', orgId)
         .maybeSingle();
 
       // Convert value to JSONB format (store numbers as JSON numbers)
@@ -42,7 +50,8 @@ export function useUpdateSystemConfig() {
             value: jsonValue,
             updated_at: new Date().toISOString()
           })
-          .eq('key', key);
+          .eq('key', key)
+          .eq('organization_id', orgId);
         
         if (error) throw error;
       } else {
@@ -50,6 +59,7 @@ export function useUpdateSystemConfig() {
         const { error } = await supabase
           .from('system_config')
           .insert({ 
+            organization_id: orgId,
             key,
             value: jsonValue
           });

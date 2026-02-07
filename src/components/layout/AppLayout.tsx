@@ -1,18 +1,25 @@
 import { useState } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import AppSidebar from './AppSidebar';
-import { Loader2, Menu } from 'lucide-react';
+import { Loader2, Menu, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 export default function AppLayout() {
-  const { user, loading, role } = useAuth();
+  const auth = useAuth();
+  const user = auth.user;
+  const profile = auth.profile ?? null;
+  const loading = auth.loading;
+  const role = auth.role;
+  const signOut = auth.signOut;
+  const { isMasterAdmin, loading: adminLoading } = useIsMasterAdmin();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isMobile = useIsMobile();
 
-  if (loading) {
+  if (loading || (!!user && !role && adminLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -24,24 +31,64 @@ export default function AppLayout() {
     return <Navigate to="/auth" replace />;
   }
 
-  if (!role) {
+  // Phase 6: self-serve signups require email verification
+  if (user && !(user as { email_confirmed_at?: string | null }).email_confirmed_at) {
+    return <Navigate to="/verify-email" replace />;
+  }
+
+  // Phase 6: deactivated users see account disabled (profile.is_active defaults true)
+  if (profile && profile.is_active === false) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="text-center max-w-md">
+        <div className="text-center max-w-md space-y-4">
+          <h1 className="text-2xl font-bold text-foreground mb-2">Account disabled</h1>
+          <p className="text-muted-foreground mb-4">
+            Your account has been deactivated. Please contact your organization administrator.
+          </p>
+          <Button variant="outline" onClick={signOut} className="gap-2">
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (profile?.organization_id == null) {
+    if (isMasterAdmin) {
+      return <Navigate to="/admin" replace />;
+    }
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  if (!role && !isMasterAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="text-center max-w-md space-y-4">
           <h1 className="text-2xl font-bold text-foreground mb-2">Access Pending</h1>
           <p className="text-muted-foreground mb-4">
             Your account has been created but you don't have a role assigned yet.
             Please contact an administrator to assign your role.
           </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="text-accent hover:underline"
-          >
-            Refresh page
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <Button variant="outline" onClick={signOut} className="gap-2">
+              <LogOut className="h-4 w-4" />
+              Log out
+            </Button>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-accent hover:underline text-sm"
+            >
+              Refresh page
+            </button>
+          </div>
         </div>
       </div>
     );
+  }
+
+  if (!role && isMasterAdmin) {
+    return <Navigate to="/admin" replace />;
   }
 
   return (

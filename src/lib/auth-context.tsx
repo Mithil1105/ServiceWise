@@ -12,6 +12,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   isAdmin: boolean;
   isManager: boolean;
   isSupervisor: boolean;
@@ -63,26 +64,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserData = async (userId: string) => {
     try {
-      // Fetch profile
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
-      
+
       if (profileData) {
         setProfile(profileData as Profile);
-      }
-
-      // Fetch role
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .single();
-      
-      if (roleData) {
-        setRole(roleData.role as AppRole);
+        const orgId = (profileData as Profile).organization_id;
+        if (orgId) {
+          const { data: memberData } = await supabase
+            .from('organization_members')
+            .select('role')
+            .eq('user_id', userId)
+            .eq('organization_id', orgId)
+            .eq('status', 'active')
+            .maybeSingle();
+          setRole(memberData?.role as AppRole ?? null);
+        } else {
+          setRole(null);
+        }
+      } else {
+        setRole(null);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -121,6 +125,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setRole(null);
   };
 
+  const refreshUser = async () => {
+    if (user?.id) {
+      setLoading(true);
+      await fetchUserData(user.id);
+    }
+  };
+
   const isAdmin = role === 'admin';
   const isManager = role === 'manager';
   const isSupervisor = role === 'supervisor';
@@ -136,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signUp,
         signOut,
+        refreshUser,
         isAdmin,
         isManager,
         isSupervisor,

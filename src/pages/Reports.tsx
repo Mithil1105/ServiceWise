@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useCars } from '@/hooks/use-cars';
 import { useServiceRecords } from '@/hooks/use-services';
 import { useOdometerEntries } from '@/hooks/use-odometer';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeAuthed } from '@/lib/functions-invoke';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -127,15 +127,13 @@ export default function Reports() {
           if (!car) continue;
 
           try {
-            const { data, error } = await supabase.functions.invoke('petty-expenses', {
-              body: {
-                vehicle_number: car.vehicle_number,
-                from: dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined,
-                to: dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined,
-              },
+            const data = await invokeAuthed<{ expenses?: unknown[] }>('petty-expenses', {
+              vehicle_number: car.vehicle_number,
+              from: dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined,
+              to: dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined,
             });
 
-            if (!error && data?.expenses) {
+            if (data?.expenses) {
               for (const expense of data.expenses) {
                 rows.push([
                   expense.date,

@@ -33,8 +33,14 @@ import BillingManagement from "./pages/BillingManagement";
 import Drivers from "./pages/Drivers";
 import Supervisors from "./pages/Supervisors";
 import NotFound from "./pages/NotFound";
+import AdminLayout from "./components/admin/AdminLayout";
+import AdminHome from "./pages/admin/AdminHome";
+import AdminOrganizationsList from "./pages/admin/AdminOrganizationsList";
+import AdminOrganizationDetail from "./pages/admin/AdminOrganizationDetail";
 import MarketingLayout from "./pages/marketing/MarketingLayout";
 import Index from "./pages/Index";
+import Onboarding from "./pages/Onboarding";
+import VerifyEmail from "./pages/VerifyEmail";
 import ProductPage from "./pages/marketing/ProductPage";
 import FeaturesPage from "./pages/marketing/FeaturesPage";
 import RolesPage from "./pages/marketing/RolesPage";
@@ -51,7 +57,12 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <ScrollToTop />
           <Routes>
             {/* Marketing (public) */}
@@ -67,7 +78,16 @@ const App = () => (
             </Route>
             {/* App login (no layout) */}
             <Route path="/auth" element={<Auth />} />
-            {/* App (dashboard) - under /app */}
+            {/* Onboarding: join organization by code (no layout, requires auth) */}
+            <Route path="/onboarding" element={<Onboarding />} />
+            {/* Verify email: self-serve signups (no layout, requires auth) */}
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            {/* Master admin – /admin/* */}
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<AdminHome />} />
+              <Route path="organizations" element={<AdminOrganizationsList />} />
+              <Route path="organizations/:id" element={<AdminOrganizationDetail />} />
+            </Route>
             <Route path="/app" element={<AppLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="fleet" element={<Fleet />} />

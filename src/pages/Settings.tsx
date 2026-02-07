@@ -33,12 +33,24 @@ import { Settings as SettingsIcon, Plus, Wrench, Loader2, AlertCircle, Shield, G
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useOrg } from '@/hooks/use-org';
+import { Building2 } from 'lucide-react';
 
 export default function Settings() {
   const { isAdmin } = useAuth();
+  const { orgId } = useOrg();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: org } = useQuery({
+    queryKey: ['organization', orgId],
+    queryFn: async () => {
+      if (!orgId) return null;
+      const { data } = await supabase.from('organizations').select('join_code, name').eq('id', orgId).single();
+      return data;
+    },
+    enabled: !!orgId,
+  });
   
   // Brand management
   const { data: brandsWithRules = [] } = useBrandsWithRules();
@@ -287,6 +299,35 @@ export default function Settings() {
           <p className="text-muted-foreground">Manage service rules and system configuration</p>
         </div>
       </div>
+
+      {/* Organization code (share with users who want to join) */}
+      {org?.join_code && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Organization code
+            </CardTitle>
+            <CardDescription>
+              Share this code with users so they can request to join your organization (e.g. SW-ABCD-1234).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center gap-2">
+            <code className="rounded bg-muted px-3 py-2 font-mono text-lg">{org.join_code}</code>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                navigator.clipboard.writeText(org.join_code);
+                toast({ title: 'Code copied to clipboard' });
+              }}
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Copy
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Service Rules */}
       <Card>

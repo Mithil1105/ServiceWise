@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CompanyBill } from '@/types/booking';
+import { useOrg } from '@/hooks/use-org';
 
 export function useCompanyBills(filters?: {
   bookingId?: string;
@@ -63,6 +64,7 @@ export function useCompanyBill(id: string | undefined) {
 
 export function useCreateCompanyBill() {
   const queryClient = useQueryClient();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (data: {
@@ -91,6 +93,7 @@ export function useCreateCompanyBill() {
       internal_notes: string | null;
       threshold_note: string | null;
     }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
 
@@ -98,6 +101,7 @@ export function useCreateCompanyBill() {
         .from('company_bills')
         .insert({
           ...data,
+          organization_id: orgId,
           created_by: userId,
         })
         .select()

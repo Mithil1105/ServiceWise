@@ -17,7 +17,9 @@ import {
   Clock,
   Receipt,
   DollarSign,
+  ShieldCheck,
 } from 'lucide-react';
+import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,6 +52,7 @@ interface AppSidebarProps {
 
 export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
   const { profile, role, signOut, isAdmin, isManager, isSupervisor } = useAuth();
+  const { isMasterAdmin } = useIsMasterAdmin();
   const location = useLocation();
 
   // Filter nav items based on role - supervisors can't see bookings
@@ -109,6 +112,28 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
           );
         })}
 
+        {isMasterAdmin && (
+          <>
+            <div className="pt-4 pb-2">
+              <p className="px-3 text-xs font-medium text-sidebar-foreground/40 uppercase tracking-wider">
+                Admin
+              </p>
+            </div>
+            <NavLink
+              to="/admin"
+              onClick={handleNavClick}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                location.pathname.startsWith('/admin')
+                  ? 'bg-sidebar-accent text-sidebar-primary'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+              )}
+            >
+              <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">Admin</span>
+            </NavLink>
+          </>
+        )}
         {(isAdmin || isManager) && (
           <>
             <div className="pt-4 pb-2">

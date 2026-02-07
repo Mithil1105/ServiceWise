@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/auth-context';
 import type { 
   Booking, 
   BookingWithDetails, 
@@ -273,6 +274,7 @@ export function useAvailableCars(startAt: Date | null, endAt: Date | null, exclu
 // Create booking mutation
 export function useCreateBooking() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
 
   return useMutation({
     mutationFn: async (data: {
@@ -291,6 +293,8 @@ export function useCreateBooking() {
       advance_account_type?: 'company' | 'personal' | null;
       advance_account_id?: string | null;
     }) => {
+      const orgId = profile?.organization_id;
+      if (!orgId) throw new Error('Organization not found');
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
 
@@ -298,6 +302,7 @@ export function useCreateBooking() {
         .from('bookings')
         .insert({
           ...data,
+          organization_id: orgId,
           created_by: userId,
           updated_by: userId,
         })
@@ -306,19 +311,19 @@ export function useCreateBooking() {
 
       if (error) throw error;
 
-      // Create audit log
       await supabase.from('booking_audit_log').insert({
+        organization_id: orgId,
         booking_id: booking.id,
         action: 'created',
         after: booking,
         actor_id: userId,
       });
 
-      // If tentative, create hold
       if (data.status === 'tentative') {
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + 2);
         await supabase.from('tentative_holds').insert({
+          organization_id: orgId,
           booking_id: booking.id,
           expires_at: expiresAt.toISOString(),
         });
@@ -340,6 +345,7 @@ export function useCreateBooking() {
 // Update booking mutation
 export function useUpdateBooking() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<Booking> & { 
@@ -350,10 +356,11 @@ export function useUpdateBooking() {
       advance_account_type?: 'company' | 'personal' | null;
       advance_account_id?: string | null;
     }) => {
+      const orgId = profile?.organization_id;
+      if (!orgId) throw new Error('Organization not found');
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
 
-      // Get current booking for audit
       const { data: before } = await supabase
         .from('bookings')
         .select()
@@ -372,13 +379,12 @@ export function useUpdateBooking() {
 
       if (error) throw error;
 
-      // Determine action type
       let action: 'updated' | 'status_changed' | 'date_changed' = 'updated';
       if (before?.status !== booking.status) action = 'status_changed';
       else if (before?.start_at !== booking.start_at || before?.end_at !== booking.end_at) action = 'date_changed';
 
-      // Create audit log
       await supabase.from('booking_audit_log').insert({
+        organization_id: orgId,
         booking_id: booking.id,
         action,
         before,
@@ -458,13 +464,15 @@ export function useAssignVehicle() {
 // Remove vehicle from booking
 export function useRemoveVehicle() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
 
   return useMutation({
     mutationFn: async ({ vehicleId, bookingId }: { vehicleId: string; bookingId: string }) => {
+      const orgId = profile?.organization_id;
+      if (!orgId) throw new Error('Organization not found');
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
 
-      // Get vehicle info for audit
       const { data: vehicle } = await supabase
         .from('booking_vehicles')
         .select('*, cars(vehicle_number)')
@@ -478,8 +486,8 @@ export function useRemoveVehicle() {
 
       if (error) throw error;
 
-      // Create audit log
       await supabase.from('booking_audit_log').insert({
+        organization_id: orgId,
         booking_id: bookingId,
         action: 'vehicle_removed',
         before: vehicle,
@@ -670,6 +678,7 @@ export function useBookingRequestedVehicles(bookingId: string | undefined) {
 // Create requested vehicle
 export function useCreateRequestedVehicle() {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
 
   return useMutation({
     mutationFn: async (data: {
@@ -688,12 +697,15 @@ export function useCreateRequestedVehicle() {
       advance_account_type?: 'company' | 'personal' | null;
       advance_account_id?: string | null;
     }) => {
+      const orgId = profile?.organization_id;
+      if (!orgId) throw new Error('Organization not found');
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
 
       const { data: requestedVehicle, error } = await supabase
         .from('booking_requested_vehicles')
         .insert({
+          organization_id: orgId,
           booking_id: data.booking_id,
           brand: data.brand,
           model: data.model,

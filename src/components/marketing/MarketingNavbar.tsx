@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
+import { Menu, LayoutDashboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,8 @@ const navLinks = [
 export function MarketingNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
+  const isLoggedIn = !!user;
 
   return (
     <>
@@ -46,18 +49,36 @@ export function MarketingNavbar() {
           </nav>
 
           <div className="hidden md:flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/auth">Login</Link>
-            </Button>
+            {isLoggedIn ? (
+              <Button variant="ghost" size="sm" asChild className="gap-1.5">
+                <Link to="/app">
+                  <LayoutDashboard className="h-4 w-4" />
+                  Go to Dashboard
+                </Link>
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/auth">Login</Link>
+              </Button>
+            )}
             <Button size="sm" asChild>
               <Link to="/contact">Request Demo</Link>
             </Button>
           </div>
 
           <div className="flex md:hidden items-center gap-2">
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/auth">Login</Link>
-            </Button>
+            {isLoggedIn ? (
+              <Button variant="ghost" size="sm" asChild className="gap-1.5">
+                <Link to="/app">
+                  <LayoutDashboard className="h-4 w-4" />
+                  Dashboard
+                </Link>
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/auth">Login</Link>
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -96,11 +117,20 @@ export function MarketingNavbar() {
                   Request Demo
                 </Link>
               </Button>
-              <Button variant="outline" className="w-full" asChild>
-                <Link to="/auth" onClick={() => setMobileOpen(false)}>
-                  Login
-                </Link>
-              </Button>
+              {isLoggedIn ? (
+                <Button variant="outline" className="w-full gap-1.5" asChild>
+                  <Link to="/app" onClick={() => setMobileOpen(false)}>
+                    <LayoutDashboard className="h-4 w-4" />
+                    Go to Dashboard
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" className="w-full" asChild>
+                  <Link to="/auth" onClick={() => setMobileOpen(false)}>
+                    Login
+                  </Link>
+                </Button>
+              )}
             </div>
           </div>
         </SheetContent>

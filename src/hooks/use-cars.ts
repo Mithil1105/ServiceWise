@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Car, CarWithStatus, OdometerEntry, CarServiceRule, ServiceRule } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/lib/auth-context';
 
 export function useCars() {
   return useQuery({
@@ -120,18 +121,20 @@ export function useCar(id: string) {
 export function useCreateCar() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { profile } = useAuth();
 
   return useMutation({
     mutationFn: async (carData: Partial<Car> & { initial_odometer: number; seats?: number }) => {
+      const orgId = profile?.organization_id;
+      if (!orgId) throw new Error('Organization not found');
       const { initial_odometer, seats, ...carFields } = carData;
       
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Create car
       const { data: car, error: carError } = await supabase
         .from('cars')
         .insert({
+          organization_id: orgId,
           vehicle_number: carFields.vehicle_number!,
           brand: carFields.brand,
           model: carFields.model!,
@@ -150,18 +153,16 @@ export function useCreateCar() {
       
       if (carError) throw carError;
 
-      // Create initial odometer entry
       const { error: odoError } = await supabase
         .from('odometer_entries')
         .insert({
+          organization_id: orgId,
           car_id: car.id,
           odometer_km: initial_odometer,
           entered_by: user?.id,
         });
-      
       if (odoError) throw odoError;
 
-      // Get brand-specific service rules (if brand is provided)
       if (carFields.brand) {
         const { data: brandRules } = await supabase
           .from('service_rules')
@@ -170,8 +171,8 @@ export function useCreateCar() {
           .eq('active', true);
 
         if (brandRules && brandRules.length > 0) {
-          // Attach all brand-specific service rules to the car
           const carServiceRules = brandRules.map(rule => ({
+            organization_id: orgId,
             car_id: car.id,
             rule_id: rule.id,
             last_serviced_km: initial_odometer,
@@ -183,7 +184,6 @@ export function useCreateCar() {
             .insert(carServiceRules);
         }
       } else {
-        // Fallback: Get default service rule (General Service) if no brand rules found
         const { data: defaultRule } = await supabase
           .from('service_rules')
           .select('id')
@@ -192,10 +192,10 @@ export function useCreateCar() {
           .single();
 
         if (defaultRule) {
-          // Attach default service rule
           await supabase
             .from('car_service_rules')
             .insert({
+              organization_id: orgId,
               car_id: car.id,
               rule_id: defaultRule.id,
               last_serviced_km: initial_odometer,

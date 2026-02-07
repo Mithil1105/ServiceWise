@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Incident } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { useOrg } from '@/hooks/use-org';
 
 export function useIncidents(filters?: {
   carId?: string;
@@ -79,6 +80,7 @@ export function useUnresolvedIncidentsCount() {
 export function useCreateIncident() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (incident: {
@@ -92,12 +94,14 @@ export function useCreateIncident() {
       cost?: number;
       driver_name?: string;
     }) => {
+      if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
       
       // Create incident
       const { data, error } = await supabase
         .from('incidents')
         .insert({
+          organization_id: orgId,
           ...incident,
           incident_at: incident.incident_at || new Date().toISOString(),
           severity: incident.severity || 'medium',
@@ -112,6 +116,7 @@ export function useCreateIncident() {
       const { error: downtimeError } = await supabase
         .from('downtime_logs')
         .insert({
+          organization_id: orgId,
           car_id: incident.car_id,
           reason: incident.type === 'accident' ? 'accident' : 'breakdown',
           notes: `Incident: ${incident.type}${incident.description ? ' - ' + incident.description : ''}`,
