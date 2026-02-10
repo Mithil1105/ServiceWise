@@ -2,21 +2,58 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Calendar,
-  Wallet,
+  DollarSign,
   Users,
-  Wrench,
+  AlertTriangle,
   Car,
   BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
 
 const bentoCards = [
-  { title: 'Messy booking chaos', description: 'Calls, WhatsApp, lost details.', icon: Calendar },
-  { title: 'Money leaks', description: 'Advances and deposits slip through.', icon: Wallet },
-  { title: 'Driver confusion', description: 'Who’s on which trip?', icon: Users },
-  { title: 'Missed maintenance', description: 'Service due? No one knows.', icon: Wrench },
-  { title: 'Vehicle blindspots', description: 'Where’s the car? What’s the KM?', icon: Car },
-  { title: 'No clear numbers', description: 'Bills, transfers, reports — scattered.', icon: BarChart3 },
+  {
+    title: 'Messy booking chaos',
+    description: 'Track every inquiry, hold, and confirmation in one place. No more lost bookings.',
+    icon: Calendar,
+    iconColor: 'text-blue-600',
+    iconBg: 'bg-blue-500/10 border-blue-200',
+  },
+  {
+    title: 'Money leaks',
+    description: 'Know exactly who owes you what. Bills, deposits, and transfers — all tracked.',
+    icon: DollarSign,
+    iconColor: 'text-emerald-600',
+    iconBg: 'bg-emerald-500/10 border-emerald-200',
+  },
+  {
+    title: 'Driver confusion',
+    description: 'Assign drivers to jobs clearly. They see their schedule, you see their status.',
+    icon: Users,
+    iconColor: 'text-violet-600',
+    iconBg: 'bg-violet-500/10 border-violet-200',
+  },
+  {
+    title: 'Missed maintenance',
+    description: 'Get reminders before something breaks. Oil changes, inspections, renewals.',
+    icon: AlertTriangle,
+    iconColor: 'text-amber-600',
+    iconBg: 'bg-amber-500/10 border-amber-200',
+  },
+  {
+    title: 'Vehicle blindspots',
+    description: 'See your entire fleet at a glance. Which cars are free, busy, or in the shop.',
+    icon: Car,
+    iconColor: 'text-teal-600',
+    iconBg: 'bg-teal-500/10 border-teal-200',
+  },
+  {
+    title: 'No clear numbers',
+    description: 'Dashboards that show revenue, utilization, and pending tasks instantly.',
+    icon: BarChart3,
+    iconColor: 'text-rose-600',
+    iconBg: 'bg-rose-500/10 border-rose-200',
+  },
 ];
 
 export function BentoGrid() {
@@ -41,14 +78,35 @@ export function BentoGrid() {
                 )}
                 style={{ animationDelay: `${i * 50}ms` }}
               >
-                <Icon className="h-10 w-10 text-primary mb-3" aria-hidden />
+                <div
+                  className={cn(
+                    'inline-flex h-11 w-11 items-center justify-center rounded-xl border mb-3',
+                    item.iconBg,
+                    item.iconColor
+                  )}
+                >
+                  <Icon className="h-5 w-5" aria-hidden />
+                </div>
                 <h3 className="font-semibold text-lg text-foreground">{item.title}</h3>
                 <p className="mt-2 text-sm text-muted-foreground flex-1">{item.description}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-4 w-fit text-primary hover:text-primary/90 hover:bg-primary/5"
+                  onClick={() =>
+                    toast({
+                      title: item.title,
+                      description: 'Learn more on the Features page.',
+                    })
+                  }
+                >
+                  Learn more
+                </Button>
               </div>
             );
           })}
         </div>
-        <div className="mt-10 text-center">
+        <div className="mt-8 sm:mt-10 text-center">
           <Button asChild variant="outline" className="btn-outline-hero">
             <Link to="/how-it-works">See how it works</Link>
           </Button>

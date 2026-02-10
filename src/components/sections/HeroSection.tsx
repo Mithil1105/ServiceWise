@@ -11,7 +11,7 @@ export function HeroSection() {
       <div className="section-container">
         <div className="max-w-3xl mx-auto text-center">
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 text-foreground tracking-tight">
-            Fleet operations. Booking-to-cash. In one system.
+            Fleet operations. Booking-to-cash. <span className="gradient-text">In one system.</span>
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
             Run your travel fleet from one screen — cars, bookings, drivers, payments, and service reminders.

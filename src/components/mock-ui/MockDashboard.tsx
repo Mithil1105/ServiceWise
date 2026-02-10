@@ -13,15 +13,14 @@ const attentionItems = [
   { title: 'Vehicle #12 service due in 2 days', time: '2h ago', dotColor: 'bg-amber-500' },
   { title: 'Booking #458 payment overdue', time: '4h ago', dotColor: 'bg-red-500' },
   { title: 'Driver John completed 5 trips today', time: '5h ago', dotColor: 'bg-blue-500' },
-  { title: 'Insurance renewal for 3 vehicles', time: '1d ago', dotColor: 'bg-amber-500' },
 ];
 
 export function MockDashboard({ className }: { className?: string }) {
   return (
     <AppWindowFrame title="ServiceWise Dashboard" className={className}>
-      <div className="p-4 sm:p-5 space-y-5">
+      <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
         {/* KPI grid: 2×2 desktop, 1 col mobile */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
           {kpis.map((kpi, i) => {
             const Icon = kpi.icon;
             return (
@@ -61,12 +60,12 @@ export function MockDashboard({ className }: { className?: string }) {
 
         {/* Needs Attention */}
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden min-w-0">
-          <div className="px-3 py-2.5 sm:px-4 sm:py-3 border-b border-slate-100">
-            <p className="font-semibold text-sm sm:text-base text-slate-900">Needs Attention</p>
+          <div className="px-3 py-2 sm:px-4 border-b border-slate-100">
+            <p className="font-semibold text-xs sm:text-sm text-slate-900">Needs Attention</p>
           </div>
           <ul className="divide-y divide-slate-100">
             {attentionItems.map((item, i) => (
-              <li key={i} className="flex items-center gap-3 px-3 py-2.5 sm:px-4 sm:py-3 min-w-0">
+              <li key={i} className="flex items-center gap-2 px-3 py-2 sm:px-4 min-w-0">
                 <span className={cn('h-2 w-2 shrink-0 rounded-full', item.dotColor)} aria-hidden />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs sm:text-sm font-medium text-slate-900 truncate">{item.title}</p>

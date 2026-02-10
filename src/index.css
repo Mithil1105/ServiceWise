@@ -52,6 +52,10 @@
     --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
     --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
     --shadow-glow: 0 0 20px -5px hsl(var(--primary) / 0.4);
+
+    /* Hero gradient: soft radial + vertical gradient for hero section */
+    --gradient-hero: radial-gradient(1200px circle at top, hsl(var(--accent) / 0.12), transparent 50%),
+      linear-gradient(to bottom, hsl(var(--background)), hsl(var(--secondary) / 0.25));
   }
 
   .dark {
@@ -81,6 +85,8 @@
     --sidebar-accent: 222 47% 15%;
     --sidebar-border: 222 30% 18%;
     --sidebar-ring: 221 83% 53%;
+    --gradient-hero: radial-gradient(1200px circle at top, hsl(var(--accent) / 0.08), transparent 50%),
+      linear-gradient(to bottom, hsl(var(--background)), hsl(var(--secondary) / 0.2));
   }
 }
 
@@ -90,7 +96,7 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-background text-foreground font-sans antialiased overflow-x-hidden;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -152,11 +158,28 @@
   }
 
   .section-container {
-    @apply mx-auto max-w-6xl px-4 sm:px-6 lg:px-8;
+    @apply mx-auto max-w-6xl w-full min-w-0 px-4 sm:px-6 lg:px-8;
   }
 
   .section-padding {
-    @apply py-16 md:py-24;
+    @apply py-12 sm:py-16 md:py-24;
+  }
+
+  /* Mac-window demos: landscape aspect so window looks wide (screenshot-style) */
+  .demo-window-landscape {
+    @apply w-full max-w-full;
+    aspect-ratio: 16 / 10;
+    min-height: 200px;
+  }
+  @media (min-width: 640px) {
+    .demo-window-landscape {
+      min-height: 260px;
+    }
+  }
+  @media (min-width: 1024px) {
+    .demo-window-landscape {
+      min-height: 320px;
+    }
   }
 
   .bento-card {
