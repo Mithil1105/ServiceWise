@@ -18,20 +18,21 @@ export function useAllBills() {
         .from('bills')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (billsError) throw billsError;
       if (!billsData || billsData.length === 0) return [];
 
-      // Fetch booking details separately
-      const bookingIds = [...new Set(billsData.map(b => b.booking_id))];
-      const { data: bookingsData } = await supabase
-        .from('bookings')
-        .select('id, booking_ref, customer_name, customer_phone, status')
-        .in('id', bookingIds);
-
-      const bookingsMap = new Map(
-        (bookingsData || []).map(b => [b.id, b])
-      );
+      // Fetch booking details separately (exclude null/undefined/non-string to avoid 400)
+      const rawIds = billsData.map(b => b.booking_id);
+      const bookingIds = [...new Set(rawIds.filter((id): id is string => typeof id === 'string' && id.length > 0 && id !== 'null'))];
+      const bookingsMap = new Map<string, { id: string; booking_ref: string; customer_name: string; customer_phone: string; status: string }>();
+      if (bookingIds.length > 0) {
+        const { data: bookingsData } = await supabase
+          .from('bookings')
+          .select('id, booking_ref, customer_name, customer_phone, status')
+          .in('id', bookingIds);
+        (bookingsData || []).forEach(b => bookingsMap.set(b.id, b));
+      }
 
       return billsData.map(bill => ({
         ...bill,
@@ -54,13 +55,13 @@ export function useBillsByBooking(bookingId: string | undefined) {
     queryKey: ['bills', bookingId],
     queryFn: async () => {
       if (!bookingId) return [];
-      
+
       const { data, error } = await supabase
         .from('bills')
         .select('*')
         .eq('booking_id', bookingId)
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       return (data || []) as Bill[];
     },
@@ -76,13 +77,13 @@ export function useBill(billId: string | undefined) {
     queryKey: ['bill', billId],
     queryFn: async () => {
       if (!billId) return null;
-      
+
       const { data, error } = await supabase
         .from('bills')
         .select('*')
         .eq('id', billId)
         .single();
-      
+
       if (error) throw error;
       return data as Bill;
     },
@@ -119,7 +120,7 @@ function calculateVehicleBillAmount(
       const totalMinKm = thresholdKmPerDay * days; // Total minimum KM for the trip = threshold per day × number of days
       const kmToCharge = Math.max(actualKm, totalMinKm);
       finalAmount = (requestedVehicle.rate_per_km || 0) * kmToCharge;
-      
+
       if (actualKm < totalMinKm) {
         thresholdNote = `Minimum KM threshold applied: ${thresholdKmPerDay} km/day × ${days} days = ${totalMinKm} km (Company Policy). Actual KM: ${actualKm} km.`;
       }
@@ -130,11 +131,11 @@ function calculateVehicleBillAmount(
       const minKmHybridPerDayValue = minKmHybridPerDay ? Number(minKmHybridPerDay) : 300;
       const totalMinKmHybrid = minKmHybridPerDayValue * days;
       const kmToChargeHybrid = Math.max(actualKm, totalMinKmHybrid);
-      
+
       const baseAmount = (requestedVehicle.rate_per_day || 0) * days;
       const kmAmount = (requestedVehicle.rate_per_km || 0) * kmToChargeHybrid;
       finalAmount = baseAmount + kmAmount;
-      
+
       if (actualKm < totalMinKmHybrid) {
         thresholdNote = `Minimum KM threshold applied: ${minKmHybridPerDayValue} km/day × ${days} days = ${totalMinKmHybrid} km (Company Policy). Actual KM: ${actualKm} km.`;
       }
@@ -174,18 +175,18 @@ export function useGenerateBill() {
       const orgId = profile?.organization_id;
       if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       // Use provided dates or fall back to booking dates
       const billStartDate = startDate ? new Date(isoAtNoonUtcFromDateInput(startDate)) : new Date(booking.start_at);
       const billEndDate = endDate ? new Date(isoAtNoonUtcFromDateInput(endDate)) : new Date(booking.end_at);
-      
+
       // Calculate days from the dates used for billing
       const days = Math.ceil((billEndDate.getTime() - billStartDate.getTime()) / (1000 * 60 * 60 * 24)) || 1;
-      
+
       // Calculate total KM (only needed for per_km or hybrid bookings)
       let totalKm = 0;
       const rateType = booking.booking_requested_vehicles?.[0]?.rate_type || booking.booking_vehicles?.[0]?.rate_type;
-      
+
       if (rateType === 'per_km' || rateType === 'hybrid') {
         if (kmMethod === 'odometer' && startOdometer !== undefined && endOdometer !== undefined) {
           totalKm = endOdometer - startOdometer;
@@ -371,7 +372,7 @@ export function useGenerateBill() {
       // Get advance from booking level first, fallback to first requested vehicle if booking level is 0
       // This provides backward compatibility for old bookings where advance was stored in requested_vehicles
       let bookingAdvance = booking.advance_amount || 0;
-      
+
       // If booking-level advance is 0, check first requested vehicle (for backward compatibility)
       if (bookingAdvance === 0 && booking.booking_requested_vehicles && booking.booking_requested_vehicles.length > 0) {
         const firstRequestedVehicle = booking.booking_requested_vehicles[0];
@@ -379,7 +380,7 @@ export function useGenerateBill() {
           bookingAdvance = Number(firstRequestedVehicle.advance_amount);
         }
       }
-      
+
       // Balance = total amount - advance (driver allowance is paid directly to driver, not included in balance)
       const balanceAmount = totalAmount - bookingAdvance;
 
@@ -392,7 +393,7 @@ export function useGenerateBill() {
         .order('bill_number', { ascending: false })
         .limit(1)
         .single();
-      
+
       let billNumber = '';
       if (lastBill?.bill_number) {
         const lastNum = parseInt(lastBill.bill_number.split('-').pop() || '0');
@@ -479,7 +480,7 @@ export function useGenerateBill() {
           .order('bill_number', { ascending: false })
           .limit(1)
           .single();
-        
+
         let companyBillNumber = '';
         if (lastCompanyBill?.bill_number) {
           const lastNum = parseInt(lastCompanyBill.bill_number.split('-').pop() || '0');
@@ -490,8 +491,8 @@ export function useGenerateBill() {
 
         // Determine transfer requirements
         const transferRequirements: any[] = [];
-        if (advanceInfo && advanceInfo.amount > 0 && 
-            (advanceInfo.payment_method === 'cash' || advanceInfo.account_type === 'personal')) {
+        if (advanceInfo && advanceInfo.amount > 0 &&
+          (advanceInfo.payment_method === 'cash' || advanceInfo.account_type === 'personal')) {
           // Advance needs transfer - create pending transfer requirement
           transferRequirements.push({
             amount: advanceInfo.amount,
@@ -590,7 +591,7 @@ export function useUpdateBillStatus() {
       status: 'draft' | 'sent' | 'paid';
     }) => {
       const updateData: any = { status };
-      
+
       if (status === 'sent') {
         updateData.sent_at = new Date().toISOString();
       } else if (status === 'paid') {
@@ -672,7 +673,7 @@ export function useBillPDFUrl(billId: string | undefined, filePath: string | nul
     queryKey: ['bill-pdf-url', billId, filePath],
     queryFn: async () => {
       if (!billId || !filePath) return null;
-      
+
       const { data, error } = await supabase.storage
         .from('bills')
         .createSignedUrl(filePath, 3600);

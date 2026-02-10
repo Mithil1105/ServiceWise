@@ -26,7 +26,7 @@ export default function BookingInvoice() {
   const { data: booking, isLoading: loadingBooking, refetch: refetchBooking } = useBooking(id);
   const { data: invoice, isLoading: loadingInvoice, refetch: refetchInvoice } = useInvoice(id);
   const generateInvoice = useGenerateInvoice();
-  
+
   const [finalKms, setFinalKms] = useState<Record<string, string>>({});
   const [savingKms, setSavingKms] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -50,7 +50,7 @@ export default function BookingInvoice() {
     if (!booking) return 0;
     const days = Math.ceil((new Date(booking.end_at).getTime() - new Date(booking.start_at).getTime()) / (1000 * 60 * 60 * 24)) || 1;
     const km = vehicle.final_km || vehicle.estimated_km || 0;
-    
+
     switch (vehicle.rate_type) {
       case 'total': return vehicle.rate_total || 0;
       case 'per_day': return days * (vehicle.rate_per_day || 0);
@@ -62,7 +62,7 @@ export default function BookingInvoice() {
 
   const handleSaveFinalKms = async () => {
     if (!booking?.booking_vehicles) return;
-    
+
     setSavingKms(true);
     try {
       for (const vehicle of booking.booking_vehicles) {
@@ -97,7 +97,7 @@ export default function BookingInvoice() {
 
   const generatePdfBlob = async (): Promise<Blob | null> => {
     if (!invoiceRef.current) return null;
-    
+
     setGeneratingPdf(true);
     try {
       const canvas = await html2canvas(invoiceRef.current, {
@@ -105,12 +105,12 @@ export default function BookingInvoice() {
         useCORS: true,
         backgroundColor: '#ffffff',
       });
-      
+
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
+
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       return pdf.output('blob');
     } catch (error) {
@@ -125,7 +125,7 @@ export default function BookingInvoice() {
   const handleDownloadPdf = async () => {
     const blob = await generatePdfBlob();
     if (!blob) return;
-    
+
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -137,14 +137,14 @@ export default function BookingInvoice() {
 
   const handleShareWhatsApp = async () => {
     if (!booking) return;
-    
+
     const totalAmount = booking.booking_vehicles?.reduce(
       (sum, v) => sum + calculateVehicleTotal(v), 0
     ) || 0;
     const totalAdvance = booking.booking_vehicles?.reduce(
       (sum, v) => sum + (v.advance_amount || 0), 0
     ) || 0;
-    
+
     const message = encodeURIComponent(
       `*PATIDAR TRAVELS - Invoice*\n\n` +
       `📋 Booking: ${booking.booking_ref}\n` +
@@ -158,24 +158,24 @@ export default function BookingInvoice() {
       `📍 *Amount Due: ${formatCurrency(totalAmount - totalAdvance)}*\n\n` +
       `Thank you for choosing Patidar Travels!`
     );
-    
+
     const phone = booking.customer_phone.replace(/\D/g, '');
     const whatsappPhone = phone.startsWith('91') ? phone : `91${phone}`;
-    
+
     window.open(`https://wa.me/${whatsappPhone}?text=${message}`, '_blank');
     setShareOpen(false);
   };
 
   const handleShareEmail = () => {
     if (!booking) return;
-    
+
     const totalAmount = booking.booking_vehicles?.reduce(
       (sum, v) => sum + calculateVehicleTotal(v), 0
     ) || 0;
     const totalAdvance = booking.booking_vehicles?.reduce(
       (sum, v) => sum + (v.advance_amount || 0), 0
     ) || 0;
-    
+
     const subject = encodeURIComponent(`Invoice - ${invoice?.invoice_no || booking.booking_ref} | Patidar Travels`);
     const body = encodeURIComponent(
       `Dear ${booking.customer_name},\n\n` +
@@ -189,7 +189,7 @@ export default function BookingInvoice() {
       `Thank you for choosing Patidar Travels!\n\n` +
       `Best regards,\nPatidar Travels Team`
     );
-    
+
     window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
     setShareOpen(false);
   };

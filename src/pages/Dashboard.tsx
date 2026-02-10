@@ -391,16 +391,16 @@ export default function Dashboard() {
                           car.next_critical_status === 'overdue'
                             ? 'error'
                             : car.next_critical_status === 'due-soon'
-                            ? 'warning'
-                            : 'success'
+                              ? 'warning'
+                              : 'success'
                         }
                         className="text-[10px] sm:text-xs"
                       >
                         {car.next_critical_status === 'overdue'
                           ? 'Overdue'
                           : car.next_critical_status === 'due-soon'
-                          ? 'Due Soon'
-                          : 'OK'}
+                            ? 'Due Soon'
+                            : 'OK'}
                       </Badge>
                     </div>
                   </Link>
@@ -454,39 +454,41 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Critical Popup Modal */}
+      {/* Critical Service Alerts Modal */}
       <Dialog open={showCriticalPopup} onOpenChange={setShowCriticalPopup}>
-        <DialogContent className="max-w-lg mx-4">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive text-base md:text-lg">
-              <AlertTriangle className="h-4 w-4 md:h-5 md:w-5 flex-shrink-0" />
-              <span>Critical Service Alerts</span>
+        <DialogContent className="max-w-lg mx-4 sm:max-w-md" aria-describedby="critical-alerts-desc">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="flex items-center gap-2 text-foreground text-base font-semibold">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                <AlertTriangle className="h-4 w-4" aria-hidden />
+              </span>
+              Critical Service Alerts
             </DialogTitle>
-            <DialogDescription className="text-sm">
+            <DialogDescription id="critical-alerts-desc" className="text-sm text-muted-foreground">
               The following vehicles require immediate attention.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-wrap gap-2 md:gap-4 mb-4">
-            <Badge variant="error" className="px-2 md:px-3 py-1 text-xs">
-              Overdue Critical: {overdue.length}
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Badge variant="secondary" className="bg-red-50 text-red-700 border-red-200 px-2.5 py-1 text-xs font-medium">
+              Overdue: {overdue.length}
             </Badge>
-            <Badge variant="warning" className="px-2 md:px-3 py-1 text-xs">
-              Due Soon Critical: {dueSoon.length}
+            <Badge variant="secondary" className="bg-amber-50 text-amber-800 border-amber-200 px-2.5 py-1 text-xs font-medium">
+              Due soon: {dueSoon.length}
             </Badge>
           </div>
 
-          <div className="space-y-2 max-h-64 overflow-y-auto">
+          <div className="space-y-2 max-h-56 overflow-y-auto rounded-lg border bg-muted/30 p-1">
             {criticalServices?.slice(0, 5).map((item) => (
               <div
                 key={`${item.car_id}-${item.service_name}`}
-                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg bg-muted/50"
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-md bg-background border shadow-sm"
               >
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-sm truncate">{item.vehicle_number}</p>
                   <p className="text-xs text-muted-foreground truncate">{item.service_name}</p>
                 </div>
-                <span className={`text-xs sm:text-sm font-medium flex-shrink-0 ${item.status === 'overdue' ? 'text-destructive' : 'text-warning'}`}>
+                <span className={`text-xs sm:text-sm font-medium flex-shrink-0 ${item.status === 'overdue' ? 'text-red-600' : 'text-amber-600'}`}>
                   {item.status === 'overdue'
                     ? `Overdue by ${Math.abs(item.remaining_km).toLocaleString()} km`
                     : `Due in ${item.remaining_km.toLocaleString()} km`}
@@ -495,12 +497,12 @@ export default function Dashboard() {
             ))}
           </div>
 
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+          <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
             <Button variant="outline" onClick={handleDismiss} className="w-full sm:w-auto" size="sm">
-              <X className="h-4 w-4 mr-2" />
+              <X className="h-4 w-4 mr-2" aria-hidden />
               Dismiss for today
             </Button>
-            <Button asChild className="w-full sm:w-auto" size="sm">
+            <Button asChild className="w-full sm:w-auto" size="sm" variant="default">
               <Link to="/app/critical" onClick={() => setShowCriticalPopup(false)}>
                 Open Critical Queue
               </Link>

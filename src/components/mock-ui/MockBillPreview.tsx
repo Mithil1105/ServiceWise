@@ -18,9 +18,11 @@ export function MockBillPreview({ className }: { className?: string }) {
 
   return (
     <AppWindowFrame title="Bill #INV-2026-0458" className={className}>
-      <div className="p-3 sm:p-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
-        {/* Left: summary cards + bill details */}
-        <div className="flex-1 min-w-0 flex flex-col gap-3 sm:gap-4">
+      {/* On mobile: keep bill at readable size (min 360px); horizontal scroll only if needed so layout stays same */}
+      <div className="overflow-x-auto overflow-y-hidden">
+        <div className="p-3 sm:p-4 flex flex-col sm:flex-row gap-3 sm:gap-4 min-w-[360px] w-max max-w-full sm:min-w-0 sm:w-full">
+          {/* Left: summary cards + bill details */}
+          <div className="flex-1 min-w-[280px] sm:min-w-0 flex flex-col gap-3 sm:gap-4">
           {/* Summary row - like Money Transfers KPI cards */}
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-lg bg-slate-50 border border-slate-200 p-2 sm:p-2.5">
@@ -119,6 +121,7 @@ export function MockBillPreview({ className }: { className?: string }) {
             <Check className="h-3.5 w-3.5 mr-2 shrink-0" aria-hidden />
             Mark Paid
           </Button>
+        </div>
         </div>
       </div>
     </AppWindowFrame>

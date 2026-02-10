@@ -219,9 +219,9 @@ export default function Bills() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in max-w-5xl mx-auto px-3 sm:px-4">
       {/* Header */}
-      <div className="flex items-center gap-4 print:hidden">
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4 print:hidden">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -307,12 +307,12 @@ export default function Bills() {
 
           {/* Customer Bill Tab */}
           <TabsContent value="customer" className="space-y-0">
-            <div className="flex gap-2 print:hidden">
-            <Button variant="outline" onClick={handlePrint}>
+            <div className="flex flex-wrap gap-2 print:hidden">
+            <Button variant="outline" size="sm" className="shrink-0" onClick={handlePrint}>
               <Printer className="h-4 w-4 mr-2" />
               Print
             </Button>
-            <Button variant="outline" onClick={handleDownloadPdf} disabled={generatingPdf}>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={handleDownloadPdf} disabled={generatingPdf}>
               {generatingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
               Download PDF
             </Button>
@@ -350,15 +350,15 @@ export default function Bills() {
             )}
           </div>
 
-          <Card className="print:shadow-none print:border-none" ref={billRef}>
-            <CardContent className="p-8">
+          <Card className="print:shadow-none print:border-none w-full max-w-3xl min-w-0" ref={billViewTab === 'customer' ? billRef : undefined} data-bill-content={billViewTab === 'customer' ? 'true' : undefined}>
+            <CardContent className="p-4 sm:p-6 md:p-8">
               {/* Bill Header */}
-              <div className="flex justify-between items-start mb-8">
-                <img src={patidarLogo} alt="Patidar Travels" className="h-14 w-auto object-contain" />
-                <div className="text-right">
-                  <h3 className="text-xl font-semibold">FINAL BILL</h3>
-                  <p className="text-lg font-mono mt-1">{selectedBill.bill_number}</p>
-                  <p className="text-sm text-muted-foreground">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6 md:mb-8">
+                <img src={patidarLogo} alt="Patidar Travels" className="h-10 sm:h-12 md:h-14 w-auto object-contain" />
+                <div className="text-left sm:text-right min-w-0">
+                  <h3 className="text-lg sm:text-xl font-semibold">FINAL BILL</h3>
+                  <p className="text-base sm:text-lg font-mono mt-1 break-all">{selectedBill.bill_number}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     Generated: {format(new Date(selectedBill.created_at), 'dd MMM yyyy')}
                   </p>
                   {/* Only show status badge if paid (draft/sent bills are final bills, don't show draft badge) */}
@@ -370,10 +370,10 @@ export default function Bills() {
                 </div>
               </div>
 
-              <Separator className="my-6" />
+              <Separator className="my-4 md:my-6" />
 
               {/* Booking & Customer Info */}
-              <div className="grid grid-cols-2 gap-8 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
                 <div>
                   <h4 className="font-semibold text-sm text-muted-foreground mb-3">BOOKING DETAILS</h4>
                   <div className="space-y-2 text-sm">
@@ -457,11 +457,11 @@ export default function Bills() {
                 </div>
               </div>
 
-              <Separator className="my-6" />
+              <Separator className="my-4 md:my-6" />
 
               {/* Vehicle Details Table */}
-              <div className="mb-8">
-                <h4 className="font-semibold text-sm text-muted-foreground mb-4">VEHICLE & RATE DETAILS</h4>
+              <div className="mb-6 md:mb-8">
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 md:mb-4">VEHICLE & RATE DETAILS</h4>
                 <div className="space-y-6">
                   {selectedBill.vehicle_details.map((vehicle, idx) => {
                     const tripDays = (() => {
@@ -765,7 +765,7 @@ export default function Bills() {
           {hasCompanyBills && (
             <TabsContent value="company" className="space-y-0">
               {selectedCompanyBill ? (
-              <Card ref={billRef} className="print:shadow-none print:border-0">
+              <Card ref={billViewTab === 'company' ? billRef : undefined} className="print:shadow-none print:border-0" data-bill-content={billViewTab === 'company' ? 'true' : undefined}>
                 <CardContent className="p-8 print:p-6">
                   {/* Company Bill Header */}
                   <div className="flex items-start justify-between mb-8 pb-6 border-b">
