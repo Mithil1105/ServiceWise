@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { setNoIndexMeta } from '@/lib/marketing-seo';
 import { joinOrganization } from '@/hooks/use-join-organization';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,10 @@ export default function Onboarding() {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    setNoIndexMeta('Onboarding');
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();

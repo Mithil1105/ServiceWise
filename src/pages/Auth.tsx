@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { setNoIndexMeta } from '@/lib/marketing-seo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -47,6 +48,10 @@ export default function Auth() {
   const { signIn, signUp, user, profile, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    setNoIndexMeta('Sign in');
+  }, []);
 
   useEffect(() => {
     if (!loading && user) {

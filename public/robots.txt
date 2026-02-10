@@ -1,17 +1,92 @@
+# Only public marketing pages are for indexing. App, auth, admin, and other non-public routes are disallowed.
 User-agent: Googlebot
 Allow: /
+Allow: /features
+Allow: /how-it-works
+Allow: /security
+Allow: /pricing
+Allow: /contact
+Disallow: /app
+Disallow: /admin
+Disallow: /auth
+Disallow: /onboarding
+Disallow: /verify-email
+Disallow: /product
+Disallow: /roles
 
 User-agent: Bingbot
 Allow: /
+Allow: /features
+Allow: /how-it-works
+Allow: /security
+Allow: /pricing
+Allow: /contact
+Disallow: /app
+Disallow: /admin
+Disallow: /auth
+Disallow: /onboarding
+Disallow: /verify-email
+Disallow: /product
+Disallow: /roles
+
+User-agent: DuckDuckBot
+Allow: /
+Allow: /features
+Allow: /how-it-works
+Allow: /security
+Allow: /pricing
+Allow: /contact
+Disallow: /app
+Disallow: /admin
+Disallow: /auth
+Disallow: /onboarding
+Disallow: /verify-email
+Disallow: /product
+Disallow: /roles
 
 User-agent: Twitterbot
 Allow: /
+Allow: /features
+Allow: /how-it-works
+Allow: /security
+Allow: /pricing
+Allow: /contact
+Disallow: /app
+Disallow: /admin
+Disallow: /auth
+Disallow: /onboarding
+Disallow: /verify-email
+Disallow: /product
+Disallow: /roles
 
 User-agent: facebookexternalhit
 Allow: /
+Allow: /features
+Allow: /how-it-works
+Allow: /security
+Allow: /pricing
+Allow: /contact
+Disallow: /app
+Disallow: /admin
+Disallow: /auth
+Disallow: /onboarding
+Disallow: /verify-email
+Disallow: /product
+Disallow: /roles
 
 User-agent: *
 Allow: /
+Allow: /features
+Allow: /how-it-works
+Allow: /security
+Allow: /pricing
+Allow: /contact
+Disallow: /app
+Disallow: /admin
+Disallow: /auth
+Disallow: /onboarding
+Disallow: /verify-email
+Disallow: /product
+Disallow: /roles
 
-# Sitemap for crawlers
 Sitemap: https://servicewise.unimisk.com/sitemap.xml

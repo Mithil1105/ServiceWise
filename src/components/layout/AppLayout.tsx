@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
+import { setNoIndexMeta } from '@/lib/marketing-seo';
 import AppSidebar from './AppSidebar';
 import { Loader2, Menu, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,10 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 export default function AppLayout() {
+  useEffect(() => {
+    setNoIndexMeta('App');
+  }, []);
+
   const auth = useAuth();
   const user = auth.user;
   const profile = auth.profile ?? null;

@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { setNoIndexMeta } from '@/lib/marketing-seo';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +23,10 @@ export default function VerifyEmail() {
   const [checking, setChecking] = useState(false);
 
   const emailConfirmed = !!user?.email_confirmed_at;
+
+  useEffect(() => {
+    setNoIndexMeta('Verify email');
+  }, []);
 
   // Redirect when email is confirmed – do this in useEffect to avoid "setState during render"
   useEffect(() => {

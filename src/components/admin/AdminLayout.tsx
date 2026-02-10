@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { Outlet, Navigate, NavLink, Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
+import { setNoIndexMeta } from '@/lib/marketing-seo';
 import { Loader2, LayoutDashboard, Building2, ArrowLeft, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -14,6 +16,10 @@ const adminNav = [
  * Layout for /admin/* routes. Only master admins (user_roles.role='admin', org null) can access.
  */
 export default function AdminLayout() {
+  useEffect(() => {
+    setNoIndexMeta('Admin');
+  }, []);
+
   const { user, loading: authLoading, signOut } = useAuth();
   const { isMasterAdmin, loading: adminLoading } = useIsMasterAdmin();
 
