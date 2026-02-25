@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, addHours } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Car, Check, X, Plus, Trash2, Loader2, Search, Users, ArrowUpDown, Lock, MapPin } from 'lucide-react';
+import { ArrowLeft, Car, Check, X, Plus, Trash2, Loader2, Search, Users, ArrowUpDown, Lock, MapPin, Share2, Copy, MessageCircle } from 'lucide-react';
 import { useCreateBooking, useAvailableCars, useAssignVehicle, useCreateRequestedVehicle, useDeleteRequestedVehicle } from '@/hooks/use-bookings';
+import { useCar } from '@/hooks/use-cars';
 import { useUpsertCustomer } from '@/hooks/use-customers';
 import { useUpsertDriver } from '@/hooks/use-drivers';
 import { useBankAccounts, useCreateBankAccount } from '@/hooks/use-bank-accounts';
@@ -20,8 +21,10 @@ import { CustomerAutocomplete } from '@/components/bookings/CustomerAutocomplete
 import { DriverAutocomplete } from '@/components/bookings/DriverAutocomplete';
 import { useAuth } from '@/lib/auth-context';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { cn, formatCarLabel } from '@/lib/utils';
 import { TRIP_TYPE_LABELS, RATE_TYPE_LABELS, type TripType, type RateType, type BookingStatus } from '@/types/booking';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import { type BookingFormBuiltInFieldKey, BOOKING_FORM_FIELD_LABELS } from '@/types/form-config';
 
 interface RequestedVehicle {
   id?: string;
@@ -39,6 +42,7 @@ interface VehicleAssignment {
   vehicle_number: string;
   model: string;
   seats: number;
+  vehicle_class?: 'lmv' | 'hmv';
   driver_name: string;
   driver_phone: string;
   requested_vehicle_id?: string | null;
@@ -50,7 +54,22 @@ export default function BookingNew() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const defaultDate = searchParams.get('date');
-  const { isAdmin, isManager, isSupervisor } = useAuth();
+  const paramStart = searchParams.get('start');
+  const paramEnd = searchParams.get('end');
+  const paramCarId = searchParams.get('carId');
+  const { isAdmin, isManager, isSupervisor, organization } = useAuth();
+  const appliedCarIdRef = useRef(false);
+  const [shareEstimateOpen, setShareEstimateOpen] = useState(false);
+
+  const { data: orgSettings } = useOrganizationSettings();
+  const bookingFormConfig = orgSettings?.booking_form_config ?? null;
+  const defaultTermsText = 'This is just an estimate. Actual values may differ. Parking and toll charges are separate and will be added and shown directly in the final bill.';
+  const effectiveTerms = (orgSettings?.terms_and_conditions?.trim() || defaultTermsText);
+  const bookingFieldOverrides = bookingFormConfig?.fieldOverrides ?? {};
+  const bookingCustomFields = (bookingFormConfig?.customFields ?? []).sort((a, b) => a.order - b.order);
+  const getBookingFieldLabel = (key: BookingFormBuiltInFieldKey) => bookingFieldOverrides[key]?.label ?? BOOKING_FORM_FIELD_LABELS[key];
+  const isBookingFieldHidden = (key: BookingFormBuiltInFieldKey) => bookingFieldOverrides[key]?.hidden === true;
+  const isBookingFieldRequired = (key: BookingFormBuiltInFieldKey) => bookingFieldOverrides[key]?.required ?? true;
 
   const createBooking = useCreateBooking();
   const assignVehicle = useAssignVehicle();
@@ -75,12 +94,12 @@ export default function BookingNew() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [tripType, setTripType] = useState<TripType>('local');
-  // Separate date and time states
-  const defaultStartDate = defaultDate || format(new Date(), "yyyy-MM-dd");
+  // Separate date and time states (support range from calendar: start, end with 9am–6pm)
+  const defaultStartDate = paramStart || defaultDate || format(new Date(), "yyyy-MM-dd");
   const defaultStartTime = "09:00";
-  const defaultEndDate = defaultDate || format(new Date(), "yyyy-MM-dd");
+  const defaultEndDate = paramEnd || defaultDate || format(new Date(), "yyyy-MM-dd");
   const defaultEndTime = "18:00";
-  
+
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [startTime, setStartTime] = useState(defaultStartTime);
   const [endDate, setEndDate] = useState(defaultEndDate);
@@ -118,6 +137,34 @@ export default function BookingNew() {
   const [newBankName, setNewBankName] = useState('');
   const [newIfscCode, setNewIfscCode] = useState('');
   const [newAccountNotes, setNewAccountNotes] = useState('');
+  const [bookingCustomValues, setBookingCustomValues] = useState<Record<string, string | number>>({});
+
+  // Pre-fill from calendar availability: one requested + one assigned when carId in URL
+  const { data: prefilledCar } = useCar(paramCarId ?? '');
+  useEffect(() => {
+    if (!paramCarId || !prefilledCar || appliedCarIdRef.current) return;
+    appliedCarIdRef.current = true;
+    setRequestedVehicles([{
+      id: 'temp-0',
+      brand: prefilledCar.brand ?? '',
+      model: prefilledCar.model ?? '',
+      rate_type: 'per_km',
+      rate_total: '',
+      rate_per_day: '',
+      rate_per_km: '',
+      driver_allowance_per_day: '',
+    }]);
+    setSelectedVehicles([{
+      car_id: prefilledCar.id,
+      vehicle_number: prefilledCar.vehicle_number,
+      model: prefilledCar.model ?? '',
+      seats: prefilledCar.seats ?? 5,
+      vehicle_class: (prefilledCar.vehicle_class ?? 'lmv') as 'lmv' | 'hmv',
+      driver_name: '',
+      driver_phone: '',
+      requested_vehicle_id: 'temp-0',
+    }]);
+  }, [paramCarId, prefilledCar]);
 
   // Parse dates (combined from date + time)
   const startDateTime = startAt ? new Date(startAt) : null;
@@ -191,7 +238,8 @@ export default function BookingNew() {
       car_id: car.car_id,
       vehicle_number: car.vehicle_number,
       model: car.model,
-      seats: (car as any).seats || 5,
+      seats: car.seats ?? 5,
+      vehicle_class: car.vehicle_class ?? 'lmv',
       driver_name: '',
       driver_phone: '',
     }));
@@ -322,30 +370,54 @@ export default function BookingNew() {
     }
   };
 
-  // Calculate grand total using requested vehicle prices (for billing)
+  // Driver allowance total (per day × days for each requested vehicle)
+  const totalDriverAllowance = useMemo(() => {
+    if (requestedVehicles.length === 0) return 0;
+    const days = startDateTime && endDateTime
+      ? Math.ceil((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60 * 24)) || 1
+      : 0;
+    return requestedVehicles.reduce(
+      (sum, v) => sum + (Number(v.driver_allowance_per_day) || 0) * days,
+      0
+    );
+  }, [requestedVehicles, startDateTime, endDateTime]);
+
+  // Calculate grand total using requested vehicle prices + driver allowance (for billing)
   const grandTotal = useMemo(() => {
     // Use requested vehicles for billing if they exist
     if (requestedVehicles.length > 0) {
-      return requestedVehicles.reduce((sum, v) => sum + calculateRequestedVehicleTotal(v).total, 0);
+      const vehicleTotal = requestedVehicles.reduce((sum, v) => sum + calculateRequestedVehicleTotal(v).total, 0);
+      return vehicleTotal + totalDriverAllowance;
     }
     // Otherwise use assigned vehicles
     return selectedVehicles.reduce((sum, v) => sum + calculateVehicleTotal(v), 0);
-  }, [requestedVehicles, selectedVehicles, startDateTime, endDateTime, estimatedKm, defaultMinKmPerKm, defaultMinKmHybridPerDay]);
+  }, [requestedVehicles, selectedVehicles, startDateTime, endDateTime, estimatedKm, defaultMinKmPerKm, defaultMinKmHybridPerDay, totalDriverAllowance]);
 
-  // Get detailed breakdown for quote summary
+  // Get detailed breakdown for quote summary — use assigned vehicle name when linked, not requested
   const quoteBreakdown = useMemo(() => {
     if (requestedVehicles.length === 0) return null;
-    
-    const days = startDateTime && endDateTime 
-      ? Math.ceil((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60 * 24)) || 1 
+
+    const days = startDateTime && endDateTime
+      ? Math.ceil((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60 * 24)) || 1
       : 0;
     const bookingEstimatedKm = Number(estimatedKm) || 0;
-    
-    return requestedVehicles.map(v => ({
-      vehicle: `${v.brand} ${v.model}`,
-      ...calculateRequestedVehicleTotal(v)
-    }));
-  }, [requestedVehicles, startDateTime, endDateTime, estimatedKm, defaultMinKmPerKm, defaultMinKmHybridPerDay]);
+
+    return requestedVehicles.map((rv, idx) => {
+      const tempId = rv.id || `temp-${idx}`;
+      const assigned = selectedVehicles.find(sv => sv.requested_vehicle_id === tempId);
+      const vehicleDisplay = assigned
+        ? assigned.model
+        : `Requested: ${rv.brand} ${rv.model}`;
+
+      const vehicleTotal = calculateRequestedVehicleTotal(rv);
+      const driverAllowance = (Number(rv.driver_allowance_per_day) || 0) * days;
+      return {
+        vehicle: vehicleDisplay,
+        ...vehicleTotal,
+        driverAllowance,
+      };
+    });
+  }, [requestedVehicles, selectedVehicles, startDateTime, endDateTime, estimatedKm, defaultMinKmPerKm, defaultMinKmHybridPerDay]);
 
   const totalAdvance = useMemo(() => {
     return Number(advanceAmount) || 0;
@@ -356,7 +428,8 @@ export default function BookingNew() {
       car_id: car.car_id,
       vehicle_number: car.vehicle_number,
       model: car.model,
-      seats: (car as any).seats || 5,
+      seats: car.seats ?? 5,
+      vehicle_class: car.vehicle_class ?? 'lmv',
       driver_name: '',
       driver_phone: '',
     }]);
@@ -377,7 +450,7 @@ export default function BookingNew() {
     setRequestedVehicles(prev => [...prev, {
       brand: '',
       model: '',
-      rate_type: 'total' as RateType,
+      rate_type: 'per_km' as RateType,
       rate_total: '',
       rate_per_day: '',
       rate_per_km: '',
@@ -411,7 +484,9 @@ export default function BookingNew() {
     if (!status) { toast.error('Please select a booking status (Save as Inquiry, Hold, or Confirm Booking)'); return false; }
     
     // Validate advance payment
-    const totalBookingAmount = requestedVehicles.reduce((sum, rv) => sum + calculateRequestedVehicleTotal(rv), 0);
+    const totalBookingAmount = requestedVehicles.length > 0
+      ? grandTotal
+      : selectedVehicles.reduce((sum, v) => sum + calculateVehicleTotal(v), 0);
     if (Number(advanceAmount) > totalBookingAmount) {
       toast.error('Advance amount cannot exceed total booking amount');
       return false;
@@ -458,6 +533,16 @@ export default function BookingNew() {
         phone: customerPhone.trim(),
       });
 
+      const customAttrs: Record<string, string | number | boolean | null> = {};
+      for (const f of bookingCustomFields) {
+        const val = bookingCustomValues[f.key];
+        if (f.required && (val === undefined || val === '')) {
+          toast.error(`${f.label} is required`);
+          return;
+        }
+        if (val !== undefined && val !== '') customAttrs[f.key] = typeof val === 'number' ? val : String(val);
+      }
+
       const booking = await createBooking.mutateAsync({
         customer_name: customerName.trim(),
         customer_phone: customerPhone.trim(),
@@ -468,12 +553,12 @@ export default function BookingNew() {
         dropoff: dropoff.trim() || undefined,
         notes: notes.trim() || undefined,
         status: status as BookingStatus,
-        // Save advance payment at booking level
         advance_amount: Number(advanceAmount) || 0,
         advance_payment_method: advancePaymentMethod || null,
         advance_collected_by: advanceCollectedBy.trim() || null,
         advance_account_type: advanceAccountType || null,
         advance_account_id: advanceAccountId || null,
+        custom_attributes: Object.keys(customAttrs).length ? customAttrs : undefined,
       });
 
       // Save requested vehicles (if admin/manager) and create mapping for linking
@@ -569,6 +654,76 @@ export default function BookingNew() {
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+  };
+
+  /** Build detailed billing lines for the shared estimate so the customer understands threshold, km charged, etc. */
+  const getEstimateBreakdownDetailLines = (
+    breakdown: { rateType: string; days?: number; estimatedKm?: number; thresholdKmPerDay?: number; totalMinKm?: number; kmCharged?: number; ratePerKm?: number; thresholdApplied?: boolean; baseAmount?: number; kmAmount?: number } | undefined
+  ): string[] => {
+    if (!breakdown) return [];
+    const lines: string[] = [];
+    switch (breakdown.rateType) {
+      case 'total':
+        lines.push('  Rate: Fixed total for the trip.');
+        break;
+      case 'per_day':
+        lines.push(`  Rate: Per day. Trip duration: ${breakdown.days} days.`);
+        const perDayRate = breakdown.days && breakdown.baseAmount != null ? breakdown.baseAmount / breakdown.days : 0;
+        lines.push(`  Calculation: ${breakdown.days} days × ${formatCurrency(perDayRate)}/day = ${formatCurrency(breakdown.baseAmount ?? 0)}.`);
+        break;
+      case 'per_km':
+        lines.push('  Rate: Per kilometer.');
+        lines.push(`  Trip duration: ${breakdown.days} days. Minimum chargeable km: ${breakdown.thresholdKmPerDay} km/day × ${breakdown.days} days = ${breakdown.totalMinKm?.toLocaleString()} km total.`);
+        lines.push(`  Your estimated km for this trip: ${breakdown.estimatedKm?.toLocaleString()} km.`);
+        if (breakdown.thresholdApplied) {
+          lines.push(`  Since your estimate is below the minimum, we charge for ${breakdown.kmCharged?.toLocaleString()} km (minimum applies).`);
+        } else {
+          lines.push(`  We charge the higher of estimated or minimum → ${breakdown.kmCharged?.toLocaleString()} km charged.`);
+        }
+        lines.push(`  Rate per km: ${formatCurrency(breakdown.ratePerKm ?? 0)}. Vehicle charge: ${breakdown.kmCharged?.toLocaleString()} km × ${formatCurrency(breakdown.ratePerKm ?? 0)} = ${formatCurrency(breakdown.kmAmount ?? 0)}.`);
+        break;
+      case 'hybrid':
+        lines.push('  Rate: Hybrid (per day + per km).');
+        const hybridPerDayRate = breakdown.days && breakdown.baseAmount != null ? breakdown.baseAmount / breakdown.days : 0;
+        lines.push(`  Per day part: ${breakdown.days} days × ${formatCurrency(hybridPerDayRate)}/day = ${formatCurrency(breakdown.baseAmount ?? 0)}.`);
+        lines.push(`  Per km part: Minimum chargeable km = ${breakdown.thresholdKmPerDay} km/day × ${breakdown.days} days = ${breakdown.totalMinKm?.toLocaleString()} km. Your estimated km: ${breakdown.estimatedKm?.toLocaleString()} km → km charged: ${breakdown.kmCharged?.toLocaleString()} km${breakdown.thresholdApplied ? ' (minimum applied).' : '.'}`);
+        lines.push(`  Per km: ${breakdown.kmCharged?.toLocaleString()} km × ${formatCurrency(breakdown.ratePerKm ?? 0)} = ${formatCurrency(breakdown.kmAmount ?? 0)}.`);
+        lines.push(`  Subtotal for this vehicle: ${formatCurrency((breakdown.baseAmount ?? 0) + (breakdown.kmAmount ?? 0))}.`);
+        break;
+      default:
+        break;
+    }
+    return lines;
+  };
+
+  /** Build full estimate text with WhatsApp-style *bold* so copy-paste to WhatsApp looks good. */
+  const getFormattedEstimateText = (): string => {
+    const companyName = organization?.company_name || organization?.name || 'Company';
+    const tripDates = startDate && endDate
+      ? `${format(new Date(startDate), 'dd MMM yyyy')} – ${format(new Date(endDate), 'dd MMM yyyy')}`
+      : '—';
+    let t = `*${companyName}*\n*Trip estimate*\n${'─'.repeat(28)}\n\n`;
+    if (customerName.trim()) t += `*Customer:* ${customerName.trim()}\n`;
+    if (customerPhone.trim()) t += `*Phone:* ${customerPhone.trim()}\n`;
+    t += `*Trip dates:* ${tripDates}\n\n`;
+    t += `*Total estimate:* ${formatCurrency(grandTotal)}\n`;
+    if (totalDriverAllowance > 0) t += `(includes driver allowance: ${formatCurrency(totalDriverAllowance)})\n`;
+    t += `*Advance:* ${formatCurrency(totalAdvance)}  |  *Due:* ${formatCurrency(grandTotal - totalAdvance)}\n\n`;
+    if (quoteBreakdown && quoteBreakdown.length > 0) {
+      t += `*Vehicle-wise estimate:*\n\n`;
+      quoteBreakdown.forEach((item) => {
+        const b = item.breakdown;
+        const why = b?.rateType === 'total' ? 'Fixed total' : b?.rateType === 'per_day' && b.days ? `Per day × ${b.days} days` : b?.rateType === 'per_km' && b.kmCharged != null ? `Per km × ${b.kmCharged.toLocaleString()} km` : b?.rateType === 'hybrid' ? `Hybrid (${b.days} days + ${b.kmCharged?.toLocaleString()} km)` : '';
+        t += `• *${item.vehicle}:* ${formatCurrency(item.total)}${why ? ` (${why})` : ''}\n`;
+        if ('driverAllowance' in item && (item as { driverAllowance?: number }).driverAllowance) {
+          t += `  *Driver allowance:* ${formatCurrency((item as { driverAllowance: number }).driverAllowance)}\n`;
+        }
+        getEstimateBreakdownDetailLines(b).forEach((line) => { t += line + '\n'; });
+        t += '\n';
+      });
+    }
+    t += `*Terms & conditions:*\n${effectiveTerms}\n`;
+    return t;
   };
 
   return (
@@ -843,6 +998,56 @@ export default function BookingNew() {
             )}
           </div>
 
+          {bookingCustomFields.length > 0 && (
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">Custom fields</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {bookingCustomFields.map((f) => (
+                  <div key={f.id} className="space-y-1">
+                    <Label className="text-xs">{f.label}{f.required ? ' *' : ''}</Label>
+                    {f.type === 'text' && (
+                      <Input
+                        value={String(bookingCustomValues[f.key] ?? '')}
+                        onChange={(e) => setBookingCustomValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                        placeholder={f.label}
+                      />
+                    )}
+                    {f.type === 'number' && (
+                      <Input
+                        type="number"
+                        value={bookingCustomValues[f.key] !== undefined && bookingCustomValues[f.key] !== '' ? Number(bookingCustomValues[f.key]) : ''}
+                        onChange={(e) => setBookingCustomValues((prev) => ({ ...prev, [f.key]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                        placeholder={f.label}
+                      />
+                    )}
+                    {f.type === 'date' && (
+                      <Input
+                        type="date"
+                        value={typeof bookingCustomValues[f.key] === 'string' ? bookingCustomValues[f.key] : ''}
+                        onChange={(e) => setBookingCustomValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      />
+                    )}
+                    {f.type === 'select' && (
+                      <Select
+                        value={String(bookingCustomValues[f.key] ?? '')}
+                        onValueChange={(v) => setBookingCustomValues((prev) => ({ ...prev, [f.key]: v }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(f.options ?? []).map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Separator />
 
           {/* Requested Vehicles Section */}
@@ -1111,7 +1316,7 @@ export default function BookingNew() {
                     {unavailableCars.map(car => (
                       <div key={car.car_id} className="flex items-center gap-2 text-sm text-destructive">
                         <X className="h-3 w-3 flex-shrink-0" />
-                        <span>{car.vehicle_number}</span>
+                        <span>{formatCarLabel({ vehicle_number: car.vehicle_number, model: car.model })}</span>
                         <span className="text-xs truncate">- {car.conflict_booking_ref} ({car.conflict_booked_by})</span>
                       </div>
                     ))}
@@ -1143,10 +1348,10 @@ export default function BookingNew() {
                 </Button>
               </div>
 
-              {/* Link to requested vehicle (for supervisors) */}
+              {/* Assigned vehicle name + link to requested vehicle (one requested vehicle per assigned vehicle) */}
               {requestedVehicles.length > 0 && (
                 <div className="space-y-1">
-                  <Label className="text-xs">Link to Requested Vehicle</Label>
+                  <Label className="text-xs">Assigned vehicle</Label>
                   <Select
                     value={vehicle.requested_vehicle_id || 'none'}
                     onValueChange={v => {
@@ -1155,15 +1360,21 @@ export default function BookingNew() {
                     }}
                   >
                     <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Select requested vehicle..." />
+                      <SelectValue>
+                        {vehicle.requested_vehicle_id ? vehicle.model : 'Select requested vehicle to link...'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
                       {requestedVehicles.map((rv, idx) => {
                         const tempId = rv.id || `temp-${idx}`;
+                        const isTakenByOther = selectedVehicles.some(
+                          sv => sv.car_id !== vehicle.car_id && sv.requested_vehicle_id === tempId
+                        );
                         return (
-                          <SelectItem key={tempId} value={tempId}>
+                          <SelectItem key={tempId} value={tempId} disabled={isTakenByOther}>
                             {rv.brand} {rv.model} - {formatCurrency(calculateRequestedVehicleTotal(rv).total)}
+                            {isTakenByOther && ' (already linked)'}
                           </SelectItem>
                         );
                       })}
@@ -1184,6 +1395,7 @@ export default function BookingNew() {
                     phone: driver.phone,
                   });
                 }}
+                vehicleClass={vehicle.vehicle_class}
               />
             </div>
           ))}
@@ -1198,7 +1410,7 @@ export default function BookingNew() {
       {(requestedVehicles.length > 0 || selectedVehicles.length > 0) && (
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="p-4 space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-start gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">
                   Quote Summary
@@ -1206,9 +1418,23 @@ export default function BookingNew() {
                     <span className="ml-2 text-xs">(based on requested vehicles)</span>
                   )}
                 </p>
+                <p className="text-sm font-medium text-muted-foreground mt-1">Estimated total</p>
                 <p className="text-2xl font-bold">{formatCurrency(grandTotal)}</p>
+                {totalDriverAllowance > 0 && (
+                  <p className="text-xs text-muted-foreground">Includes {formatCurrency(totalDriverAllowance)} driver allowance</p>
+                )}
                 <p className="text-sm text-success">Advance: {formatCurrency(totalAdvance)} | Due: {formatCurrency(grandTotal - totalAdvance)}</p>
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShareEstimateOpen(true)}
+                className="shrink-0"
+              >
+                <Share2 className="h-4 w-4 mr-2" />
+                Share estimate
+              </Button>
             </div>
 
             {/* Detailed Breakdown */}
@@ -1219,10 +1445,22 @@ export default function BookingNew() {
                   const breakdown = item.breakdown;
                   if (!breakdown) return null;
 
+                  const whySummary = breakdown.rateType === 'total'
+                    ? `Fixed total → ${formatCurrency(item.total)}`
+                    : breakdown.rateType === 'per_day' && breakdown.days
+                    ? `Per day × ${breakdown.days} days → ${formatCurrency(item.total)}`
+                    : breakdown.rateType === 'per_km' && breakdown.kmCharged != null
+                    ? `Per km × ${breakdown.kmCharged.toLocaleString()} km → ${formatCurrency(item.total)}`
+                    : breakdown.rateType === 'hybrid'
+                    ? `Per day + Per km (${breakdown.days} days, ${breakdown.kmCharged?.toLocaleString()} km) → ${formatCurrency(item.total)}`
+                    : null;
+
                   return (
                     <div key={idx} className="bg-background/50 p-3 rounded-md space-y-2 text-sm">
                       <p className="font-medium">{item.vehicle}</p>
-                      
+                      {whySummary && (
+                        <p className="text-xs text-muted-foreground font-medium border-b pb-2">{whySummary}</p>
+                      )}
                       {breakdown.rateType === 'total' && (
                         <div className="space-y-1 text-xs text-muted-foreground">
                           <div className="flex justify-between">
@@ -1348,14 +1586,92 @@ export default function BookingNew() {
                           </div>
                         </div>
                       )}
+                      {'driverAllowance' in item && Number((item as { driverAllowance?: number }).driverAllowance) > 0 && (
+                        <div className="flex justify-between pt-2 border-t text-xs text-muted-foreground">
+                          <span>Driver allowance:</span>
+                          <span className="font-medium">{formatCurrency((item as { driverAllowance: number }).driverAllowance)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between pt-2 border-t-2 font-semibold text-sm mt-2">
+                        <span>Computed total (this vehicle):</span>
+                        <span>
+                          {formatCurrency(
+                            item.total + (Number((item as { driverAllowance?: number }).driverAllowance) || 0)
+                          )}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
               </div>
             )}
+
+            {/* Terms and conditions: default disclaimer when empty; fully editable by admin in Settings → Branding */}
+            <div className="pt-4 border-t">
+              <p className="text-sm font-medium text-muted-foreground mb-2">Terms and conditions</p>
+              <div className="text-xs text-muted-foreground whitespace-pre-wrap rounded-md bg-muted/30 p-3 max-h-40 overflow-y-auto">
+                {effectiveTerms}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1 italic">
+                Editable in Settings → Branding
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Share estimate dialog */}
+      <Dialog open={shareEstimateOpen} onOpenChange={setShareEstimateOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="h-5 w-5" />
+              Share estimate with client
+            </DialogTitle>
+            <DialogDescription>
+              Copy the estimate and terms to clipboard or share via WhatsApp.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-md border bg-muted/30 p-3 text-sm whitespace-pre-wrap max-h-[320px] overflow-y-auto">
+              {getFormattedEstimateText()}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Uses *bold* formatting — when you copy or share to WhatsApp, key lines will appear bold.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void navigator.clipboard.writeText(getFormattedEstimateText());
+                  toast.success('Estimate copied to clipboard');
+                }}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy to clipboard
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const message = getFormattedEstimateText();
+                  const encoded = encodeURIComponent(message);
+                  const phone = customerPhone.replace(/\D/g, '');
+                  const waNumber = phone ? (phone.startsWith('91') ? phone : `91${phone}`) : '';
+                  window.open(waNumber ? `https://wa.me/${waNumber}?text=${encoded}` : `https://wa.me/?text=${encoded}`, '_blank');
+                  toast.success('Opening WhatsApp');
+                }}
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Share via WhatsApp
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Actions */}
       <Card>

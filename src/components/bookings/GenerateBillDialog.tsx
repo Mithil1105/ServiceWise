@@ -14,6 +14,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { RATE_TYPE_LABELS } from '@/types/booking';
 import type { RateType } from '@/types/booking';
 import { toLocalDateInputValue } from '@/lib/date';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import { DEFAULT_EXTRA_CHARGE_LABELS } from '@/types/billing-config';
 import { TransferDialog } from './TransferDialog';
 
 interface GenerateBillDialogProps {
@@ -34,7 +36,19 @@ export function GenerateBillDialog({
   const { data: booking } = useBooking(bookingId);
   const { data: cars } = useCars();
   const { data: existingBills } = useBillsByBooking(bookingId);
+  const { data: orgSettings } = useOrganizationSettings();
   const generateBill = useGenerateBill();
+
+  const perBillBlocks = (orgSettings?.billing_layout_config?.customBlocks ?? []).filter((b) => b.valueSource === 'per_bill');
+  const extraChargesConfig = orgSettings?.billing_layout_config?.extraCharges ?? {};
+  const showToll = extraChargesConfig.toll_tax?.show !== false;
+  const showParking = extraChargesConfig.parking_charges?.show !== false;
+  const tollLabel = extraChargesConfig.toll_tax?.label ?? DEFAULT_EXTRA_CHARGE_LABELS.toll_tax;
+  const parkingLabel = extraChargesConfig.parking_charges?.label ?? DEFAULT_EXTRA_CHARGE_LABELS.parking_charges;
+
+  const [customAttributes, setCustomAttributes] = useState<Record<string, string | number | boolean>>({});
+  const [tollCharges, setTollCharges] = useState<string>('0');
+  const [parkingCharges, setParkingCharges] = useState<string>('0');
 
   const [kmMethod, setKmMethod] = useState<'odometer' | 'manual'>('odometer');
   const [startOdometer, setStartOdometer] = useState<string>('');
@@ -183,6 +197,16 @@ export function GenerateBillDialog({
     }
 
     try {
+      const customAttrs: Record<string, string | number | boolean | null> = {};
+      perBillBlocks.forEach((block) => {
+        const raw = customAttributes[block.key];
+        if (raw !== undefined && raw !== '') {
+          if (block.type === 'number') customAttrs[block.key] = typeof raw === 'number' ? raw : Number(raw);
+          else if (block.type === 'checkbox') customAttrs[block.key] = !!raw;
+          else customAttrs[block.key] = String(raw);
+        }
+      });
+
       const result = await generateBill.mutateAsync({
         booking,
         startOdometer: (rateType === 'per_km' || rateType === 'hybrid') && kmMethod === 'odometer' ? parseFloat(startOdometer) : undefined,
@@ -191,6 +215,9 @@ export function GenerateBillDialog({
         kmMethod: (rateType === 'per_km' || rateType === 'hybrid') ? kmMethod : 'manual',
         startDate: (rateType === 'per_day' || rateType === 'hybrid') ? startDate : undefined,
         endDate: (rateType === 'per_day' || rateType === 'hybrid') ? endDate : undefined,
+        custom_attributes: Object.keys(customAttrs).length ? customAttrs : undefined,
+        toll_charges: parseFloat(tollCharges) || 0,
+        parking_charges: parseFloat(parkingCharges) || 0,
       });
 
       // Store result and show transfer dialog if needed
@@ -397,6 +424,141 @@ export function GenerateBillDialog({
               </p>
             </div>
           )}
+
+          {/* Extra charges (toll, parking) – added to bill total; configurable in Settings → Billing */}
+          {(showToll || showParking) && (
+            <div className="space-y-4 border rounded-lg p-4">
+              <h3 className="font-semibold text-sm">Extra charges (added to total)</h3>
+              <div className="grid grid-cols-2 gap-4">
+                {showToll && (
+                  <div className="space-y-2">
+                    <Label htmlFor="toll-charges">{tollLabel}</Label>
+                    <Input
+                      id="toll-charges"
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={tollCharges}
+                      onChange={(e) => setTollCharges(e.target.value)}
+                    />
+                  </div>
+                )}
+                {showParking && (
+                  <div className="space-y-2">
+                    <Label htmlFor="parking-charges">{parkingLabel}</Label>
+                    <Input
+                      id="parking-charges"
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={parkingCharges}
+                      onChange={(e) => setParkingCharges(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Per-bill custom fields (from Settings → Billings) */}
+          {perBillBlocks.length > 0 && (
+            <div className="space-y-4 border rounded-lg p-4">
+              <Label className="text-base font-semibold">Additional bill details</Label>
+              {perBillBlocks.map((block) => (
+                <div key={block.id} className="space-y-2">
+                  <Label htmlFor={`custom-${block.key}`} className="text-sm">{block.label}</Label>
+                  {block.type === 'long_text' ? (
+                    <textarea
+                      id={`custom-${block.key}`}
+                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      placeholder={block.label}
+                      value={typeof customAttributes[block.key] === 'string' ? customAttributes[block.key] : ''}
+                      onChange={(e) => setCustomAttributes((prev) => ({ ...prev, [block.key]: e.target.value }))}
+                    />
+                  ) : block.type === 'checkbox' ? (
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={!!customAttributes[block.key]}
+                        onChange={(e) => setCustomAttributes((prev) => ({ ...prev, [block.key]: e.target.checked }))}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      <span className="text-sm text-muted-foreground">Yes / No</span>
+                    </label>
+                  ) : (
+                    <Input
+                      id={`custom-${block.key}`}
+                      type={block.type === 'number' ? 'number' : block.type === 'date' ? 'date' : 'text'}
+                      placeholder={block.label}
+                      value={customAttributes[block.key] != null ? String(customAttributes[block.key]) : ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (block.type === 'number') setCustomAttributes((prev) => ({ ...prev, [block.key]: v === '' ? '' as unknown as number : Number(v) }));
+                        else setCustomAttributes((prev) => ({ ...prev, [block.key]: v }));
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Final count – values used for the bill (days, KM, odometer) */}
+          <div className="border rounded-lg p-4 space-y-3 bg-primary/5 border-primary/20">
+            <h4 className="font-semibold text-sm">Final count (used for this bill)</h4>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              {(rateType === 'per_day' || rateType === 'hybrid') && startDate && endDate && totalDays > 0 && (
+                <div>
+                  <span className="text-muted-foreground">Total days:</span>{' '}
+                  <span className="font-semibold">{totalDays} {totalDays === 1 ? 'day' : 'days'}</span>
+                </div>
+              )}
+              {(rateType === 'per_km' || rateType === 'hybrid') && (
+                <>
+                  {kmMethod === 'odometer' && startOdometer && endOdometer && !errors.odometer && (
+                    <>
+                      <div>
+                        <span className="text-muted-foreground">Start odometer (km):</span>{' '}
+                        <span className="font-semibold">{startOdometer}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">End odometer (km):</span>{' '}
+                        <span className="font-semibold">{endOdometer}</span>
+                      </div>
+                    </>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">Total KM (for bill):</span>{' '}
+                    <span className="font-semibold">
+                      {kmMethod === 'odometer' && startOdometer && endOdometer && !errors.odometer
+                        ? `${parseFloat(endOdometer) - parseFloat(startOdometer)} km`
+                        : kmMethod === 'manual' && manualKm
+                        ? `${manualKm} km`
+                        : '—'}
+                    </span>
+                  </div>
+                </>
+              )}
+              {rateType === 'total' && (
+                <div>
+                  <span className="text-muted-foreground">Rate type:</span>{' '}
+                  <span className="font-semibold">Fixed total</span>
+                </div>
+              )}
+              {startDate && endDate && (
+                <>
+                  <div>
+                    <span className="text-muted-foreground">Trip start:</span>{' '}
+                    <span className="font-medium">{startDate}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Trip end:</span>{' '}
+                    <span className="font-medium">{endDate}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
 
           {/* Booking Info Summary */}
           {booking && (

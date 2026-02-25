@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useSupervisorAssignments } from '@/hooks/use-car-assignments';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
+import { formatCarLabel } from '@/lib/utils';
 
 export default function SupervisorDashboard() {
   const { user } = useAuth();
@@ -105,7 +106,7 @@ export default function SupervisorDashboard() {
                 <CardContent className="pt-4">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="font-semibold">{assignment.cars.vehicle_number}</h3>
+                      <h3 className="font-semibold">{formatCarLabel(assignment.cars)}</h3>
                       <p className="text-sm text-muted-foreground">{assignment.cars.model}</p>
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />

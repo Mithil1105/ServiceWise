@@ -36,6 +36,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { formatDateDMY, formatDateTimeDMY } from '@/lib/date';
+import { formatCarLabel } from '@/lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 
 const REASON_COLORS: Record<string, string> = {
@@ -139,7 +140,7 @@ export default function DowntimeReport() {
         const car = cars?.find(c => c.id === carId);
         return {
           carId,
-          vehicleNumber: car?.vehicle_number || 'Unknown',
+          vehicleNumber: car ? formatCarLabel(car) : 'Unknown',
           model: car?.model || '',
           hours: data.hours,
           days: Math.round(data.hours / 24 * 10) / 10,
@@ -210,7 +211,7 @@ export default function DowntimeReport() {
       const hours = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60) * 10) / 10;
       
       return [
-        car?.vehicle_number || 'Unknown',
+        car ? formatCarLabel(car) : 'Unknown',
         formatDateTimeDMY(log.started_at),
         log.ended_at ? formatDateTimeDMY(log.ended_at) : 'Active',
         hours.toString(),
@@ -592,7 +593,7 @@ export default function DowntimeReport() {
                           to={`/app/fleet/${log.car_id}`}
                           className="font-medium hover:text-primary"
                         >
-                          {car?.vehicle_number || 'Unknown'}
+                          {car ? formatCarLabel(car) : 'Unknown'}
                         </Link>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">

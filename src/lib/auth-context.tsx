@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import type { AppRole, Profile } from '@/types';
+import type { AppRole, Profile, Organization } from '@/types';
+import { setCachedOrg } from '@/lib/organizationCache';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
+  organization: Organization | null;
   role: AppRole | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -24,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [organization, setOrganization] = useState<Organization | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -41,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }, 0);
         } else {
           setProfile(null);
+          setOrganization(null);
           setRole(null);
           setLoading(false);
         }
@@ -82,11 +86,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .eq('status', 'active')
             .maybeSingle();
           setRole(memberData?.role as AppRole ?? null);
+          const { data: orgData } = await supabase
+            .from('organizations')
+            .select('id, name, logo_url, company_name, join_code')
+            .eq('id', orgId)
+            .single();
+          const org = orgData as Organization | null;
+          setOrganization(org);
+          if (org) {
+            const { data: { user: u } } = await supabase.auth.getUser();
+            if (u?.email) setCachedOrg(u.email, org);
+          }
         } else {
           setRole(null);
+          setOrganization(null);
         }
       } else {
         setRole(null);
+        setOrganization(null);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -122,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setSession(null);
     setProfile(null);
+    setOrganization(null);
     setRole(null);
   };
 
@@ -142,6 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         session,
         profile,
+        organization,
         role,
         loading,
         signIn,

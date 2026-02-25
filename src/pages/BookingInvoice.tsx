@@ -17,15 +17,22 @@ import { TRIP_TYPE_LABELS, RATE_TYPE_LABELS } from '@/types/booking';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import patidarLogo from '@/assets/patidar-logo.jpg';
+import { useAuth } from '@/lib/auth-context';
+import { formatCarLabel } from '@/lib/utils';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 
 export default function BookingInvoice() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const invoiceRef = useRef<HTMLDivElement>(null);
+  const { organization } = useAuth();
+  const { data: orgSettings } = useOrganizationSettings();
   const { data: booking, isLoading: loadingBooking, refetch: refetchBooking } = useBooking(id);
   const { data: invoice, isLoading: loadingInvoice, refetch: refetchInvoice } = useInvoice(id);
   const generateInvoice = useGenerateInvoice();
+  const companyName = organization?.company_name || organization?.name || 'Company';
+  const logoUrl = organization?.logo_url || '/HERO.png';
+  const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
   const [finalKms, setFinalKms] = useState<Record<string, string>>({});
   const [savingKms, setSavingKms] = useState(false);
@@ -146,7 +153,7 @@ export default function BookingInvoice() {
     ) || 0;
 
     const message = encodeURIComponent(
-      `*PATIDAR TRAVELS - Invoice*\n\n` +
+      `*${companyName} - Invoice*\n\n` +
       `📋 Booking: ${booking.booking_ref}\n` +
       `${invoice ? `🧾 Invoice: ${invoice.invoice_no}\n` : ''}` +
       `👤 Customer: ${booking.customer_name}\n` +
@@ -156,7 +163,7 @@ export default function BookingInvoice() {
       `💰 Total: ${formatCurrency(totalAmount)}\n` +
       `✅ Advance: ${formatCurrency(totalAdvance)}\n` +
       `📍 *Amount Due: ${formatCurrency(totalAmount - totalAdvance)}*\n\n` +
-      `Thank you for choosing Patidar Travels!`
+      `Thank you for choosing ${companyName}!`
     );
 
     const phone = booking.customer_phone.replace(/\D/g, '');
@@ -176,7 +183,7 @@ export default function BookingInvoice() {
       (sum, v) => sum + (v.advance_amount || 0), 0
     ) || 0;
 
-    const subject = encodeURIComponent(`Invoice - ${invoice?.invoice_no || booking.booking_ref} | Patidar Travels`);
+    const subject = encodeURIComponent(`Invoice - ${invoice?.invoice_no || booking.booking_ref} | ${companyName}`);
     const body = encodeURIComponent(
       `Dear ${booking.customer_name},\n\n` +
       `Please find your invoice details below:\n\n` +
@@ -186,8 +193,8 @@ export default function BookingInvoice() {
       `Total Amount: ${formatCurrency(totalAmount)}\n` +
       `Advance Paid: ${formatCurrency(totalAdvance)}\n` +
       `Amount Due: ${formatCurrency(totalAmount - totalAdvance)}\n\n` +
-      `Thank you for choosing Patidar Travels!\n\n` +
-      `Best regards,\nPatidar Travels Team`
+      `Thank you for choosing ${companyName}!\n\n` +
+      `Best regards,\n${companyName} Team`
     );
 
     window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
@@ -288,7 +295,7 @@ export default function BookingInvoice() {
                 .map(vehicle => (
                   <div key={vehicle.id} className="flex items-center gap-4">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium">{vehicle.car?.vehicle_number}</p>
+                      <p className="font-medium">{vehicle.car ? formatCarLabel(vehicle.car) : 'Unknown'}</p>
                       <p className="text-xs text-muted-foreground">
                         Estimated: {vehicle.estimated_km || 0} km
                         {vehicle.final_km ? ` | Recorded: ${vehicle.final_km} km` : ''}
@@ -318,7 +325,7 @@ export default function BookingInvoice() {
         <CardContent className="p-8" ref={invoiceRef}>
           {/* Invoice Header */}
           <div className="flex justify-between items-start mb-8">
-            <img src={patidarLogo} alt="Patidar Travels" className="h-14 w-auto object-contain" />
+            <img src={logoUrl} alt={companyName} className="h-14 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }} />
             <div className="text-right">
               <h3 className="text-xl font-semibold">INVOICE</h3>
               {invoice ? (
@@ -377,8 +384,7 @@ export default function BookingInvoice() {
                 {booking.booking_vehicles?.map((vehicle) => (
                   <tr key={vehicle.id} className="border-b border-dashed">
                     <td className="py-3">
-                      <p className="font-medium">{vehicle.car?.vehicle_number || 'Unknown'}</p>
-                      <p className="text-xs text-muted-foreground">{vehicle.car?.model}</p>
+                      <p className="font-medium">{vehicle.car ? formatCarLabel(vehicle.car) : 'Unknown'}</p>
                       {vehicle.driver_name && (
                         <p className="text-xs text-muted-foreground">Driver: {vehicle.driver_name}</p>
                       )}
@@ -444,7 +450,7 @@ export default function BookingInvoice() {
                 <div className="p-4 bg-white rounded-lg border">
                   <QRCodeSVG
                     id="invoice-qr"
-                    value={`PATIDAR|INV:${invoice.invoice_no}|BOOKING:${booking.booking_ref}|AMOUNT:${totalAmount - totalAdvance}|PHONE:${booking.customer_phone}`}
+                    value={`${qrPrefix}|INV:${invoice.invoice_no}|BOOKING:${booking.booking_ref}|AMOUNT:${totalAmount - totalAdvance}|PHONE:${booking.customer_phone}`}
                     size={100}
                     level="M"
                     includeMargin={false}
@@ -458,7 +464,7 @@ export default function BookingInvoice() {
 
           {/* Footer */}
           <div className="text-center text-xs text-muted-foreground space-y-1">
-            <p>Thank you for choosing Patidar Travels!</p>
+            <p>Thank you for choosing {companyName}!</p>
             {invoice?.created_by_profile && (
               <p>Invoice generated by: {invoice.created_by_profile.name}</p>
             )}

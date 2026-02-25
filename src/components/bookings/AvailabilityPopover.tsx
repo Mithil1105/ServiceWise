@@ -1,6 +1,7 @@
 import { useAvailableCars } from '@/hooks/use-bookings';
 import { Car, Check, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { formatCarLabel } from '@/lib/utils';
 
 interface AvailabilityPopoverProps {
   startAt: Date;
@@ -37,8 +38,7 @@ export function AvailabilityPopover({ startAt, endAt, onCheckAvailability }: Ava
           {displayCars.map((car) => (
             <div key={car.car_id} className="flex items-center gap-2 text-sm">
               <Check className="h-3 w-3 text-success" />
-              <span>{car.vehicle_number}</span>
-              <span className="text-muted-foreground text-xs">({car.model})</span>
+              <span>{formatCarLabel({ vehicle_number: car.vehicle_number, model: car.model })}</span>
             </div>
           ))}
           {availableCars.length > 5 && (

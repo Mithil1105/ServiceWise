@@ -41,6 +41,7 @@ import {
 } from '@/hooks/use-car-assignments';
 import { useSupervisorActivityLogs } from '@/hooks/use-supervisor-activity';
 import { format } from 'date-fns';
+import { formatCarLabel } from '@/lib/utils';
 
 export default function Supervisors() {
   const { isAdmin, isManager } = useAuth();
@@ -235,8 +236,7 @@ export default function Supervisors() {
                           onCheckedChange={() => handleToggleCar(car.id)}
                         />
                         <div className="flex-1">
-                          <span className="font-medium">{car.vehicle_number}</span>
-                          <span className="text-muted-foreground ml-2">{car.model}</span>
+                          <span className="font-medium">{formatCarLabel(car)}</span>
                         </div>
                       </div>
                     ))}
@@ -323,8 +323,7 @@ export default function Supervisors() {
                                 className="flex items-center justify-between text-sm p-2 bg-muted rounded"
                               >
                                 <div>
-                                  <span className="font-medium">{a.cars.vehicle_number}</span>
-                                  <span className="text-muted-foreground ml-2">{a.cars.model}</span>
+                                  <span className="font-medium">{formatCarLabel(a.cars)}</span>
                                 </div>
                                 {isAdmin && (
                                   <Button
@@ -374,10 +373,7 @@ export default function Supervisors() {
                     {allAssignments.map((a) => (
                       <TableRow key={a.id}>
                         <TableCell>
-                          <div>
-                            <span className="font-medium">{a.cars.vehicle_number}</span>
-                            <span className="text-muted-foreground ml-2">{a.cars.model}</span>
-                          </div>
+                          <span className="font-medium">{formatCarLabel(a.cars)}</span>
                         </TableCell>
                         <TableCell>{a.supervisor?.name || 'Unknown'}</TableCell>
                         <TableCell>{format(new Date(a.assigned_at), 'dd MMM yyyy')}</TableCell>

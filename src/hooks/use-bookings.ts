@@ -84,7 +84,7 @@ export function useBookings() {
           *,
           booking_vehicles(
             *,
-            cars(id, vehicle_number, model, seats)
+            cars(id, vehicle_number, model, seats, vehicle_class)
           )
         `)
         .order('start_at', { ascending: false });
@@ -157,7 +157,7 @@ export function useBooking(id: string | undefined) {
           *,
           booking_vehicles(
             *,
-            cars(id, vehicle_number, model, seats)
+            cars(id, vehicle_number, model, seats, vehicle_class)
           )
         `)
         .eq('id', id)
@@ -219,7 +219,7 @@ export function useBookingsForCalendar(startDate: Date, endDate: Date) {
           *,
           booking_vehicles(
             *,
-            cars(id, vehicle_number, model, seats)
+            cars(id, vehicle_number, model, seats, vehicle_class)
           )
         `)
         .gte('end_at', startDate.toISOString())
@@ -292,19 +292,22 @@ export function useCreateBooking() {
       advance_collected_by?: string | null;
       advance_account_type?: 'company' | 'personal' | null;
       advance_account_id?: string | null;
+      custom_attributes?: Record<string, string | number | boolean | null>;
     }) => {
       const orgId = profile?.organization_id;
       if (!orgId) throw new Error('Organization not found');
       const { data: session } = await supabase.auth.getSession();
       const userId = session.session?.user?.id;
 
+      const { custom_attributes, ...rest } = data;
       const { data: booking, error } = await supabase
         .from('bookings')
         .insert({
-          ...data,
+          ...rest,
           organization_id: orgId,
           created_by: userId,
           updated_by: userId,
+          custom_attributes: custom_attributes ?? null,
         })
         .select()
         .single();
@@ -592,10 +595,14 @@ export function useGenerateInvoice() {
         return invoice as Invoice;
       }
 
-      // Create new invoice
+      // Create new invoice (organization_id required for tenant isolation)
+      const orgId = (booking as { organization_id?: string })?.organization_id;
+      if (!orgId) throw new Error('Booking has no organization');
+
       const { data: invoice, error } = await supabase
         .from('invoices')
         .insert({
+          organization_id: orgId,
           booking_id: bookingId,
           amount_total: amountTotal,
           advance_amount: advanceAmount,

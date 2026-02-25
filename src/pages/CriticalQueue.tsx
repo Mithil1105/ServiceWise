@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/table';
 import { AlertTriangle, Wrench, Loader2, Calendar, Filter } from 'lucide-react';
 import { format, addDays, isBefore, isAfter, parseISO } from 'date-fns';
+import { formatCarLabel } from '@/lib/utils';
 
 // Estimated daily km for projecting service dates
 const ESTIMATED_DAILY_KM = 150;
@@ -122,7 +123,7 @@ export default function CriticalQueue() {
                   to={`/app/fleet/${item.car_id}`}
                   className="font-medium text-accent hover:underline"
                 >
-                  {item.vehicle_number}
+                  {formatCarLabel(item)}
                 </Link>
               </TableCell>
               <TableCell className="font-medium">{item.service_name}</TableCell>

@@ -141,6 +141,8 @@ export interface Bill {
   threshold_note: string | null;
   pdf_file_path: string | null;
   pdf_file_name: string | null;
+  /** Per-bill custom field values (key -> value) for billing layout custom blocks */
+  custom_attributes?: Record<string, string | number | boolean | null> | null;
   created_by: string | null;
   sent_at: string | null;
   paid_at: string | null;
@@ -185,11 +187,18 @@ export interface Bill {
   km_calculation_method: 'odometer' | 'manual';
   vehicle_details: VehicleBillDetail[];
   total_amount: number;
+  total_driver_allowance?: number;
   advance_amount: number;
   balance_amount: number;
+  /** Toll tax / toll charges (added to total). Label configurable in Settings → Billing. */
+  toll_charges?: number;
+  /** Parking charges (added to total). Label configurable in Settings → Billing. */
+  parking_charges?: number;
   threshold_note: string | null;
   pdf_file_path: string | null;
   pdf_file_name: string | null;
+  /** Per-bill custom field values (key -> value) for billing layout custom blocks */
+  custom_attributes?: Record<string, string | number | boolean | null> | null;
   created_by: string | null;
   sent_at: string | null;
   paid_at: string | null;
@@ -219,6 +228,8 @@ export interface AvailableCar {
   car_id: string;
   vehicle_number: string;
   model: string;
+  seats?: number;
+  vehicle_class?: 'lmv' | 'hmv';
   is_available: boolean;
   conflict_booking_ref: string | null;
   conflict_start: string | null;

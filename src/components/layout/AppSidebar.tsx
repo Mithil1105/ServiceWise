@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import {
@@ -18,6 +19,8 @@ import {
   Receipt,
   DollarSign,
   ShieldCheck,
+  PanelLeftClose,
+  PanelLeft,
 } from 'lucide-react';
 import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import { cn } from '@/lib/utils';
@@ -48,12 +51,19 @@ const adminItems = [
 
 interface AppSidebarProps {
   onNavigate?: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
-  const { profile, role, signOut, isAdmin, isManager, isSupervisor } = useAuth();
+export default function AppSidebar({ onNavigate, collapsed = false, onToggleCollapse }: AppSidebarProps = {}) {
+  const { profile, role, signOut, isAdmin, isManager, isSupervisor, organization } = useAuth();
   const { isMasterAdmin } = useIsMasterAdmin();
   const location = useLocation();
+  const [hoverExpanded, setHoverExpanded] = useState(false);
+
+  // When collapsed, hover temporarily shows full sidebar; leave collapses it again
+  const visuallyNarrow = collapsed && !hoverExpanded;
+  const showFullContent = !visuallyNarrow;
 
   // Filter nav items based on role - supervisors can't see bookings
   const filteredNavItems = navItems.filter((item) => {
@@ -69,22 +79,48 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
     }
   };
 
+  const logoUrl = organization?.logo_url || '/HERO.png';
+  const orgName = organization?.company_name || organization?.name || 'ServiceWise';
+
   return (
-    <aside className="h-full w-64 bg-sidebar flex flex-col border-r border-sidebar-border md:fixed md:left-0 md:top-0 md:h-screen min-h-0">
-      {/* Header with Logo */}
-      <div className="p-4 flex items-center gap-3 flex-shrink-0">
-        <img 
-          src="/SWlogo.png" 
-          alt="ServiceWise" 
-          className="h-10 w-auto object-contain flex-shrink-0"
-        />
-        <span className="text-lg font-semibold text-sidebar-foreground truncate">ServiceWise</span>
+    <aside
+      className={cn(
+        'h-full bg-sidebar flex flex-col border-r border-sidebar-border md:fixed md:left-0 md:top-0 md:h-screen min-h-0 md:z-40 transition-[width] duration-200 ease-in-out',
+        visuallyNarrow ? 'w-16' : 'w-64'
+      )}
+      onMouseEnter={() => collapsed && setHoverExpanded(true)}
+      onMouseLeave={() => collapsed && setHoverExpanded(false)}
+    >
+      {/* Header with Logo + Toggle */}
+      <div className={cn('flex items-center flex-shrink-0', visuallyNarrow ? 'p-2 justify-center' : 'p-4 gap-3')}>
+        {onToggleCollapse && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleCollapse}
+            className="flex-shrink-0 text-sidebar-foreground hover:bg-sidebar-accent/50"
+            aria-label={collapsed ? 'Open sidebar' : 'Close sidebar'}
+          >
+            {visuallyNarrow ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+          </Button>
+        )}
+        {showFullContent && (
+          <>
+            <img
+              src={logoUrl}
+              alt={orgName}
+              className="h-10 w-auto object-contain flex-shrink-0"
+              onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }}
+            />
+            <span className="text-lg font-semibold text-sidebar-foreground truncate">{orgName}</span>
+          </>
+        )}
       </div>
 
       <Separator className="bg-sidebar-border flex-shrink-0" />
 
       {/* Navigation - scrollable when content overflows */}
-      <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
+      <nav className={cn('flex-1 min-h-0 space-y-1 overflow-y-auto overflow-x-hidden', visuallyNarrow ? 'p-2' : 'p-3')}>
         {filteredNavItems.map((item) => {
           const isActive = location.pathname === item.href ||
             (item.href !== '/app' && location.pathname.startsWith(item.href + '/'));
@@ -94,19 +130,25 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
               key={item.href}
               to={item.href}
               onClick={handleNavClick}
+              title={visuallyNarrow ? item.title : undefined}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                'flex items-center rounded-lg text-sm font-medium transition-all',
+                visuallyNarrow ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5',
                 isActive
                   ? 'bg-sidebar-accent text-sidebar-primary'
                   : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
               )}
             >
               <item.icon className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">{item.title}</span>
-              {item.href === '/app/critical' && (
-                <Badge variant="error" className="ml-auto text-[10px] px-1.5 py-0 flex-shrink-0">
-                  !
-                </Badge>
+              {showFullContent && (
+                <>
+                  <span className="truncate">{item.title}</span>
+                  {item.href === '/app/critical' && (
+                    <Badge variant="error" className="ml-auto text-[10px] px-1.5 py-0 flex-shrink-0">
+                      !
+                    </Badge>
+                  )}
+                </>
               )}
             </NavLink>
           );
@@ -114,33 +156,39 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
 
         {isMasterAdmin && (
           <>
-            <div className="pt-4 pb-2">
-              <p className="px-3 text-xs font-medium text-sidebar-foreground/40 uppercase tracking-wider">
-                Admin
-              </p>
-            </div>
+            {showFullContent && (
+              <div className="pt-4 pb-2">
+                <p className="px-3 text-xs font-medium text-sidebar-foreground/40 uppercase tracking-wider">
+                  Admin
+                </p>
+              </div>
+            )}
             <NavLink
               to="/admin"
               onClick={handleNavClick}
+              title={visuallyNarrow ? 'Admin' : undefined}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                'flex items-center rounded-lg text-sm font-medium transition-all',
+                visuallyNarrow ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5',
                 location.pathname.startsWith('/admin')
                   ? 'bg-sidebar-accent text-sidebar-primary'
                   : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
               )}
             >
               <ShieldCheck className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">Admin</span>
+              {showFullContent && <span className="truncate">Admin</span>}
             </NavLink>
           </>
         )}
         {(isAdmin || isManager) && (
           <>
-            <div className="pt-4 pb-2">
-              <p className="px-3 text-xs font-medium text-sidebar-foreground/40 uppercase tracking-wider">
-                Admin
-              </p>
-            </div>
+            {showFullContent && (
+              <div className="pt-4 pb-2">
+                <p className="px-3 text-xs font-medium text-sidebar-foreground/40 uppercase tracking-wider">
+                  Admin
+                </p>
+              </div>
+            )}
             {adminItems.map((item) => {
               const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + '/');
               
@@ -149,15 +197,17 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
                   key={item.href}
                   to={item.href}
                   onClick={handleNavClick}
+                  title={visuallyNarrow ? item.title : undefined}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                    'flex items-center rounded-lg text-sm font-medium transition-all',
+                    visuallyNarrow ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5',
                     isActive
                       ? 'bg-sidebar-accent text-sidebar-primary'
                       : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
                   )}
                 >
                   <item.icon className="h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">{item.title}</span>
+                  {showFullContent && <span className="truncate">{item.title}</span>}
                 </NavLink>
               );
             })}
@@ -168,33 +218,39 @@ export default function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
       <Separator className="bg-sidebar-border flex-shrink-0" />
 
       {/* User Info */}
-      <div className="p-3 flex-shrink-0">
-        <div className="flex items-center gap-3 px-3 py-2">
-          <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center">
+      <div className={cn('flex-shrink-0', visuallyNarrow ? 'p-2' : 'p-3')}>
+        <div className={cn('flex items-center py-2', visuallyNarrow ? 'justify-center px-0' : 'gap-3 px-3')}>
+          <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center flex-shrink-0">
             <span className="text-sm font-medium text-sidebar-foreground">
               {profile?.name?.charAt(0)?.toUpperCase() || 'U'}
             </span>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">
-              {profile?.name || 'User'}
-            </p>
-            <Badge 
-              variant={role === 'admin' ? 'accent' : 'muted'} 
-              className="text-[10px] mt-0.5"
-            >
-              {role?.toUpperCase() || 'NO ROLE'}
-            </Badge>
-          </div>
+          {showFullContent && (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-sidebar-foreground truncate">
+                {profile?.name || 'User'}
+              </p>
+              <Badge 
+                variant={role === 'admin' ? 'accent' : 'muted'} 
+                className="text-[10px] mt-0.5"
+              >
+                {role?.toUpperCase() || 'NO ROLE'}
+              </Badge>
+            </div>
+          )}
         </div>
         <Button
           variant="ghost"
-          size="sm"
+          size={visuallyNarrow ? 'icon' : 'sm'}
           onClick={signOut}
-          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 mt-1"
+          title={visuallyNarrow ? 'Log out' : undefined}
+          className={cn(
+            'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 mt-1',
+            visuallyNarrow ? 'w-full flex justify-center' : 'w-full justify-start'
+          )}
         >
-          <LogOut className="h-4 w-4 mr-2" />
-          Log out
+          <LogOut className="h-4 w-4" />
+          {showFullContent && <span className="ml-2">Log out</span>}
         </Button>
       </div>
     </aside>

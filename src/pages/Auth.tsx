@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { setNoIndexMeta } from '@/lib/marketing-seo';
+import { getCachedOrg, getMostRecentOrg } from '@/lib/organizationCache';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,6 +53,11 @@ export default function Auth() {
   useEffect(() => {
     setNoIndexMeta('Sign in');
   }, []);
+
+  const authOrg = useMemo(() => {
+    if (loginEmail.trim()) return getCachedOrg(loginEmail) ?? getMostRecentOrg();
+    return getMostRecentOrg();
+  }, [loginEmail]);
 
   useEffect(() => {
     if (!loading && user) {
@@ -178,8 +184,15 @@ export default function Auth() {
           </Button>
         </div>
         <div className="text-center mb-8">
-          <img src="/SWlogo.png" alt="ServiceWise" className="h-16 w-auto mx-auto mb-4 object-contain" />
-          <h1 className="text-3xl font-bold text-foreground">ServiceWise</h1>
+          <img
+            src={authOrg?.logo_url || '/HERO.png'}
+            alt={authOrg?.company_name || authOrg?.name || 'Logo'}
+            className="h-16 w-auto mx-auto mb-4 object-contain"
+            onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }}
+          />
+          <h1 className="text-3xl font-bold text-foreground">
+            {authOrg?.company_name || authOrg?.name || 'ServiceWise'}
+          </h1>
           <p className="text-muted-foreground mt-2">Fleet Management System</p>
         </div>
 

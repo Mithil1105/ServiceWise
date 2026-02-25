@@ -282,6 +282,8 @@ export function useCriticalServices() {
             criticalItems.push({
               car_id: car.id,
               vehicle_number: car.vehicle_number,
+              model: car.model,
+              brand: car.brand,
               service_name: rule.name,
               current_km: currentKm,
               due_km: dueKm,

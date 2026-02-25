@@ -50,6 +50,7 @@ import {
   User,
 } from 'lucide-react';
 import { formatDateTimeDMY, toLocalDateTimeInputValue } from '@/lib/date';
+import { formatCarLabel } from '@/lib/utils';
 import type { Incident } from '@/types';
 
 const INCIDENT_TYPES = [
@@ -451,7 +452,7 @@ export default function Incidents() {
                         to={`/app/fleet/${incident.car_id}`}
                         className="font-medium hover:text-primary"
                       >
-                        {incident.cars?.vehicle_number}
+                        {incident.cars ? formatCarLabel(incident.cars) : 'Unknown'}
                       </Link>
                     </TableCell>
                     <TableCell>

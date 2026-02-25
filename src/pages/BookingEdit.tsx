@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Car, Check, X, Plus, Trash2, Loader2, AlertTriangle, History } from 'lucide-react';
 import { useBooking, useUpdateBooking, useAvailableCars, useAssignVehicle, useRemoveVehicle } from '@/hooks/use-bookings';
 import { BookingStatusBadge } from '@/components/bookings/BookingStatusBadge';
+import { DriverAutocomplete } from '@/components/bookings/DriverAutocomplete';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { TRIP_TYPE_LABELS, RATE_TYPE_LABELS, BOOKING_STATUS_LABELS, type TripType, type RateType, type BookingStatus } from '@/types/booking';
@@ -24,6 +25,7 @@ interface VehicleAssignment {
   car_id: string;
   vehicle_number: string;
   model: string;
+  vehicle_class?: 'lmv' | 'hmv';
   driver_name: string;
   driver_phone: string;
   requested_vehicle_id?: string | null; // Link to requested vehicle
@@ -102,6 +104,7 @@ export default function BookingEdit() {
         car_id: v.car_id,
         vehicle_number: v.car?.vehicle_number || 'Unknown',
         model: v.car?.model || '',
+        vehicle_class: (v.car as { vehicle_class?: 'lmv' | 'hmv' })?.vehicle_class ?? 'lmv',
         driver_name: v.driver_name || '',
         driver_phone: v.driver_phone || '',
         requested_vehicle_id: (v as any).requested_vehicle_id || null,
@@ -197,6 +200,7 @@ export default function BookingEdit() {
       car_id: car.car_id,
       vehicle_number: car.vehicle_number,
       model: car.model,
+      vehicle_class: car.vehicle_class ?? 'lmv',
       driver_name: '',
       driver_phone: '',
       ...rateData,
@@ -698,28 +702,13 @@ export default function BookingEdit() {
                 )}
 
                 {/* Only show driver fields - rates are auto-filled from requested vehicle */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Driver Name *</Label>
-                    <Input 
-                      value={vehicle.driver_name} 
-                      onChange={e => updateVehicle(vehicle.car_id, 'driver_name', e.target.value)} 
-                      placeholder="Enter driver name" 
-                      className="h-8 text-sm" 
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Driver Phone *</Label>
-                    <Input 
-                      value={vehicle.driver_phone} 
-                      onChange={e => updateVehicle(vehicle.car_id, 'driver_phone', e.target.value)} 
-                      placeholder="Enter driver phone" 
-                      className="h-8 text-sm" 
-                      required
-                    />
-                  </div>
-                </div>
+                <DriverAutocomplete
+                  driverName={vehicle.driver_name}
+                  driverPhone={vehicle.driver_phone}
+                  onNameChange={(name) => updateVehicle(vehicle.car_id, 'driver_name', name)}
+                  onPhoneChange={(phone) => updateVehicle(vehicle.car_id, 'driver_phone', phone)}
+                  vehicleClass={vehicle.vehicle_class}
+                />
               </div>
             );
           })}

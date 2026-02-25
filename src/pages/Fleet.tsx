@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useCarsWithStatus } from '@/hooks/use-cars';
+import { useCarsWithStatus, useUpdateCar } from '@/hooks/use-cars';
 import { useCarsInDowntime } from '@/hooks/use-downtime';
-import { useCarUtilization, useHighMaintenanceData } from '@/hooks/use-dashboard';
+import { useCarUtilization, useHighMaintenanceData, useCarBookingDays } from '@/hooks/use-dashboard';
 import { useSupervisorAssignments } from '@/hooks/use-car-assignments';
 import { useAuth } from '@/lib/auth-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,7 +36,10 @@ import {
   TrendingUp,
   TrendingDown,
   HelpCircle,
+  UserCheck,
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { formatCarLabel } from '@/lib/utils';
 
 // Component to show high maintenance badge with tooltip
 function HighMaintenanceBadge({ carId }: { carId: string }) {
@@ -75,8 +78,10 @@ export default function Fleet() {
 
   const { user, isSupervisor, isAdmin, isManager } = useAuth();
   const { data: cars, isLoading } = useCarsWithStatus();
+  const updateCar = useUpdateCar();
   const { data: carsInDowntime } = useCarsInDowntime();
   const { data: utilization } = useCarUtilization();
+  const { data: carBookingDays } = useCarBookingDays();
   const { data: supervisorAssignments } = useSupervisorAssignments(isSupervisor ? user?.id : undefined);
 
   // Create a set of car IDs that are in downtime
@@ -85,6 +90,11 @@ export default function Fleet() {
   // Create a map of car utilization
   const utilizationMap = new Map(
     utilization?.map((u) => [u.car_id, u]) || []
+  );
+
+  // Total booking days per car (only for cars not on permanent assignment)
+  const bookingDaysMap = new Map(
+    carBookingDays?.map((d) => [d.car_id, d.total_booking_days]) || []
   );
 
   // For supervisors, filter cars to only assigned ones
@@ -272,9 +282,12 @@ export default function Fleet() {
                   <TableRow>
                     <TableHead>Vehicle</TableHead>
                     <TableHead>Model</TableHead>
+                    <TableHead>Class</TableHead>
                     <TableHead>Fuel</TableHead>
                     <TableHead>Current KM</TableHead>
                     <TableHead>Service Status</TableHead>
+                    <TableHead>On assignment</TableHead>
+                    <TableHead>Days on road</TableHead>
                     <TableHead>Utilization</TableHead>
                     <TableHead>Flags</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -285,7 +298,7 @@ export default function Fleet() {
                     <TableRow key={car.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          {car.vehicle_number}
+                          {formatCarLabel(car)}
                           {downtimeCarIds.has(car.id) && (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -306,6 +319,11 @@ export default function Fleet() {
                             <p className="text-xs text-muted-foreground">{car.year}</p>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-normal">
+                          {car.vehicle_class === 'hmv' ? 'HMV' : 'LMV'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         {car.fuel_type && (
@@ -336,6 +354,50 @@ export default function Fleet() {
                             </span>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          {(isAdmin || isManager) ? (
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={!!car.on_permanent_assignment}
+                                onCheckedChange={(checked) =>
+                                  updateCar.mutate({
+                                    id: car.id,
+                                    on_permanent_assignment: checked,
+                                    ...(checked ? {} : { permanent_assignment_note: null }),
+                                  })
+                                }
+                                disabled={updateCar.isPending}
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {car.on_permanent_assignment ? 'Yes' : 'No'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-sm">{car.on_permanent_assignment ? 'Yes' : 'No'}</span>
+                          )}
+                          {car.on_permanent_assignment && car.permanent_assignment_note && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-muted-foreground truncate max-w-[120px] block">
+                                  {car.permanent_assignment_note}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="font-medium">Assigned to</p>
+                                <p>{car.permanent_assignment_note}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {car.on_permanent_assignment ? (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        ) : (
+                          <span className="font-medium">{bookingDaysMap.get(car.id) ?? 0} days</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {getUtilizationBadge(car.id)}

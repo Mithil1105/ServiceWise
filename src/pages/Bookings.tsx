@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatDateOnly, formatTime12hr, formatDateTimeFull } from '@/lib/date';
+import { formatCarLabel } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -252,7 +253,7 @@ export default function Bookings() {
                             <Car className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm">
                               {booking.booking_vehicles.length === 1 
-                                ? booking.booking_vehicles[0].car?.vehicle_number 
+                                ? (booking.booking_vehicles[0].car ? formatCarLabel(booking.booking_vehicles[0].car) : 'Unknown')
                                 : `${booking.booking_vehicles.length} vehicles`}
                             </span>
                           </div>

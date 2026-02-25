@@ -1,5 +1,13 @@
 export type AppRole = 'admin' | 'manager' | 'supervisor';
 
+export interface Organization {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  company_name: string | null;
+  join_code?: string;
+}
+
 export interface Profile {
   id: string;
   name: string;
@@ -26,10 +34,17 @@ export interface Car {
   fuel_type?: string;
   seats?: number;
   vehicle_type?: 'private' | 'commercial';
+  vehicle_class?: 'lmv' | 'hmv';
   owner_name?: string;
   status: 'active' | 'inactive';
   vin_chassis?: string;
   notes?: string;
+  /** When true, vehicle is excluded from booking assignment and check availability */
+  on_permanent_assignment?: boolean;
+  /** Optional: who or what this vehicle is assigned to (e.g. driver name, CEO car) */
+  permanent_assignment_note?: string | null;
+  /** Org-defined custom field values (from fleet_new_car_form_config.customFields) */
+  custom_attributes?: Record<string, string | number | boolean | null>;
   created_by?: string;
   created_at: string;
   updated_at: string;
@@ -105,6 +120,8 @@ export interface CarWithStatus extends Car {
 export interface CriticalServiceItem {
   car_id: string;
   vehicle_number: string;
+  model?: string | null;
+  brand?: string | null;
   service_name: string;
   current_km: number;
   due_km: number;
@@ -221,4 +238,10 @@ export interface HighMaintenanceData {
   downtime_days_90d: number;
   incidents_180d: number;
   isHighMaintenance: boolean;
+}
+
+// Total booking days per car (for fleet overview; only non–permanently-assigned cars)
+export interface CarBookingDays {
+  car_id: string;
+  total_booking_days: number;
 }

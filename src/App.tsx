@@ -30,6 +30,7 @@ import BookingInvoice from "./pages/BookingInvoice";
 import BookingHistory from "./pages/BookingHistory";
 import Bills from "./pages/Bills";
 import BillingManagement from "./pages/BillingManagement";
+import BillViewPage from "./pages/BillViewPage";
 import Drivers from "./pages/Drivers";
 import Supervisors from "./pages/Supervisors";
 import NotFound from "./pages/NotFound";
@@ -114,6 +115,7 @@ const App = () => (
               <Route path="bookings/:id/bills" element={<Bills />} />
               <Route path="bookings/:id/history" element={<BookingHistory />} />
               <Route path="billing" element={<BillingManagement />} />
+              <Route path="billing/bill/:billId" element={<BillViewPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

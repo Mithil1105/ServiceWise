@@ -163,6 +163,9 @@ export function useGenerateBill() {
       kmMethod,
       startDate,
       endDate,
+      custom_attributes,
+      toll_charges = 0,
+      parking_charges = 0,
     }: {
       booking: BookingWithDetails;
       startOdometer?: number;
@@ -171,10 +174,20 @@ export function useGenerateBill() {
       kmMethod: 'odometer' | 'manual';
       startDate?: string;
       endDate?: string;
+      custom_attributes?: Record<string, string | number | boolean | null>;
+      toll_charges?: number;
+      parking_charges?: number;
     }) => {
       const orgId = profile?.organization_id;
       if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
+
+      const { data: orgSettings } = await supabase
+        .from('organization_settings')
+        .select('bill_number_prefix')
+        .eq('organization_id', orgId)
+        .maybeSingle();
+      const prefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
       // Use provided dates or fall back to booking dates
       const billStartDate = startDate ? new Date(isoAtNoonUtcFromDateInput(startDate)) : new Date(booking.start_at);
@@ -381,25 +394,30 @@ export function useGenerateBill() {
         }
       }
 
-      // Balance = total amount - advance (driver allowance is paid directly to driver, not included in balance)
-      const balanceAmount = totalAmount - bookingAdvance;
+      const tollAmount = Number(toll_charges) || 0;
+      const parkingAmount = Number(parking_charges) || 0;
+      const totalWithExtra = totalAmount + tollAmount + parkingAmount;
+      // Balance = total - driver allowance (paid to driver by customer) - advance
+      const balanceAmount = totalWithExtra - totalDriverAllowance - bookingAdvance;
 
-      // Generate bill number
+      // Generate bill number (per-org prefix from organization_settings)
       const year = new Date().getFullYear();
+      const billPrefix = `${prefix}-BILL`;
       const { data: lastBill } = await supabase
         .from('bills')
         .select('bill_number')
-        .like('bill_number', `PT-BILL-${year}-%`)
+        .eq('organization_id', orgId)
+        .like('bill_number', `${billPrefix}-${year}-%`)
         .order('bill_number', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       let billNumber = '';
       if (lastBill?.bill_number) {
         const lastNum = parseInt(lastBill.bill_number.split('-').pop() || '0');
-        billNumber = `PT-BILL-${year}-${String(lastNum + 1).padStart(6, '0')}`;
+        billNumber = `${billPrefix}-${year}-${String(lastNum + 1).padStart(6, '0')}`;
       } else {
-        billNumber = `PT-BILL-${year}-000001`;
+        billNumber = `${billPrefix}-${year}-000001`;
       }
 
       // Create bill record (as 'draft', but PDF won't show draft badge)
@@ -421,11 +439,14 @@ export function useGenerateBill() {
           total_km_driven: totalKm,
           km_calculation_method: (rateType === 'per_km' || rateType === 'hybrid') ? kmMethod : 'manual',
           vehicle_details: vehicleDetails,
-          total_amount: totalAmount,
+          total_amount: totalWithExtra,
           total_driver_allowance: totalDriverAllowance,
           advance_amount: bookingAdvance,
           balance_amount: balanceAmount,
+          toll_charges: tollAmount,
+          parking_charges: parkingAmount,
           threshold_note: combinedThresholdNote,
+          custom_attributes: custom_attributes && Object.keys(custom_attributes).length > 0 ? custom_attributes : null,
           created_by: user?.id,
         })
         .select()
@@ -471,22 +492,24 @@ export function useGenerateBill() {
 
       // Automatically create company bill
       try {
-        // Generate company bill number
+        // Generate company bill number (same prefix + -CB-)
         const year = new Date().getFullYear();
+        const cbPrefix = `${prefix}-CB`;
         const { data: lastCompanyBill } = await supabase
           .from('company_bills')
           .select('bill_number')
-          .like('bill_number', `PT-CB-${year}-%`)
+          .eq('organization_id', orgId)
+          .like('bill_number', `${cbPrefix}-${year}-%`)
           .order('bill_number', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         let companyBillNumber = '';
         if (lastCompanyBill?.bill_number) {
           const lastNum = parseInt(lastCompanyBill.bill_number.split('-').pop() || '0');
-          companyBillNumber = `PT-CB-${year}-${String(lastNum + 1).padStart(6, '0')}`;
+          companyBillNumber = `${cbPrefix}-${year}-${String(lastNum + 1).padStart(6, '0')}`;
         } else {
-          companyBillNumber = `PT-CB-${year}-000001`;
+          companyBillNumber = `${cbPrefix}-${year}-000001`;
         }
 
         // Determine transfer requirements
@@ -533,6 +556,7 @@ export function useGenerateBill() {
             transfer_requirements: transferRequirements,
             internal_notes: null,
             threshold_note: combinedThresholdNote,
+            custom_attributes: custom_attributes && Object.keys(custom_attributes).length > 0 ? custom_attributes : null,
             created_by: user?.id,
           })
           .select()

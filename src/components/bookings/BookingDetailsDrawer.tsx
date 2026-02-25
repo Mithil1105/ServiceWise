@@ -1,4 +1,5 @@
 import { formatDateTimeFull, formatDateOnly } from '@/lib/date';
+import { formatCarLabel } from '@/lib/utils';
 import { 
   Sheet, 
   SheetContent, 
@@ -70,7 +71,7 @@ export function BookingDetailsDrawer({
       
       const { data, error } = await supabase
         .from('incidents')
-        .select('*, car:cars(vehicle_number)')
+        .select('*, car:cars(vehicle_number, model, brand)')
         .in('car_id', carIds)
         .gte('incident_at', booking.start_at)
         .lte('incident_at', booking.end_at);
@@ -259,7 +260,7 @@ export function BookingDetailsDrawer({
                       <div className="flex items-center gap-2">
                         <Car className="h-4 w-4 text-muted-foreground" />
                         <span className="font-medium">
-                          {vehicle.car?.vehicle_number || 'Unknown'}
+                          {vehicle.car ? formatCarLabel(vehicle.car) : 'Unknown'}
                         </span>
                         {(vehicle.car as any)?.seats && (
                           <span className="inline-flex items-center gap-0.5 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
@@ -271,9 +272,6 @@ export function BookingDetailsDrawer({
                         {formatCurrency(vehicle.computed_total || vehicle.rate_total)}
                       </span>
                     </div>
-                    {vehicle.car?.model && (
-                      <p className="text-xs text-muted-foreground">{vehicle.car.model}</p>
-                    )}
                     <div className="text-xs text-muted-foreground space-y-1">
                       <p>Rate: {RATE_TYPE_LABELS[vehicle.rate_type]}</p>
                       {vehicle.driver_name && <p>Driver: {vehicle.driver_name}</p>}
@@ -314,7 +312,7 @@ export function BookingDetailsDrawer({
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {(incident.car as any)?.vehicle_number} • {formatDateOnly(incident.incident_at)}
+                        {(incident.car as any) ? formatCarLabel(incident.car as any) : 'Unknown'} • {formatDateOnly(incident.incident_at)}
                       </p>
                       {incident.description && (
                         <p className="text-xs mt-1">{incident.description}</p>

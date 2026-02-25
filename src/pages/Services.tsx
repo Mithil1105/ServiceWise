@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table';
 import { Wrench, Plus, Search, Loader2, Download } from 'lucide-react';
 import { formatDateDMY } from '@/lib/date';
+import { formatCarLabel } from '@/lib/utils';
 
 export default function Services() {
   const [search, setSearch] = useState('');
@@ -41,7 +42,7 @@ export default function Services() {
     { value: 'all', label: 'All Vehicles' },
     ...(cars?.map((car) => ({
       value: car.id,
-      label: car.vehicle_number,
+      label: formatCarLabel(car),
     })) || []),
   ];
 
@@ -153,7 +154,7 @@ export default function Services() {
                             to={`/app/fleet/${record.car_id}`}
                             className="font-medium text-accent hover:underline"
                           >
-                            {car?.vehicle_number || 'Unknown'}
+                            {car ? formatCarLabel(car) : 'Unknown'}
                           </Link>
                         </TableCell>
                         <TableCell className="font-medium">

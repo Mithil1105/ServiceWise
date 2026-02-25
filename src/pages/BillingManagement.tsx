@@ -41,7 +41,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import patidarLogo from '@/assets/patidar-logo.jpg';
+import { useAuth } from '@/lib/auth-context';
+import { formatCarLabel } from '@/lib/utils';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const BILL_STATUS_LABELS: Record<Bill['status'], { label: string; color: string }> = {
@@ -53,6 +55,8 @@ const BILL_STATUS_LABELS: Record<Bill['status'], { label: string; color: string 
 export default function BillingManagement() {
   const navigate = useNavigate();
   const billRef = useRef<HTMLDivElement>(null);
+  const { organization } = useAuth();
+  const { data: orgSettings } = useOrganizationSettings();
   const { data: allBills, isLoading: loadingBills, refetch: refetchBills } = useAllBills();
   const { data: companyBills, refetch: refetchCompanyBills } = useCompanyBills();
   const { data: allBankAccounts } = useBankAccounts();
@@ -62,6 +66,9 @@ export default function BillingManagement() {
   const uploadPDF = useUploadBillPDF();
   const uploadCompanyPDF = useUploadCompanyBillPDF();
   const markReminderSent = useMarkReminderSent();
+  const companyName = organization?.company_name || organization?.name || 'Company';
+  const logoUrl = organization?.logo_url || '/HERO.png';
+  const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
   const [billTypeTab, setBillTypeTab] = useState<'customer' | 'company'>('customer');
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
@@ -149,45 +156,33 @@ export default function BillingManagement() {
     
     setGeneratingPdf(true);
     try {
-      const canvas = await html2canvas(billRef.current, {
+      const el = billRef.current;
+      const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
+        height: el.scrollHeight,
+        windowHeight: el.scrollHeight,
       });
       
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4'); // Portrait mode
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const pdf = new jsPDF('l', 'mm', 'a4'); // landscape
+      const pdfWidth = 297;
+      const pdfHeight = 210;
+      const imgWidthInMM = pdfWidth;
+      const imgHeightInMM = (canvas.height * pdfWidth) / canvas.width;
       
-      // Calculate image dimensions to fill page
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgWidthInMM = imgWidth * ratio;
-      const imgHeightInMM = imgHeight * ratio;
-      
-      // Center the image on the page
-      const xOffset = (pdfWidth - imgWidthInMM) / 2;
-      const yOffset = (pdfHeight - imgHeightInMM) / 2;
-      
-      pdf.addImage(imgData, 'PNG', xOffset, yOffset, imgWidthInMM, imgHeightInMM);
-      
-      // If content is taller than one page, add additional pages
-      let heightLeft = imgHeightInMM;
-      let position = yOffset;
-      
-      while (heightLeft > 0) {
-        position = heightLeft - pdfHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', xOffset, position, imgWidthInMM, imgHeightInMM);
-        heightLeft -= pdfHeight;
+      let yPos = 0;
+      let page = 0;
+      while (yPos < imgHeightInMM) {
+        if (page > 0) pdf.addPage('a4', 'l');
+        pdf.addImage(imgData, 'PNG', 0, -yPos, imgWidthInMM, imgHeightInMM);
+        yPos += pdfHeight;
+        page++;
       }
       
       const blob = pdf.output('blob');
-      
-      // Upload to storage
       const file = new File([blob], `${bill.bill_number}.pdf`, { type: 'application/pdf' });
       await uploadPDF.mutateAsync({ billId: bill.id, pdfFile: file });
       
@@ -229,42 +224,33 @@ export default function BillingManagement() {
     
     setGeneratingPdf(true);
     try {
-      const canvas = await html2canvas(billRef.current, {
+      const el = billRef.current;
+      const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
+        height: el.scrollHeight,
+        windowHeight: el.scrollHeight,
       });
       
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const pdf = new jsPDF('l', 'mm', 'a4');
+      const pdfWidth = 297;
+      const pdfHeight = 210;
+      const imgWidthInMM = pdfWidth;
+      const imgHeightInMM = (canvas.height * pdfWidth) / canvas.width;
       
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgWidthInMM = imgWidth * ratio;
-      const imgHeightInMM = imgHeight * ratio;
-      
-      const xOffset = (pdfWidth - imgWidthInMM) / 2;
-      const yOffset = (pdfHeight - imgHeightInMM) / 2;
-      
-      pdf.addImage(imgData, 'PNG', xOffset, yOffset, imgWidthInMM, imgHeightInMM);
-      
-      let heightLeft = imgHeightInMM;
-      let position = yOffset;
-      
-      while (heightLeft > 0) {
-        position = heightLeft - pdfHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', xOffset, position, imgWidthInMM, imgHeightInMM);
-        heightLeft -= pdfHeight;
+      let yPos = 0;
+      let page = 0;
+      while (yPos < imgHeightInMM) {
+        if (page > 0) pdf.addPage('a4', 'l');
+        pdf.addImage(imgData, 'PNG', 0, -yPos, imgWidthInMM, imgHeightInMM);
+        yPos += pdfHeight;
+        page++;
       }
       
       const blob = pdf.output('blob');
-      
-      // Upload to storage
       const file = new File([blob], `${companyBill.bill_number}.pdf`, { type: 'application/pdf' });
       await uploadCompanyPDF.mutateAsync({ billId: companyBill.id, pdfFile: file });
       
@@ -296,7 +282,7 @@ export default function BillingManagement() {
     }
     
     // Create message without emojis (use text alternatives)
-    const message = `*PATIDAR TRAVELS - Final Bill*\n\n` +
+    const message = `*${companyName} - Final Bill*\n\n` +
       `Bill: ${selectedBill.bill_number}\n` +
       `Booking: ${(selectedBill as any).bookings?.booking_ref || 'N/A'}\n` +
       `Customer: ${selectedBill.customer_name}\n` +
@@ -306,7 +292,7 @@ export default function BillingManagement() {
       `Total: ${formatCurrency(selectedBill.total_amount)}\n` +
       `Advance: ${formatCurrency(selectedBill.advance_amount)}\n` +
       `*Balance: ${formatCurrency(selectedBill.balance_amount)}*\n\n` +
-      `Thank you for choosing Patidar Travels!`;
+      `Thank you for choosing ${companyName}!`;
     
     const phone = selectedBill.customer_phone.replace(/\D/g, '');
     const whatsappPhone = phone.startsWith('91') ? phone : `91${phone}`;
@@ -436,40 +422,40 @@ export default function BillingManagement() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold">{stats.total}</p>
+      <div className="flex flex-wrap gap-4">
+        <Card className="min-w-[140px] flex-1 basis-[calc(50%-0.5rem)] sm:basis-[calc(33.333%-0.67rem)] lg:basis-[calc(16.666%-0.83rem)]">
+          <CardContent className="p-4 min-w-0">
+            <p className="text-xl sm:text-2xl font-bold">{stats.total}</p>
             <p className="text-sm text-muted-foreground">Total Bills</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold text-gray-600">{stats.draft}</p>
+        <Card className="min-w-[140px] flex-1 basis-[calc(50%-0.5rem)] sm:basis-[calc(33.333%-0.67rem)] lg:basis-[calc(16.666%-0.83rem)]">
+          <CardContent className="p-4 min-w-0">
+            <p className="text-xl sm:text-2xl font-bold text-gray-600">{stats.draft}</p>
             <p className="text-sm text-muted-foreground">Draft</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold text-blue-600">{stats.sent}</p>
+        <Card className="min-w-[140px] flex-1 basis-[calc(50%-0.5rem)] sm:basis-[calc(33.333%-0.67rem)] lg:basis-[calc(16.666%-0.83rem)]">
+          <CardContent className="p-4 min-w-0">
+            <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.sent}</p>
             <p className="text-sm text-muted-foreground">Sent</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold text-green-600">{stats.paid}</p>
+        <Card className="min-w-[140px] flex-1 basis-[calc(50%-0.5rem)] sm:basis-[calc(33.333%-0.67rem)] lg:basis-[calc(16.666%-0.83rem)]">
+          <CardContent className="p-4 min-w-0">
+            <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.paid}</p>
             <p className="text-sm text-muted-foreground">Paid</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold">{formatCurrency(stats.totalAmount)}</p>
+        <Card className="min-w-[160px] flex-1 basis-[calc(50%-0.5rem)] sm:basis-[calc(33.333%-0.67rem)] lg:basis-[calc(16.666%-0.83rem)]">
+          <CardContent className="p-4 min-w-0">
+            <p className="text-xl sm:text-2xl font-bold break-keep tabular-nums">{formatCurrency(stats.totalAmount)}</p>
             <p className="text-sm text-muted-foreground">Total Amount</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold text-orange-600">{formatCurrency(stats.pendingAmount)}</p>
+        <Card className="min-w-[160px] flex-1 basis-[calc(50%-0.5rem)] sm:basis-[calc(33.333%-0.67rem)] lg:basis-[calc(16.666%-0.83rem)]">
+          <CardContent className="p-4 min-w-0">
+            <p className="text-xl sm:text-2xl font-bold text-orange-600 break-keep tabular-nums">{formatCurrency(stats.pendingAmount)}</p>
             <p className="text-sm text-muted-foreground">Pending</p>
           </CardContent>
         </Card>
@@ -558,8 +544,8 @@ export default function BillingManagement() {
                   {filteredBills.map((bill) => (
                     <TableRow 
                       key={bill.id} 
-                      className={`cursor-pointer hover:bg-muted/50 ${selectedBillId === bill.id ? 'bg-muted' : ''}`}
-                      onClick={() => setSelectedBillId(bill.id)}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(bill.booking_id ? `/app/bookings/${bill.booking_id}/bills?billId=${bill.id}` : `/app/billing/bill/${bill.id}`)}
                     >
                       <TableCell className="font-mono text-sm font-medium">
                         {bill.bill_number}
@@ -582,7 +568,14 @@ export default function BillingManagement() {
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">
-                        {formatCurrency(bill.total_amount)}
+                        <div>
+                          <p>{formatCurrency(bill.total_amount)}</p>
+                          {((Number(bill.toll_charges) || 0) + (Number(bill.parking_charges) || 0)) > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              incl. Toll & Parking
+                            </p>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="font-medium">
                         {formatCurrency(bill.balance_amount)}
@@ -596,7 +589,7 @@ export default function BillingManagement() {
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button variant="ghost" size="icon" onClick={() => setSelectedBillId(bill.id)}>
+                              <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); navigate(bill.booking_id ? `/app/bookings/${bill.booking_id}/bills?billId=${bill.id}` : `/app/billing/bill/${bill.id}`); }}>
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </TooltipTrigger>
@@ -679,12 +672,9 @@ export default function BillingManagement() {
             )}
             {(() => {
               const relatedCompanyBill = companyBills?.find(cb => cb.customer_bill_id === selectedBill.id);
-              if (relatedCompanyBill) {
+              if (relatedCompanyBill && selectedBill.booking_id) {
                 return (
-                  <Button variant="outline" onClick={() => {
-                    setBillTypeTab('company');
-                    setSelectedCompanyBillId(relatedCompanyBill.id);
-                  }}>
+                  <Button variant="outline" onClick={() => navigate(`/app/bookings/${selectedBill.booking_id}/bills?billId=${selectedBill.id}&tab=company`)}>
                     <Eye className="h-4 w-4 mr-2" />
                     View Company Bill
                   </Button>
@@ -694,11 +684,16 @@ export default function BillingManagement() {
             })()}
           </div>
 
-          <Card className="print:shadow-none print:border-none w-full max-w-3xl min-w-0" ref={billTypeTab === 'customer' ? billRef : undefined} data-bill-content={billTypeTab === 'customer' ? 'true' : undefined}>
+          <div
+            className="bill-a4 mx-auto bg-white rounded-lg shadow-lg overflow-hidden print:shadow-none print:rounded-none"
+            ref={billTypeTab === 'customer' ? billRef : undefined}
+            data-bill-content={billTypeTab === 'customer' ? 'true' : undefined}
+          >
+          <Card className="print:shadow-none print:border-none border-0 w-full h-full min-h-0">
             <CardContent className="p-4 sm:p-6 md:p-8">
               {/* Bill Header */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6 md:mb-8">
-                <img src={patidarLogo} alt="Patidar Travels" className="h-10 sm:h-12 md:h-14 w-auto object-contain" />
+                <img src={logoUrl} alt={companyName} className="h-10 sm:h-12 md:h-14 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }} />
                 <div className="text-left sm:text-right min-w-0">
                   <h3 className="text-lg sm:text-xl font-semibold">FINAL BILL</h3>
                   <p className="text-base sm:text-lg font-mono mt-1 break-all">{selectedBill.bill_number}</p>
@@ -790,7 +785,7 @@ export default function BillingManagement() {
                   <div className="mt-4 pt-4 border-t">
                     <h5 className="font-semibold text-xs text-muted-foreground mb-2">COMPANY DETAILS</h5>
                     <div className="space-y-1 text-xs text-muted-foreground">
-                      <p className="font-medium text-sm">PATIDAR TRAVELS PVT. LTD.</p>
+                      <p className="font-medium text-sm">{companyName}</p>
                       <p>For queries, please contact us</p>
                     </div>
                   </div>
@@ -821,15 +816,8 @@ export default function BillingManagement() {
                       <div key={idx} className="border rounded-lg p-4 bg-muted/20">
                         <div className="grid grid-cols-2 gap-4 mb-4">
                           <div>
-                            <p className="text-xs text-muted-foreground mb-1">Vehicle Number</p>
-                            <p className="font-semibold text-base">{vehicle.vehicle_number}</p>
-                            {(carInfo?.brand || carInfo?.model) && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {carInfo.brand && <span>{carInfo.brand}</span>}
-                                {carInfo.brand && carInfo.model && ' '}
-                                {carInfo.model && <span>{carInfo.model}</span>}
-                              </p>
-                            )}
+                            <p className="text-xs text-muted-foreground mb-1">Vehicle</p>
+                            <p className="font-semibold text-base">{formatCarLabel({ vehicle_number: vehicle.vehicle_number, model: carInfo?.model, brand: carInfo?.brand })}</p>
                             <p className="text-xs text-muted-foreground mt-2">
                               <span className="text-muted-foreground">Total KM Driven:</span>{' '}
                               <span className="font-semibold">{selectedBill.total_km_driven.toLocaleString()} km</span>
@@ -992,10 +980,46 @@ export default function BillingManagement() {
                 <h4 className="font-semibold text-sm text-muted-foreground mb-4">PAYMENT SUMMARY</h4>
                 <div className="bg-muted/30 rounded-lg p-6">
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Subtotal (All Vehicles):</span>
-                      <span className="font-semibold text-base">{formatCurrency(selectedBill.total_amount)}</span>
-                    </div>
+                    {(() => {
+                      const toll = Number(selectedBill.toll_charges) || 0;
+                      const parking = Number(selectedBill.parking_charges) || 0;
+                      const vehicleSubtotal = selectedBill.total_amount - toll - parking;
+                      const ec = orgSettings?.billing_layout_config?.extraCharges ?? {};
+                      const tollLabel = ec.toll_tax?.label ?? 'Toll Tax';
+                      const parkingLabel = ec.parking_charges?.label ?? 'Parking Charges';
+                      return (
+                        <>
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Subtotal (All Vehicles):</span>
+                            <span className="font-semibold text-base">{formatCurrency(vehicleSubtotal)}</span>
+                          </div>
+                          {toll > 0 && (
+                            <div className="flex justify-between items-center text-muted-foreground">
+                              <span>{tollLabel}:</span>
+                              <span className="font-medium">+ {formatCurrency(toll)}</span>
+                            </div>
+                          )}
+                          {parking > 0 && (
+                            <div className="flex justify-between items-center text-muted-foreground">
+                              <span>{parkingLabel}:</span>
+                              <span className="font-medium">+ {formatCurrency(parking)}</span>
+                            </div>
+                          )}
+                          {(toll > 0 || parking > 0) && (
+                            <div className="flex justify-between items-center pt-1 border-t">
+                              <span className="font-medium">Total (incl. charges above):</span>
+                              <span className="font-semibold">{formatCurrency(selectedBill.total_amount)}</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                    {(selectedBill.total_driver_allowance ?? 0) > 0 && (
+                      <div className="flex justify-between items-center text-muted-foreground">
+                        <span>Driver Allowance (paid to driver)</span>
+                        <span className="font-semibold text-base">- {formatCurrency(selectedBill.total_driver_allowance)}</span>
+                      </div>
+                    )}
                     {selectedBill.advance_amount > 0 && (
                       <div className="flex justify-between items-center text-success">
                         <span>Advance Paid:</span>
@@ -1005,7 +1029,9 @@ export default function BillingManagement() {
                     <Separator className="my-3" />
                     <div className="flex justify-between items-center pt-2">
                       <span className="text-lg font-bold">Balance Amount Due:</span>
-                      <span className="text-2xl font-bold text-primary">{formatCurrency(selectedBill.balance_amount)}</span>
+                      <span className="text-2xl font-bold text-primary">
+                        {formatCurrency(selectedBill.total_amount - (selectedBill.total_driver_allowance ?? 0) - selectedBill.advance_amount)}
+                      </span>
                     </div>
                     {selectedBill.advance_amount === 0 && (
                       <p className="text-xs text-muted-foreground mt-2">No advance payment received</p>
@@ -1025,7 +1051,7 @@ export default function BillingManagement() {
                 </div>
                 <div className="p-4 bg-white rounded-lg border">
                   <QRCodeSVG
-                    value={`PATIDAR|BILL:${selectedBill.bill_number}|BOOKING:${(selectedBill as any).bookings?.booking_ref || 'N/A'}|AMOUNT:${selectedBill.balance_amount}|PHONE:${selectedBill.customer_phone}`}
+                    value={`${qrPrefix}|BILL:${selectedBill.bill_number}|BOOKING:${(selectedBill as any).bookings?.booking_ref || 'N/A'}|AMOUNT:${selectedBill.balance_amount}|PHONE:${selectedBill.customer_phone}`}
                     size={100}
                     level="M"
                     includeMargin={false}
@@ -1036,24 +1062,20 @@ export default function BillingManagement() {
               <Separator className="my-6" />
 
               {/* Terms & Conditions */}
-              <Separator className="my-6" />
-              <div className="text-xs text-muted-foreground space-y-2 mb-6">
-                <h5 className="font-semibold text-sm mb-2">Terms & Conditions:</h5>
-                <ul className="list-disc list-inside space-y-1 pl-2">
-                  <li>This is a computer-generated bill and does not require a signature.</li>
-                  <li>Payment should be made within the agreed timeframe.</li>
-                  <li>For any discrepancies, please contact us within 7 days of bill generation.</li>
-                  {selectedBill.threshold_note && (
-                    <li>Minimum KM threshold is applied as per company policy for trip duration.</li>
-                  )}
-                  <li>All amounts are in Indian Rupees (INR).</li>
-                </ul>
-              </div>
+              {orgSettings?.terms_and_conditions && (
+                <>
+                  <Separator className="my-6" />
+                  <div className="text-xs text-muted-foreground space-y-2 mb-6">
+                    <h5 className="font-semibold text-sm mb-2">Terms & Conditions:</h5>
+                    <div className="whitespace-pre-wrap pl-2">{orgSettings.terms_and_conditions}</div>
+                  </div>
+                </>
+              )}
 
               {/* Footer */}
               <Separator className="my-6" />
               <div className="text-center space-y-2">
-                <p className="font-medium">Thank you for choosing Patidar Travels!</p>
+                <p className="font-medium">Thank you for choosing {companyName}!</p>
                 <p className="text-xs text-muted-foreground">
                   This bill was generated on {formatDateTimeFull(selectedBill.created_at)} (IST)
                 </p>
@@ -1065,6 +1087,7 @@ export default function BillingManagement() {
               </div>
             </CardContent>
           </Card>
+          </div>
         </>
       )}
         </TabsContent>
@@ -1094,15 +1117,10 @@ export default function BillingManagement() {
                     return (
                       <TableRow 
                         key={bill.id} 
-                        className={`cursor-pointer hover:bg-muted/50 ${selectedCompanyBillId === bill.id ? 'bg-muted' : ''}`}
+                        className="cursor-pointer hover:bg-muted/50"
                         onClick={() => {
-                          setSelectedCompanyBillId(bill.id);
-                          // Link to customer bill if exists
-                          if (bill.customer_bill_id) {
-                            const customerBill = allBills?.find(b => b.id === bill.customer_bill_id);
-                            if (customerBill) {
-                              setSelectedBillId(customerBill.id);
-                            }
+                          if (bill.booking_id && bill.customer_bill_id) {
+                            navigate(`/app/bookings/${bill.booking_id}/bills?billId=${bill.customer_bill_id}&tab=company`);
                           }
                         }}
                       >
@@ -1136,7 +1154,7 @@ export default function BillingManagement() {
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" onClick={() => setSelectedCompanyBillId(bill.id)}>
+                                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); if (bill.booking_id && bill.customer_bill_id) navigate(`/app/bookings/${bill.booking_id}/bills?billId=${bill.customer_bill_id}&tab=company`); }}>
                                   <Eye className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
@@ -1189,28 +1207,27 @@ export default function BillingManagement() {
                 </div>
               </PopoverContent>
             </Popover>
-            {selectedCompanyBill.customer_bill_id && (
-              <Button variant="outline" onClick={() => {
-                const customerBill = allBills?.find(b => b.id === selectedCompanyBill.customer_bill_id);
-                if (customerBill) {
-                  setBillTypeTab('customer');
-                  setSelectedBillId(customerBill.id);
-                }
-              }}>
+            {selectedCompanyBill.customer_bill_id && selectedCompanyBill.booking_id && (
+              <Button variant="outline" onClick={() => navigate(`/app/bookings/${selectedCompanyBill.booking_id}/bills?billId=${selectedCompanyBill.customer_bill_id}`)}>
                 <Eye className="h-4 w-4 mr-2" />
                 View Customer Bill
               </Button>
             )}
           </div>
 
-          <Card className="print:shadow-none print:border-none w-full max-w-3xl min-w-0" ref={billTypeTab === 'company' ? billRef : undefined} data-bill-content={billTypeTab === 'company' ? 'true' : undefined}>
+          <div
+            className="bill-a4 mx-auto bg-white rounded-lg shadow-lg overflow-hidden print:shadow-none print:rounded-none"
+            ref={billTypeTab === 'company' ? billRef : undefined}
+            data-bill-content={billTypeTab === 'company' ? 'true' : undefined}
+          >
+          <Card className="print:shadow-none print:border-none border-0 w-full h-full min-h-0">
             <CardContent className="p-4 sm:p-6 md:p-8">
               {/* Company Bill Header */}
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 md:mb-8 pb-4 md:pb-6 border-b">
                 <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                  <img src={patidarLogo} alt="Patidar Travels" className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 object-contain shrink-0" />
+                  <img src={logoUrl} alt={companyName} className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 object-contain shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }} />
                   <div className="min-w-0">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-red-600 break-words">PATIDAR TRAVELS PVT. LTD.</h2>
+                    <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-red-600 break-words">{companyName}</h2>
                     <p className="text-xs sm:text-sm text-muted-foreground mt-1">Internal Company Bill</p>
                   </div>
                 </div>
@@ -1461,15 +1478,8 @@ export default function BillingManagement() {
                           <div key={idx} className="border rounded-lg p-4 bg-muted/20">
                             <div className="grid grid-cols-2 gap-4 mb-4">
                               <div>
-                                <p className="text-xs text-muted-foreground mb-1">Vehicle Number</p>
-                                <p className="font-semibold text-base">{vehicle.vehicle_number}</p>
-                                {(carInfo?.brand || carInfo?.model) && (
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    {carInfo.brand && <span>{carInfo.brand}</span>}
-                                    {carInfo.brand && carInfo.model && ' '}
-                                    {carInfo.model && <span>{carInfo.model}</span>}
-                                  </p>
-                                )}
+                                <p className="text-xs text-muted-foreground mb-1">Vehicle</p>
+                                <p className="font-semibold text-base">{formatCarLabel({ vehicle_number: vehicle.vehicle_number, model: carInfo?.model, brand: carInfo?.brand })}</p>
                                 <p className="text-xs text-muted-foreground mt-2">
                                   <span className="text-muted-foreground">Total KM Driven:</span>{' '}
                                   <span className="font-semibold">{selectedCompanyBill.total_km_driven.toLocaleString()} km</span>
@@ -1544,6 +1554,7 @@ export default function BillingManagement() {
               </div>
             </CardContent>
           </Card>
+          </div>
         </>
       )}
         </TabsContent>
@@ -1730,7 +1741,7 @@ export default function BillingManagement() {
                                 <div className="flex flex-wrap gap-2">
                                   {booking.booking_vehicles.map((bv, idx) => (
                                     <Badge key={idx} variant="outline" className="text-xs">
-                                      {bv.car?.vehicle_number || 'N/A'}
+                                      {bv.car ? formatCarLabel(bv.car) : 'N/A'}
                                       {bv.driver_name && ` • ${bv.driver_name}`}
                                     </Badge>
                                   ))}
@@ -1819,13 +1830,28 @@ export default function BillingManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Print styles */}
+      {/* A4 Landscape bill and print styles */}
       <style>{`
+        .bill-a4 {
+          width: 297mm;
+          min-height: 210mm;
+          max-width: 100%;
+          box-sizing: border-box;
+        }
         @media print {
+          @page { size: A4 landscape; margin: 0; }
           body * { visibility: hidden; }
           .print\\:hidden { display: none !important; }
           [data-bill-content], [data-bill-content] * { visibility: visible; }
-          [data-bill-content] { position: absolute; left: 0; top: 0; width: 100%; }
+          [data-bill-content] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 297mm !important;
+            min-height: 210mm;
+            max-width: none;
+            box-shadow: none;
+          }
         }
       `}</style>
     </div>

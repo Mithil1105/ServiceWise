@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useDrivers, useCreateDriver, useUpdateDriver, useDeleteDriver, useDownloadLicense, Driver } from '@/hooks/use-drivers';
+import { useState, useEffect } from 'react';
+import { useDrivers, useCreateDriver, useUpdateDriver, useDeleteDriver, useDownloadLicense, Driver, type DriverType } from '@/hooks/use-drivers';
 import { useAuth } from '@/lib/auth-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -41,16 +43,20 @@ import {
   Loader2,
   Phone,
   MapPin,
-  Calendar,
   FileText,
-  Upload,
   Download,
   Pencil,
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatDateDMY } from '@/lib/date';
 import { differenceInDays, parseISO } from 'date-fns';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import {
+  type DriverFormBuiltInFieldKey,
+  DRIVER_FORM_FIELD_LABELS,
+} from '@/types/form-config';
 
 function LicenseExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
   if (!expiryDate) return <Badge variant="muted">No expiry set</Badge>;
@@ -77,6 +83,14 @@ function DriverFormDialog({
   driver?: Driver;
   onSuccess?: () => void;
 }) {
+  const { data: orgSettings } = useOrganizationSettings();
+  const formConfig = orgSettings?.drivers_form_config ?? null;
+  const fieldOverrides = formConfig?.fieldOverrides ?? {};
+  const customFields = (formConfig?.customFields ?? []).sort((a, b) => a.order - b.order);
+  const getFieldLabel = (key: DriverFormBuiltInFieldKey) => fieldOverrides[key]?.label ?? DRIVER_FORM_FIELD_LABELS[key];
+  const isFieldHidden = (key: DriverFormBuiltInFieldKey) => fieldOverrides[key]?.hidden === true;
+  const isFieldRequired = (key: DriverFormBuiltInFieldKey) => fieldOverrides[key]?.required ?? (key === 'name' || key === 'phone');
+
   const createDriver = useCreateDriver();
   const updateDriver = useUpdateDriver();
   const [formData, setFormData] = useState({
@@ -84,28 +98,102 @@ function DriverFormDialog({
     phone: driver?.phone || '',
     location: driver?.location || '',
     region: driver?.region || '',
+    license_type: (driver?.license_type as 'lmv' | 'hmv') || 'lmv',
     license_expiry: driver?.license_expiry || '',
+    driver_type: (driver?.driver_type as DriverType) || 'temporary',
     notes: driver?.notes || '',
   });
+  const [customValues, setCustomValues] = useState<Record<string, string | number>>({});
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
+  const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
+  const [policeVerificationFile, setPoliceVerificationFile] = useState<File | null>(null);
+  const [healthCertificateFile, setHealthCertificateFile] = useState<File | null>(null);
 
   const isEditing = !!driver;
   const isPending = createDriver.isPending || updateDriver.isPending;
 
+  useEffect(() => {
+    if (driver?.custom_attributes && typeof driver.custom_attributes === 'object') {
+      const attrs: Record<string, string | number> = {};
+      for (const [k, v] of Object.entries(driver.custom_attributes)) {
+        if (v !== null && v !== undefined) attrs[k] = v as string | number;
+      }
+      setCustomValues(attrs);
+    } else {
+      setCustomValues({});
+    }
+  }, [driver?.custom_attributes]);
+
+  // Sync form when driver prop changes (e.g. switch from one edit to another or to add)
+  useEffect(() => {
+    if (driver) {
+      setFormData({
+        name: driver.name,
+        phone: driver.phone,
+        location: driver.location || '',
+        region: driver.region || '',
+        license_type: (driver.license_type as 'lmv' | 'hmv') || 'lmv',
+        license_expiry: driver.license_expiry || '',
+        driver_type: (driver.driver_type as DriverType) || 'temporary',
+        notes: driver.notes || '',
+      });
+    } else {
+      setFormData({
+        name: '',
+        phone: '',
+        location: '',
+        region: '',
+        license_type: 'lmv',
+        license_expiry: '',
+        driver_type: 'temporary',
+        notes: '',
+      });
+    }
+  }, [driver]);
+
+  // Reset file selections when dialog opens so we don't carry over from previous driver
+  useEffect(() => {
+    if (open) {
+      setLicenseFile(null);
+      setAadhaarFile(null);
+      setPoliceVerificationFile(null);
+      setHealthCertificateFile(null);
+    }
+  }, [open]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+    const customAttrs: Record<string, string | number | boolean | null> = {};
+    for (const f of customFields) {
+      const val = customValues[f.key];
+      if (f.required && (val === undefined || val === '')) {
+        return; // could set error state
+      }
+      if (val !== undefined && val !== '') customAttrs[f.key] = typeof val === 'number' ? val : String(val);
+    }
     try {
       if (isEditing) {
         await updateDriver.mutateAsync({
           id: driver.id,
           ...formData,
+          license_type: formData.license_type,
           licenseFile: licenseFile || undefined,
+          driver_type: formData.driver_type,
+          aadhaarFile: aadhaarFile || undefined,
+          policeVerificationFile: policeVerificationFile || undefined,
+          healthCertificateFile: healthCertificateFile || undefined,
+          custom_attributes: Object.keys(customAttrs).length ? customAttrs : undefined,
         });
       } else {
         await createDriver.mutateAsync({
           ...formData,
+          license_type: formData.license_type,
           licenseFile: licenseFile || undefined,
+          driver_type: formData.driver_type,
+          aadhaarFile: aadhaarFile || undefined,
+          policeVerificationFile: policeVerificationFile || undefined,
+          healthCertificateFile: healthCertificateFile || undefined,
+          custom_attributes: Object.keys(customAttrs).length ? customAttrs : undefined,
         });
       }
       onOpenChange(false);
@@ -117,7 +205,7 @@ function DriverFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
@@ -128,94 +216,188 @@ function DriverFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Driver name"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone *</Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="Phone number"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="location">Location</Label>
-              <Input
-                id="location"
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                placeholder="City/Area"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="region">Region</Label>
-              <Input
-                id="region"
-                value={formData.region}
-                onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                placeholder="State/Region"
-              />
-            </div>
-
-            <div className="col-span-2 space-y-2">
-              <Label htmlFor="license_expiry">License Expiry Date</Label>
-              <Input
-                id="license_expiry"
-                type="date"
-                value={formData.license_expiry}
-                onChange={(e) => setFormData({ ...formData, license_expiry: e.target.value })}
-              />
-            </div>
-
-            <div className="col-span-2 space-y-2">
-              <Label htmlFor="license_file">Driving License (PDF/Image)</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="license_file"
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => setLicenseFile(e.target.files?.[0] || null)}
-                  className="flex-1"
-                />
-                {licenseFile && (
-                  <Badge variant="muted" className="shrink-0">
-                    {licenseFile.name}
-                  </Badge>
-                )}
-              </div>
-              {driver?.license_file_name && !licenseFile && (
-                <p className="text-sm text-muted-foreground">
-                  Current: {driver.license_file_name}
-                </p>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Personal details */}
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold text-foreground">Personal details</h4>
+            <div className="grid grid-cols-2 gap-4">
+              {!isFieldHidden('name') && (
+                <div className="space-y-2">
+                  <Label htmlFor="name">{getFieldLabel('name')}{isFieldRequired('name') ? ' *' : ''}</Label>
+                  <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Driver name" required={isFieldRequired('name')} />
+                </div>
+              )}
+              {!isFieldHidden('phone') && (
+                <div className="space-y-2">
+                  <Label htmlFor="phone">{getFieldLabel('phone')}{isFieldRequired('phone') ? ' *' : ''}</Label>
+                  <Input id="phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="Phone number" required={isFieldRequired('phone')} />
+                </div>
+              )}
+              {!isFieldHidden('location') && (
+                <div className="space-y-2">
+                  <Label htmlFor="location">{getFieldLabel('location')}{isFieldRequired('location') ? ' *' : ''}</Label>
+                  <Input id="location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} placeholder="City/Area" />
+                </div>
+              )}
+              {!isFieldHidden('region') && (
+                <div className="space-y-2">
+                  <Label htmlFor="region">{getFieldLabel('region')}{isFieldRequired('region') ? ' *' : ''}</Label>
+                  <Input id="region" value={formData.region} onChange={(e) => setFormData({ ...formData, region: e.target.value })} placeholder="State/Region" />
+                </div>
               )}
             </div>
+          </div>
 
-            <div className="col-span-2 space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Any additional notes..."
-                rows={2}
-              />
+          <Separator />
+
+          {/* License & employment type */}
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold text-foreground">License & employment type</h4>
+            <div className="grid grid-cols-2 gap-4">
+              {!isFieldHidden('license_type') && (
+            <div className="space-y-2">
+              <Label htmlFor="license_type">{getFieldLabel('license_type')}{isFieldRequired('license_type') ? ' *' : ''}</Label>
+              <Select
+                value={formData.license_type}
+                onValueChange={(value: 'lmv' | 'hmv') => setFormData({ ...formData, license_type: value })}
+                required={isFieldRequired('license_type')}
+              >
+                <SelectTrigger id="license_type">
+                  <SelectValue placeholder="LMV or HMV" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lmv">LMV (Light Motor Vehicle)</SelectItem>
+                  <SelectItem value="hmv">HMV (Heavy Motor Vehicle)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            )}
+
+              {!isFieldHidden('license_expiry') && (
+                <div className="space-y-2">
+                  <Label htmlFor="license_expiry">{getFieldLabel('license_expiry')}{isFieldRequired('license_expiry') ? ' *' : ''}</Label>
+                  <Input id="license_expiry" type="date" value={formData.license_expiry} onChange={(e) => setFormData({ ...formData, license_expiry: e.target.value })} />
+                </div>
+              )}
+              {!isFieldHidden('driver_type') && (
+                <div className="space-y-2 sm:col-span-2 max-w-[240px]">
+                  <Label htmlFor="driver_type">{getFieldLabel('driver_type')}{isFieldRequired('driver_type') ? ' *' : ''}</Label>
+                  <Select value={formData.driver_type} onValueChange={(v: DriverType) => setFormData({ ...formData, driver_type: v })} required={isFieldRequired('driver_type')}>
+                    <SelectTrigger id="driver_type"><SelectValue placeholder="Permanent or Temporary" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="permanent">Permanent</SelectItem>
+                      <SelectItem value="temporary">Temporary</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
+
+          <Separator />
+
+          {/* Documents — single block with 2x2 grid */}
+          {(isFieldHidden('license_file') && isFieldHidden('aadhaar_file') && isFieldHidden('police_verification_file') && isFieldHidden('health_certificate_file')) ? null : (
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-foreground">Documents</h4>
+              <p className="text-xs text-muted-foreground">PDF or image (JPG, PNG). Replace by choosing a new file.</p>
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {!isFieldHidden('license_file') && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="license_file" className="text-xs font-medium text-muted-foreground">{getFieldLabel('license_file')}{isFieldRequired('license_file') ? ' *' : ''}</Label>
+                      <div className="flex items-center gap-2">
+                        <Input id="license_file" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setLicenseFile(e.target.files?.[0] || null)} className="h-9 text-sm file:mr-2 file:text-xs" />
+                        {(licenseFile || driver?.license_file_name) && <Badge variant="secondary" className="shrink-0 text-xs font-normal">{licenseFile ? licenseFile.name : driver?.license_file_name}</Badge>}
+                      </div>
+                    </div>
+                  )}
+                  {!isFieldHidden('aadhaar_file') && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="aadhaar_file" className="text-xs font-medium text-muted-foreground">{getFieldLabel('aadhaar_file')}{isFieldRequired('aadhaar_file') ? ' *' : ''}</Label>
+                      <div className="flex items-center gap-2">
+                        <Input id="aadhaar_file" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setAadhaarFile(e.target.files?.[0] || null)} className="h-9 text-sm file:mr-2 file:text-xs" />
+                        {(aadhaarFile || driver?.aadhaar_file_name) && <Badge variant="secondary" className="shrink-0 text-xs font-normal">{aadhaarFile ? aadhaarFile.name : driver?.aadhaar_file_name}</Badge>}
+                      </div>
+                    </div>
+                  )}
+                  {!isFieldHidden('police_verification_file') && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="police_verification_file" className="text-xs font-medium text-muted-foreground">{getFieldLabel('police_verification_file')}{isFieldRequired('police_verification_file') ? ' *' : ''}</Label>
+                      <div className="flex items-center gap-2">
+                        <Input id="police_verification_file" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setPoliceVerificationFile(e.target.files?.[0] || null)} className="h-9 text-sm file:mr-2 file:text-xs" />
+                        {(policeVerificationFile || driver?.police_verification_file_name) && <Badge variant="secondary" className="shrink-0 text-xs font-normal">{policeVerificationFile ? policeVerificationFile.name : driver?.police_verification_file_name}</Badge>}
+                      </div>
+                    </div>
+                  )}
+                  {!isFieldHidden('health_certificate_file') && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="health_certificate_file" className="text-xs font-medium text-muted-foreground">{getFieldLabel('health_certificate_file')}{isFieldRequired('health_certificate_file') ? ' *' : ''}</Label>
+                      <div className="flex items-center gap-2">
+                        <Input id="health_certificate_file" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setHealthCertificateFile(e.target.files?.[0] || null)} className="h-9 text-sm file:mr-2 file:text-xs" />
+                        {(healthCertificateFile || driver?.health_certificate_file_name) && <Badge variant="secondary" className="shrink-0 text-xs font-normal">{healthCertificateFile ? healthCertificateFile.name : driver?.health_certificate_file_name}</Badge>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!isFieldHidden('notes') && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-foreground">Notes</h4>
+                <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Any additional notes..." rows={2} className="resize-none" />
+              </div>
+            </>
+          )}
+
+          {customFields.length > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">Custom fields</Label>
+                <div className="grid grid-cols-2 gap-4">
+                {customFields.map((f) => (
+                  <div key={f.id} className="space-y-2">
+                    <Label htmlFor={`custom-${f.key}`}>{f.label}{f.required ? ' *' : ''}</Label>
+                    {f.type === 'text' && (
+                      <Input
+                        id={`custom-${f.key}`}
+                        value={String(customValues[f.key] ?? '')}
+                        onChange={(e) => setCustomValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      />
+                    )}
+                    {f.type === 'number' && (
+                      <Input
+                        id={`custom-${f.key}`}
+                        type="number"
+                        value={customValues[f.key] !== undefined && customValues[f.key] !== '' ? Number(customValues[f.key]) : ''}
+                        onChange={(e) => setCustomValues((prev) => ({ ...prev, [f.key]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      />
+                    )}
+                    {f.type === 'date' && (
+                      <Input
+                        id={`custom-${f.key}`}
+                        type="date"
+                        value={typeof customValues[f.key] === 'string' ? customValues[f.key] : ''}
+                        onChange={(e) => setCustomValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      />
+                    )}
+                    {f.type === 'select' && (
+                      <Select value={String(customValues[f.key] ?? '')} onValueChange={(v) => setCustomValues((prev) => ({ ...prev, [f.key]: v }))}>
+                        <SelectTrigger id={`custom-${f.key}`}><SelectValue placeholder="Select" /></SelectTrigger>
+                        <SelectContent>{(f.options ?? []).map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}</SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                ))}
+                </div>
+              </div>
+            </>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -323,10 +505,13 @@ export default function Drivers() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Phone</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>License</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Region</TableHead>
                     <TableHead>License Expiry</TableHead>
                     <TableHead>License File</TableHead>
+                    <TableHead>Documents</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -339,6 +524,16 @@ export default function Drivers() {
                           <Phone className="h-3 w-3 text-muted-foreground" />
                           {driver.phone}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={(driver.driver_type ?? 'temporary') === 'permanent' ? 'default' : 'secondary'} className="font-normal">
+                          {(driver.driver_type ?? 'temporary') === 'permanent' ? 'Permanent' : 'Temporary'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-normal">
+                          {driver.license_type === 'hmv' ? 'HMV' : 'LMV'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         {driver.location ? (
@@ -373,6 +568,37 @@ export default function Drivers() {
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {driver.aadhaar_file_path && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span><DownloadLicenseButton filePath={driver.aadhaar_file_path} fileName={driver.aadhaar_file_name} /></span>
+                              </TooltipTrigger>
+                              <TooltipContent>Aadhaar card</TooltipContent>
+                            </Tooltip>
+                          )}
+                          {driver.police_verification_file_path && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span><DownloadLicenseButton filePath={driver.police_verification_file_path} fileName={driver.police_verification_file_name} /></span>
+                              </TooltipTrigger>
+                              <TooltipContent>Police verification</TooltipContent>
+                            </Tooltip>
+                          )}
+                          {driver.health_certificate_file_path && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span><DownloadLicenseButton filePath={driver.health_certificate_file_path} fileName={driver.health_certificate_file_name} /></span>
+                              </TooltipTrigger>
+                              <TooltipContent>Health certificate</TooltipContent>
+                            </Tooltip>
+                          )}
+                          {!driver.aadhaar_file_path && !driver.police_verification_file_path && !driver.health_certificate_file_path && (
+                            <span className="text-muted-foreground text-xs">-</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-2">

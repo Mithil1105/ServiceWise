@@ -8,6 +8,9 @@ import { Loader2, Menu, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
+
+const SIDEBAR_COLLAPSED_KEY = 'app-sidebar-collapsed';
 
 export default function AppLayout() {
   useEffect(() => {
@@ -22,7 +25,24 @@ export default function AppLayout() {
   const signOut = auth.signOut;
   const { isMasterAdmin, loading: adminLoading } = useIsMasterAdmin();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const isMobile = useIsMobile();
+
+  const handleSidebarToggle = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   if (loading || (!!user && !role && adminLoading)) {
     return (
@@ -100,7 +120,10 @@ export default function AppLayout() {
     <div className="min-h-screen bg-background">
       {/* Desktop Sidebar */}
       <div className="hidden md:block">
-        <AppSidebar />
+        <AppSidebar
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={handleSidebarToggle}
+        />
       </div>
 
       {/* Mobile Sidebar Sheet */}
@@ -123,13 +146,18 @@ export default function AppLayout() {
               <Menu className="h-5 w-5" />
               <span className="sr-only">Toggle menu</span>
             </Button>
-            <img src="/SWlogo.png" alt="ServiceWise" className="h-8 w-auto object-contain" />
+            <img
+              src={auth?.organization?.logo_url || '/HERO.png'}
+              alt={auth?.organization?.company_name || auth?.organization?.name || 'Logo'}
+              className="h-8 w-auto object-contain"
+              onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }}
+            />
           </div>
         </header>
       )}
 
       {/* Main Content */}
-      <main className="md:ml-64 min-h-screen">
+      <main className={cn('min-h-screen', sidebarCollapsed ? 'md:ml-16' : 'md:ml-64')}>
         <div className="p-4 md:p-6">
           <Outlet />
         </div>

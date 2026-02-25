@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import type { AttentionItem, MonthlySnapshot, CarUtilization, HighMaintenanceData } from '@/types';
+import type { AttentionItem, MonthlySnapshot, CarUtilization, HighMaintenanceData, CarBookingDays } from '@/types';
 import { startOfMonth, endOfMonth, subDays, subMonths, differenceInDays } from 'date-fns';
 import { toast } from 'sonner';
 import { useOrg } from '@/hooks/use-org';
@@ -452,6 +452,17 @@ export function useCarUtilization() {
       }
 
       return utilizations;
+    },
+  });
+}
+
+export function useCarBookingDays() {
+  return useQuery({
+    queryKey: ['car-booking-days'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_car_booking_days');
+      if (error) throw error;
+      return (data ?? []) as CarBookingDays[];
     },
   });
 }

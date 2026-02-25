@@ -3,17 +3,31 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 
+export type DriverType = 'permanent' | 'temporary';
+
 export interface Driver {
   id: string;
   name: string;
   phone: string;
   location: string | null;
   region: string | null;
+  license_type: 'lmv' | 'hmv';
   license_expiry: string | null;
   license_file_path: string | null;
   license_file_name: string | null;
+  /** Permanent or temporary driver */
+  driver_type: DriverType;
+  /** Aadhaar card document (driver-licenses bucket) */
+  aadhaar_file_path?: string | null;
+  aadhaar_file_name?: string | null;
+  police_verification_file_path?: string | null;
+  police_verification_file_name?: string | null;
+  health_certificate_file_path?: string | null;
+  health_certificate_file_name?: string | null;
   notes: string | null;
   status: string;
+  /** Org-defined custom field values (from drivers_form_config.customFields) */
+  custom_attributes?: Record<string, string | number | boolean | null>;
   created_at: string;
   updated_at: string;
 }
@@ -107,6 +121,14 @@ export function useUpsertDriver() {
   });
 }
 
+const uploadDriverFile = async (file: File, prefix: string): Promise<{ path: string; name: string }> => {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+  const { error } = await supabase.storage.from('driver-licenses').upload(fileName, file);
+  if (error) throw error;
+  return { path: fileName, name: file.name };
+};
+
 export function useCreateDriver() {
   const queryClient = useQueryClient();
   const { profile } = useAuth();
@@ -117,9 +139,15 @@ export function useCreateDriver() {
       phone: string;
       location?: string;
       region?: string;
+      license_type: 'lmv' | 'hmv';
       license_expiry?: string;
       notes?: string;
       licenseFile?: File;
+      driver_type?: DriverType;
+      aadhaarFile?: File;
+      policeVerificationFile?: File;
+      healthCertificateFile?: File;
+      custom_attributes?: Record<string, string | number | boolean | null>;
     }) => {
       const orgId = profile?.organization_id;
       if (!orgId) throw new Error('Organization not found');
@@ -128,20 +156,32 @@ export function useCreateDriver() {
 
       let license_file_path: string | null = null;
       let license_file_name: string | null = null;
-
-      // Upload license file if provided
       if (data.licenseFile) {
-        const fileExt = data.licenseFile.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+        const up = await uploadDriverFile(data.licenseFile, 'license');
+        license_file_path = up.path;
+        license_file_name = up.name;
+      }
 
-        const { error: uploadError } = await supabase.storage
-          .from('driver-licenses')
-          .upload(fileName, data.licenseFile);
-
-        if (uploadError) throw uploadError;
-
-        license_file_path = fileName;
-        license_file_name = data.licenseFile.name;
+      let aadhaar_file_path: string | null = null;
+      let aadhaar_file_name: string | null = null;
+      if (data.aadhaarFile) {
+        const up = await uploadDriverFile(data.aadhaarFile, 'aadhaar');
+        aadhaar_file_path = up.path;
+        aadhaar_file_name = up.name;
+      }
+      let police_verification_file_path: string | null = null;
+      let police_verification_file_name: string | null = null;
+      if (data.policeVerificationFile) {
+        const up = await uploadDriverFile(data.policeVerificationFile, 'police');
+        police_verification_file_path = up.path;
+        police_verification_file_name = up.name;
+      }
+      let health_certificate_file_path: string | null = null;
+      let health_certificate_file_name: string | null = null;
+      if (data.healthCertificateFile) {
+        const up = await uploadDriverFile(data.healthCertificateFile, 'health');
+        health_certificate_file_path = up.path;
+        health_certificate_file_name = up.name;
       }
 
       const { data: driver, error } = await supabase
@@ -152,10 +192,19 @@ export function useCreateDriver() {
           phone: data.phone.trim(),
           location: data.location?.trim() || null,
           region: data.region?.trim() || null,
+          license_type: data.license_type || 'lmv',
           license_expiry: data.license_expiry || null,
           notes: data.notes?.trim() || null,
           license_file_path,
           license_file_name,
+          driver_type: data.driver_type ?? 'temporary',
+          aadhaar_file_path,
+          aadhaar_file_name,
+          police_verification_file_path,
+          police_verification_file_name,
+          health_certificate_file_path,
+          health_certificate_file_name,
+          custom_attributes: data.custom_attributes ?? null,
           created_by: userId,
         })
         .select()
@@ -184,51 +233,65 @@ export function useUpdateDriver() {
       phone?: string;
       location?: string;
       region?: string;
+      license_type?: 'lmv' | 'hmv';
       license_expiry?: string;
       notes?: string;
       licenseFile?: File;
+      driver_type?: DriverType;
+      aadhaarFile?: File;
+      policeVerificationFile?: File;
+      healthCertificateFile?: File;
+      custom_attributes?: Record<string, string | number | boolean | null>;
     }) => {
-      let license_file_path: string | null | undefined = undefined;
-      let license_file_name: string | null | undefined = undefined;
-
-      // Upload license file if provided
-      if (data.licenseFile) {
-        // Get existing driver to delete old file if exists
-        const { data: existingDriver } = await supabase
-          .from('drivers')
-          .select('license_file_path')
-          .eq('id', data.id)
-          .single();
-
-        // Delete old file if exists
-        if (existingDriver?.license_file_path) {
-          await supabase.storage
-            .from('driver-licenses')
-            .remove([existingDriver.license_file_path]);
-        }
-
-        const fileExt = data.licenseFile.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('driver-licenses')
-          .upload(fileName, data.licenseFile);
-
-        if (uploadError) throw uploadError;
-
-        license_file_path = fileName;
-        license_file_name = data.licenseFile.name;
-      }
-
       const updateData: Record<string, unknown> = {};
       if (data.name !== undefined) updateData.name = data.name.trim();
       if (data.phone !== undefined) updateData.phone = data.phone.trim();
       if (data.location !== undefined) updateData.location = data.location?.trim() || null;
       if (data.region !== undefined) updateData.region = data.region?.trim() || null;
+      if (data.license_type !== undefined) updateData.license_type = data.license_type;
       if (data.license_expiry !== undefined) updateData.license_expiry = data.license_expiry || null;
       if (data.notes !== undefined) updateData.notes = data.notes?.trim() || null;
-      if (license_file_path !== undefined) updateData.license_file_path = license_file_path;
-      if (license_file_name !== undefined) updateData.license_file_name = license_file_name;
+      if (data.driver_type !== undefined) updateData.driver_type = data.driver_type;
+      if (data.custom_attributes !== undefined) updateData.custom_attributes = data.custom_attributes;
+
+      const { data: existingDriver } = await supabase
+        .from('drivers')
+        .select('license_file_path, aadhaar_file_path, police_verification_file_path, health_certificate_file_path')
+        .eq('id', data.id)
+        .single();
+
+      if (data.licenseFile) {
+        if (existingDriver?.license_file_path) {
+          await supabase.storage.from('driver-licenses').remove([existingDriver.license_file_path]);
+        }
+        const up = await uploadDriverFile(data.licenseFile, 'license');
+        updateData.license_file_path = up.path;
+        updateData.license_file_name = up.name;
+      }
+      if (data.aadhaarFile) {
+        if (existingDriver?.aadhaar_file_path) {
+          await supabase.storage.from('driver-licenses').remove([existingDriver.aadhaar_file_path]);
+        }
+        const up = await uploadDriverFile(data.aadhaarFile, 'aadhaar');
+        updateData.aadhaar_file_path = up.path;
+        updateData.aadhaar_file_name = up.name;
+      }
+      if (data.policeVerificationFile) {
+        if (existingDriver?.police_verification_file_path) {
+          await supabase.storage.from('driver-licenses').remove([existingDriver.police_verification_file_path]);
+        }
+        const up = await uploadDriverFile(data.policeVerificationFile, 'police');
+        updateData.police_verification_file_path = up.path;
+        updateData.police_verification_file_name = up.name;
+      }
+      if (data.healthCertificateFile) {
+        if (existingDriver?.health_certificate_file_path) {
+          await supabase.storage.from('driver-licenses').remove([existingDriver.health_certificate_file_path]);
+        }
+        const up = await uploadDriverFile(data.healthCertificateFile, 'health');
+        updateData.health_certificate_file_path = up.path;
+        updateData.health_certificate_file_name = up.name;
+      }
 
       const { data: driver, error } = await supabase
         .from('drivers')
@@ -255,21 +318,22 @@ export function useDeleteDriver() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // Get driver to delete license file if exists
       const { data: driver } = await supabase
         .from('drivers')
-        .select('license_file_path')
+        .select('license_file_path, aadhaar_file_path, police_verification_file_path, health_certificate_file_path')
         .eq('id', id)
         .single();
 
-      // Delete license file if exists
-      if (driver?.license_file_path) {
-        await supabase.storage
-          .from('driver-licenses')
-          .remove([driver.license_file_path]);
+      const paths = [
+        driver?.license_file_path,
+        driver?.aadhaar_file_path,
+        driver?.police_verification_file_path,
+        driver?.health_certificate_file_path,
+      ].filter(Boolean) as string[];
+      if (paths.length > 0) {
+        await supabase.storage.from('driver-licenses').remove(paths);
       }
 
-      // Delete driver record
       const { error } = await supabase
         .from('drivers')
         .delete()

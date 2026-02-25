@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/table';
 import { Gauge, AlertCircle, Loader2, CheckCircle, History } from 'lucide-react';
 import { toLocalDateTimeInputValue, formatDateTimeDMY } from '@/lib/date';
+import { formatCarLabel } from '@/lib/utils';
 
 export default function Odometer() {
   const [searchParams] = useSearchParams();
@@ -179,7 +180,7 @@ export default function Odometer() {
                   <div className="p-4 rounded-lg bg-muted/50 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Selected Vehicle</span>
-                      <span className="font-medium">{selectedCar?.vehicle_number}</span>
+                      <span className="font-medium">{selectedCar ? formatCarLabel(selectedCar) : ''}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Last Reading</span>
@@ -289,7 +290,7 @@ export default function Odometer() {
                               to={`/app/fleet/${entry.car_id}`}
                               className="font-medium text-accent hover:underline"
                             >
-                              {car?.vehicle_number || 'Unknown'}
+                              {car ? formatCarLabel(car) : 'Unknown'}
                             </Link>
                           </TableCell>
                           <TableCell className="font-medium">

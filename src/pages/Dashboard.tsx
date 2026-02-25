@@ -37,6 +37,7 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatCarLabel } from '@/lib/utils';
 import SupervisorDashboard from '@/components/dashboard/SupervisorDashboard';
 
 export default function Dashboard() {
@@ -273,7 +274,7 @@ export default function Dashboard() {
                       {item.status === 'overdue' ? 'Overdue' : 'Due Soon'}
                     </Badge>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm truncate">{item.vehicle_number}</p>
+                      <p className="font-medium text-sm truncate">{formatCarLabel(item)}</p>
                       <p className="text-xs text-muted-foreground truncate">{item.service_name}</p>
                     </div>
                   </div>
@@ -318,7 +319,7 @@ export default function Dashboard() {
                       to={`/app/fleet/${car.car_id}`}
                       className="flex items-center justify-between gap-2 p-3 rounded-lg bg-warning/5 hover:bg-warning/10 transition-colors"
                     >
-                      <span className="font-medium text-sm truncate">{car.vehicle_number}</span>
+                      <span className="font-medium text-sm truncate">{formatCarLabel({ vehicle_number: car.vehicle_number, model: cars?.find(c2 => c2.id === car.car_id)?.model, brand: cars?.find(c2 => c2.id === car.car_id)?.brand })}</span>
                       <span className="text-xs md:text-sm text-muted-foreground flex-shrink-0">
                         {car.usage_30d_km?.toLocaleString()} km
                       </span>
@@ -345,7 +346,7 @@ export default function Dashboard() {
                       to={`/app/fleet/${car.car_id}`}
                       className="flex items-center justify-between gap-2 p-3 rounded-lg bg-accent/5 hover:bg-accent/10 transition-colors"
                     >
-                      <span className="font-medium text-sm truncate">{car.vehicle_number}</span>
+                      <span className="font-medium text-sm truncate">{formatCarLabel({ vehicle_number: car.vehicle_number, model: cars?.find(c2 => c2.id === car.car_id)?.model, brand: cars?.find(c2 => c2.id === car.car_id)?.brand })}</span>
                       <span className="text-xs md:text-sm text-muted-foreground flex-shrink-0">
                         {car.usage_30d_km?.toLocaleString()} km
                       </span>
@@ -379,8 +380,7 @@ export default function Dashboard() {
                     className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm truncate">{car.vehicle_number}</p>
-                      <p className="text-xs text-muted-foreground truncate">{car.model}</p>
+                      <p className="font-medium text-sm truncate">{formatCarLabel(car)}</p>
                     </div>
                     <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
                       <span className="text-xs sm:text-sm text-muted-foreground">
@@ -485,7 +485,7 @@ export default function Dashboard() {
                 className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-md bg-background border shadow-sm"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-sm truncate">{item.vehicle_number}</p>
+                  <p className="font-medium text-sm truncate">{formatCarLabel(item)}</p>
                   <p className="text-xs text-muted-foreground truncate">{item.service_name}</p>
                 </div>
                 <span className={`text-xs sm:text-sm font-medium flex-shrink-0 ${item.status === 'overdue' ? 'text-red-600' : 'text-amber-600'}`}>

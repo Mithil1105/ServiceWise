@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { RATE_TYPE_LABELS, TRIP_TYPE_LABELS } from '@/types/booking';
 import type { RateType, TripType, VehicleBillDetail } from '@/types/booking';
 import { toLocalDateInputValue, isoAtNoonUtcFromDateInput } from '@/lib/date';
+import { formatCarLabel } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CustomerAutocomplete } from '@/components/bookings/CustomerAutocomplete';
 import { useCars } from '@/hooks/use-cars';
@@ -20,6 +21,8 @@ import { useUpsertCustomer } from '@/hooks/use-customers';
 import { useSystemConfig } from '@/hooks/use-dashboard';
 import { useBankAccounts, useCreateBankAccount } from '@/hooks/use-bank-accounts';
 import { useAuth } from '@/lib/auth-context';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import { DEFAULT_EXTRA_CHARGE_LABELS } from '@/types/billing-config';
 import { TransferDialog } from './TransferDialog';
 
 interface VehicleInput {
@@ -58,6 +61,17 @@ export function CreateStandaloneBillDialog({
   const createBankAccount = useCreateBankAccount();
   const { user, profile } = useAuth();
   const orgId = profile?.organization_id ?? null;
+  const { data: orgSettings } = useOrganizationSettings();
+  const perBillBlocks = (orgSettings?.billing_layout_config?.customBlocks ?? []).filter((b) => b.valueSource === 'per_bill');
+  const extraChargesConfig = orgSettings?.billing_layout_config?.extraCharges ?? {};
+  const showToll = extraChargesConfig.toll_tax?.show !== false;
+  const showParking = extraChargesConfig.parking_charges?.show !== false;
+  const tollLabel = extraChargesConfig.toll_tax?.label ?? DEFAULT_EXTRA_CHARGE_LABELS.toll_tax;
+  const parkingLabel = extraChargesConfig.parking_charges?.label ?? DEFAULT_EXTRA_CHARGE_LABELS.parking_charges;
+
+  const [customAttributes, setCustomAttributes] = useState<Record<string, string | number | boolean>>({});
+  const [tollCharges, setTollCharges] = useState('0');
+  const [parkingCharges, setParkingCharges] = useState('0');
   const [errors, setErrors] = useState<Record<string, string>>({});
   
   // Bank account dialog state
@@ -249,6 +263,39 @@ export function CreateStandaloneBillDialog({
     }
   };
 
+  const resetForm = () => {
+    setErrors({});
+    setCustomerName('');
+    setCustomerPhone('');
+    setTripType('local');
+    setStartDate(toLocalDateInputValue(new Date()));
+    setEndDate(toLocalDateInputValue(new Date()));
+    setPickup('');
+    setDropoff('');
+    setKmMethod('manual');
+    setStartOdometer('');
+    setEndOdometer('');
+    setManualKm('');
+    setVehicles([{
+      car_id: null,
+      vehicle_number: '',
+      driver_name: '',
+      driver_phone: '',
+      rate_type: 'total',
+      final_amount: 0,
+    }]);
+    setAdvanceAmount('0');
+    setAdvancePaymentMethod('');
+    setAdvanceCollectedBy('');
+    setAdvanceAccountType('');
+    setAdvanceAccountId(null);
+    setThresholdNote('');
+    setTollCharges('0');
+    setParkingCharges('0');
+    setCustomAttributes({});
+    setBillGenerationResult(null);
+  };
+
   // Recalculate all vehicle amounts when dates or KM change
   useEffect(() => {
     const totalKm = kmMethod === 'odometer' && startOdometer && endOdometer
@@ -381,20 +428,33 @@ export function CreateStandaloneBillDialog({
         };
       });
       
-      // Calculate totals
-      const totalAmount = vehicleDetails.reduce((sum, v) => sum + v.final_amount, 0);
+      // Calculate totals (vehicle total + toll + parking)
+      const vehicleTotal = vehicleDetails.reduce((sum, v) => sum + v.final_amount, 0);
+      const tollAmount = parseFloat(tollCharges) || 0;
+      const parkingAmount = parseFloat(parkingCharges) || 0;
+      const totalAmount = vehicleTotal + tollAmount + parkingAmount;
       const advance = parseFloat(advanceAmount) || 0;
       const balance = totalAmount - advance;
       
       // Use combined threshold note or the one from form
       const finalThresholdNote = combinedThresholdNote || thresholdNote.trim() || null;
       
-      // Generate bill number
+      if (!orgId) throw new Error('Organization not found');
+      const { data: orgSettings } = await supabase
+        .from('organization_settings')
+        .select('bill_number_prefix')
+        .eq('organization_id', orgId)
+        .maybeSingle();
+      const prefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
+      
+      // Generate bill number (per-org prefix)
       const year = new Date().getFullYear();
+      const billPrefix = `${prefix}-BILL`;
       const { data: lastBill } = await supabase
         .from('bills')
         .select('bill_number')
-        .like('bill_number', `PT-BILL-${year}-%`)
+        .eq('organization_id', orgId)
+        .like('bill_number', `${billPrefix}-${year}-%`)
         .order('bill_number', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -402,12 +462,10 @@ export function CreateStandaloneBillDialog({
       let billNumber = '';
       if (lastBill?.bill_number) {
         const lastNum = parseInt(lastBill.bill_number.split('-').pop() || '0');
-        billNumber = `PT-BILL-${year}-${String(lastNum + 1).padStart(6, '0')}`;
+        billNumber = `${billPrefix}-${year}-${String(lastNum + 1).padStart(6, '0')}`;
       } else {
-        billNumber = `PT-BILL-${year}-000001`;
+        billNumber = `${billPrefix}-${year}-000001`;
       }
-      
-      if (!orgId) throw new Error('Organization not found');
       // Create bill
       const { data: bill, error: billError } = await supabase
         .from('bills')
@@ -431,7 +489,21 @@ export function CreateStandaloneBillDialog({
           total_driver_allowance: 0, // Standalone bills don't have driver allowance
           advance_amount: advance,
           balance_amount: balance,
+          toll_charges: tollAmount,
+          parking_charges: parkingAmount,
           threshold_note: finalThresholdNote,
+          custom_attributes: (() => {
+            const attrs: Record<string, string | number | boolean | null> = {};
+            perBillBlocks.forEach((block) => {
+              const raw = customAttributes[block.key];
+              if (raw !== undefined && raw !== '') {
+                if (block.type === 'number') attrs[block.key] = typeof raw === 'number' ? raw : Number(raw);
+                else if (block.type === 'checkbox') attrs[block.key] = !!raw;
+                else attrs[block.key] = String(raw);
+              }
+            });
+            return Object.keys(attrs).length ? attrs : null;
+          })(),
           created_by: user?.id,
         })
         .select()
@@ -464,12 +536,18 @@ export function CreateStandaloneBillDialog({
     },
   });
 
-  const totalAmount = vehicles.reduce((sum, v) => sum + v.final_amount, 0);
+  const vehicleTotal = vehicles.reduce((sum, v) => sum + v.final_amount, 0);
+  const tollAmount = parseFloat(tollCharges) || 0;
+  const parkingAmount = parseFloat(parkingCharges) || 0;
+  const totalAmount = vehicleTotal + tollAmount + parkingAmount;
   const advance = parseFloat(advanceAmount) || 0;
   const balance = totalAmount - advance;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      if (!isOpen) resetForm();
+      onOpenChange(isOpen);
+    }}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -815,6 +893,84 @@ export function CreateStandaloneBillDialog({
             ))}
           </div>
 
+          {/* Per-bill custom fields (from Settings → Billings) */}
+          {perBillBlocks.length > 0 && (
+            <div className="space-y-4 border rounded-lg p-4">
+              <h3 className="font-semibold">Additional bill details</h3>
+              {perBillBlocks.map((block) => (
+                <div key={block.id} className="space-y-2">
+                  <Label htmlFor={`custom-${block.key}`}>{block.label}</Label>
+                  {block.type === 'long_text' ? (
+                    <Textarea
+                      id={`custom-${block.key}`}
+                      placeholder={block.label}
+                      value={typeof customAttributes[block.key] === 'string' ? customAttributes[block.key] : ''}
+                      onChange={(e) => setCustomAttributes((prev) => ({ ...prev, [block.key]: e.target.value }))}
+                      rows={3}
+                    />
+                  ) : block.type === 'checkbox' ? (
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={!!customAttributes[block.key]}
+                        onChange={(e) => setCustomAttributes((prev) => ({ ...prev, [block.key]: e.target.checked }))}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      <span className="text-sm text-muted-foreground">Yes / No</span>
+                    </label>
+                  ) : (
+                    <Input
+                      id={`custom-${block.key}`}
+                      type={block.type === 'number' ? 'number' : block.type === 'date' ? 'date' : 'text'}
+                      placeholder={block.label}
+                      value={customAttributes[block.key] != null ? String(customAttributes[block.key]) : ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (block.type === 'number') setCustomAttributes((prev) => ({ ...prev, [block.key]: v === '' ? '' as unknown as number : Number(v) }));
+                        else setCustomAttributes((prev) => ({ ...prev, [block.key]: v }));
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Extra charges (toll, parking) – added to total; configurable in Settings → Billing */}
+          {(showToll || showParking) && (
+            <div className="space-y-4 border rounded-lg p-4">
+              <h3 className="font-semibold text-sm">Extra charges (added to total)</h3>
+              <div className="grid grid-cols-2 gap-4">
+                {showToll && (
+                  <div className="space-y-2">
+                    <Label htmlFor="toll-charges">{tollLabel}</Label>
+                    <Input
+                      id="toll-charges"
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={tollCharges}
+                      onChange={(e) => setTollCharges(e.target.value)}
+                    />
+                  </div>
+                )}
+                {showParking && (
+                  <div className="space-y-2">
+                    <Label htmlFor="parking-charges">{parkingLabel}</Label>
+                    <Input
+                      id="parking-charges"
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={parkingCharges}
+                      onChange={(e) => setParkingCharges(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Amounts */}
           <div className="space-y-4 border rounded-lg p-4">
             <h3 className="font-semibold">Amounts</h3>
@@ -960,7 +1116,7 @@ export function CreateStandaloneBillDialog({
                 
                 return (
                   <div key={index} className="border-l-2 border-primary pl-3 space-y-1">
-                    <p className="font-medium text-sm">{vehicle.vehicle_number || `Vehicle ${index + 1}`}</p>
+                    <p className="font-medium text-sm">{vehicle.vehicle_number ? formatCarLabel({ vehicle_number: vehicle.vehicle_number, model: selectedCar?.model, brand: selectedCar?.brand }) : `Vehicle ${index + 1}`}</p>
                     {vehicle.rate_type === 'total' && (
                       <div className="text-xs text-muted-foreground space-y-0.5">
                         <p>Rate Type: Total Amount</p>
@@ -1011,6 +1167,22 @@ export function CreateStandaloneBillDialog({
             
             <div className="bg-muted p-4 rounded-md space-y-2">
               <div className="flex justify-between">
+                <span>Vehicle Total:</span>
+                <span className="font-semibold">₹{vehicleTotal.toLocaleString('en-IN')}</span>
+              </div>
+              {tollAmount > 0 && (
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>{tollLabel}:</span>
+                  <span>+ ₹{tollAmount.toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              {parkingAmount > 0 && (
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>{parkingLabel}:</span>
+                  <span>+ ₹{parkingAmount.toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1 border-t">
                 <span>Total Amount:</span>
                 <span className="font-semibold">₹{totalAmount.toLocaleString('en-IN')}</span>
               </div>

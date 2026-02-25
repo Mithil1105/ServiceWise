@@ -141,11 +141,15 @@ export function useCreateCar() {
           year: carFields.year,
           fuel_type: carFields.fuel_type,
           vehicle_type: carFields.vehicle_type,
+          vehicle_class: carFields.vehicle_class ?? 'lmv',
           owner_name: carFields.owner_name,
           status: carFields.status || 'active',
           vin_chassis: carFields.vin_chassis,
           notes: carFields.notes,
           seats: seats ?? 5,
+          custom_attributes: carFields.custom_attributes ?? null,
+          on_permanent_assignment: carFields.on_permanent_assignment ?? false,
+          permanent_assignment_note: carFields.permanent_assignment_note ?? null,
           created_by: user?.id,
         })
         .select()

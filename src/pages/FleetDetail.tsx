@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useCar } from '@/hooks/use-cars';
+import { useCar, useUpdateCar } from '@/hooks/use-cars';
 import { useOdometerEntries, useLatestOdometer } from '@/hooks/use-odometer';
 import { useServiceRecords } from '@/hooks/use-services';
 import { useActiveDowntime, useStartDowntime, useEndDowntime, useDowntimeLogs } from '@/hooks/use-downtime';
@@ -9,7 +9,7 @@ import { useCarNotes, useCreateCarNote, useDeleteCarNote, useTogglePinNote } fro
 import { useHighMaintenanceData } from '@/hooks/use-dashboard';
 import { useAuth } from '@/lib/auth-context';
 import DocumentsSection from '@/components/fleet/DocumentsSection';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -64,14 +64,17 @@ import {
   Trash2,
   Plus,
   HelpCircle,
+  UserCheck,
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { formatDateDMY, formatDateTimeDMY } from '@/lib/date';
 import type { TimelineItem, DowntimeLog } from '@/types';
 
 export default function FleetDetail() {
   const { id } = useParams<{ id: string }>();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isManager } = useAuth();
   const { data: car, isLoading: carLoading } = useCar(id!);
+  const updateCar = useUpdateCar();
   const { data: latestOdo } = useLatestOdometer(id!);
   const { data: odometerEntries, isLoading: odoLoading } = useOdometerEntries(id);
   const { data: serviceRecords, isLoading: servicesLoading } = useServiceRecords(id);
@@ -94,6 +97,13 @@ export default function FleetDetail() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [pinNewNote, setPinNewNote] = useState(false);
+  const [assignmentNote, setAssignmentNote] = useState('');
+  const [assignmentNoteTouched, setAssignmentNoteTouched] = useState(false);
+
+  useEffect(() => {
+    if (car?.permanent_assignment_note != null) setAssignmentNote(car.permanent_assignment_note);
+    else if (!assignmentNoteTouched) setAssignmentNote('');
+  }, [car?.permanent_assignment_note]);
 
   const currentKm = latestOdo?.odometer_km || 0;
 
@@ -295,7 +305,10 @@ export default function FleetDetail() {
                 </Tooltip>
               )}
             </div>
-            <p className="text-muted-foreground">{car.model}</p>
+            <p className="text-muted-foreground flex items-center gap-2">
+              {car.model}
+              <Badge variant="outline" className="font-normal">{car.vehicle_class === 'hmv' ? 'HMV' : 'LMV'}</Badge>
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -463,6 +476,68 @@ export default function FleetDetail() {
           </div>
         </Card>
       </div>
+
+      {/* Permanent assignment (Admin/Manager) */}
+      {(isAdmin || isManager) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              Permanent assignment
+            </CardTitle>
+            <CardDescription>
+              When on, this vehicle is excluded from booking assignment and check availability. Optionally note who or what it is assigned to.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={!!car.on_permanent_assignment}
+                onCheckedChange={(checked) =>
+                  updateCar.mutate({
+                    id: id!,
+                    on_permanent_assignment: checked,
+                    ...(checked ? {} : { permanent_assignment_note: null }),
+                  })
+                }
+                disabled={updateCar.isPending}
+              />
+              <Label className="text-sm font-medium">
+                On permanent assignment (not available for bookings)
+              </Label>
+            </div>
+            {car.on_permanent_assignment && (
+              <div className="space-y-2">
+                <Label htmlFor="assignment-note">Assigned to (optional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="assignment-note"
+                    value={assignmentNote}
+                    onChange={(e) => {
+                      setAssignmentNote(e.target.value);
+                      setAssignmentNoteTouched(true);
+                    }}
+                    placeholder="e.g. Driver name, CEO car"
+                    className="max-w-sm"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      updateCar.mutate({
+                        id: id!,
+                        permanent_assignment_note: assignmentNote.trim() || null,
+                      });
+                    }}
+                    disabled={updateCar.isPending}
+                  >
+                    {updateCar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Notes Panel */}
       <Card>

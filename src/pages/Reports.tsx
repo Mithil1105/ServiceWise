@@ -18,7 +18,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { FileText, Download, CalendarIcon, Loader2 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { cn, formatCarLabel } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { DateRange } from 'react-day-picker';
 
@@ -385,8 +385,7 @@ export default function Reports() {
                     onCheckedChange={() => handleToggleCar(car.id)}
                   />
                   <div>
-                    <p className="text-sm font-medium">{car.vehicle_number}</p>
-                    <p className="text-xs text-muted-foreground">{car.model}</p>
+                    <p className="text-sm font-medium">{formatCarLabel(car)}</p>
                   </div>
                 </div>
               ))}

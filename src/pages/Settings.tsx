@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -29,16 +30,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Settings as SettingsIcon, Plus, Wrench, Loader2, AlertCircle, Shield, Gauge, Copy, Layers } from 'lucide-react';
+import { Settings as SettingsIcon, Plus, Wrench, Loader2, AlertCircle, Shield, Gauge, Copy, Layers, Building2, ImageIcon, Car, Users, Calendar, FileText } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useOrg } from '@/hooks/use-org';
-import { Building2 } from 'lucide-react';
+import { useOrganizationSettings, useUpdateOrganizationSettings } from '@/hooks/use-organization-settings';
+import { useUpdateOrganization } from '@/hooks/use-organization';
+import { FleetFormConfigCard } from '@/components/settings/FleetFormConfigCard';
+import { DriverFormConfigCard } from '@/components/settings/DriverFormConfigCard';
+import { BookingFormConfigCard } from '@/components/settings/BookingFormConfigCard';
+import { BillingLayoutConfigCard } from '@/components/settings/BillingLayoutConfigCard';
+
+const LOGO_BUCKET = 'organization-logos';
 
 export default function Settings() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, organization, refreshUser } = useAuth();
   const { orgId } = useOrg();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -46,11 +54,110 @@ export default function Settings() {
     queryKey: ['organization', orgId],
     queryFn: async () => {
       if (!orgId) return null;
-      const { data } = await supabase.from('organizations').select('join_code, name').eq('id', orgId).single();
+      const { data } = await supabase.from('organizations').select('join_code, name, logo_url, company_name').eq('id', orgId).single();
       return data;
     },
     enabled: !!orgId,
   });
+  const { data: orgSettings } = useOrganizationSettings();
+  const updateOrg = useUpdateOrganization();
+  const updateOrgSettings = useUpdateOrganizationSettings();
+  const [brandingSaving, setBrandingSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+  const [termsAndConditions, setTermsAndConditions] = useState('');
+  const [billPrefix, setBillPrefix] = useState('PT');
+  useEffect(() => {
+    const name = org?.company_name ?? organization?.company_name ?? '';
+    if (name !== '') setCompanyName(name);
+  }, [org?.company_name, organization?.company_name]);
+  useEffect(() => {
+    if (orgSettings?.terms_and_conditions != null) setTermsAndConditions(orgSettings.terms_and_conditions);
+  }, [orgSettings?.terms_and_conditions]);
+  useEffect(() => {
+    if (orgSettings?.bill_number_prefix != null) setBillPrefix(orgSettings.bill_number_prefix);
+  }, [orgSettings?.bill_number_prefix]);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !orgId) return;
+    setLogoUploading(true);
+    try {
+      const ext = file.name.split('.').pop() || 'png';
+      const path = `${orgId}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from(LOGO_BUCKET).upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(path);
+      const { data: updated, error: updateError } = await supabase
+        .from('organizations')
+        .update({ logo_url: urlData.publicUrl })
+        .eq('id', orgId)
+        .select('id')
+        .single();
+      if (updateError) throw updateError;
+      if (!updated) {
+        toast({ title: 'Logo upload failed', description: 'Could not update organization. You may need admin rights.', variant: 'destructive' });
+        setLogoUploading(false);
+        e.target.value = '';
+        return;
+      }
+      await queryClient.refetchQueries({ queryKey: ['organization', orgId] });
+      await refreshUser();
+      toast({ title: 'Logo updated' });
+    } catch (err: any) {
+      toast({ title: 'Logo upload failed', description: err?.message, variant: 'destructive' });
+    } finally {
+      setLogoUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!orgId) return;
+    setLogoUploading(true);
+    try {
+      const { error } = await supabase.from('organizations').update({ logo_url: null }).eq('id', orgId).select('id').single();
+      if (error) throw error;
+      await queryClient.refetchQueries({ queryKey: ['organization', orgId] });
+      await refreshUser();
+      toast({ title: 'Logo removed' });
+    } catch (err: any) {
+      toast({ title: 'Failed to remove logo', description: err?.message, variant: 'destructive' });
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const handleSaveBranding = async () => {
+    setBrandingSaving(true);
+    try {
+      await updateOrg.mutateAsync({ company_name: companyName.trim() || null });
+      await updateOrgSettings.mutateAsync({
+        terms_and_conditions: termsAndConditions.trim() || null,
+      });
+      await queryClient.refetchQueries({ queryKey: ['organization', orgId] });
+      await refreshUser();
+      toast({ title: 'Branding saved' });
+    } catch (err: any) {
+      toast({ title: 'Failed to save branding', description: err?.message, variant: 'destructive' });
+    } finally {
+      setBrandingSaving(false);
+    }
+  };
+
+  const handleSaveBillPrefix = async () => {
+    setBrandingSaving(true);
+    try {
+      await updateOrgSettings.mutateAsync({
+        bill_number_prefix: (billPrefix || 'PT').trim().toUpperCase().slice(0, 20),
+      });
+      toast({ title: 'Bill number prefix saved' });
+    } catch (err: any) {
+      toast({ title: 'Failed to save', description: err?.message, variant: 'destructive' });
+    } finally {
+      setBrandingSaving(false);
+    }
+  };
   
   // Brand management
   const { data: brandsWithRules = [] } = useBrandsWithRules();
@@ -300,6 +407,168 @@ export default function Settings() {
         </div>
       </div>
 
+      <Tabs defaultValue="branding" className="space-y-6">
+        <TabsList className="flex flex-wrap gap-1 h-auto p-1">
+          <TabsTrigger value="branding" className="flex items-center gap-2">
+            <ImageIcon className="h-4 w-4" />
+            Branding
+          </TabsTrigger>
+          <TabsTrigger value="fleet" className="flex items-center gap-2">
+            <Car className="h-4 w-4" />
+            Fleet
+          </TabsTrigger>
+          <TabsTrigger value="drivers" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Drivers
+          </TabsTrigger>
+          <TabsTrigger value="bookings" className="flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Bookings
+          </TabsTrigger>
+          <TabsTrigger value="billings" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Billings
+          </TabsTrigger>
+          <TabsTrigger value="service" className="flex items-center gap-2">
+            <Wrench className="h-4 w-4" />
+            Service & system
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="branding" className="space-y-6 mt-6">
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" />
+              Branding
+            </CardTitle>
+            <CardDescription>
+              Logo, company name, and terms & conditions used on bills and invoices.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label>Organization logo</Label>
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-24 border rounded flex items-center justify-center bg-muted/50 overflow-hidden shrink-0">
+                  {(org?.logo_url ?? organization?.logo_url) ? (
+                    <img
+                      src={org?.logo_url ?? organization?.logo_url ?? ''}
+                      alt="Logo"
+                      className="h-14 w-20 object-contain"
+                      onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }}
+                    />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">No logo</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={logoUploading}
+                      onClick={() => document.getElementById('settings-logo-input')?.click()}
+                    >
+                      {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Choose image'}
+                    </Button>
+                    <Input
+                      id="settings-logo-input"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      disabled={logoUploading}
+                      className="hidden"
+                    />
+                  </div>
+                  {(org?.logo_url ?? organization?.logo_url) && (
+                    <Button type="button" variant="outline" size="sm" onClick={handleRemoveLogo} disabled={logoUploading}>
+                      {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Remove logo'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company_name">Company name (legal)</Label>
+              <Input
+                id="company_name"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="e.g. PATIDAR TRAVELS PVT. LTD."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="terms">Terms & conditions</Label>
+              <Textarea
+                id="terms"
+                value={termsAndConditions}
+                onChange={(e) => setTermsAndConditions(e.target.value)}
+                placeholder="Paste your terms and conditions (shown on bills and invoices)."
+                rows={6}
+                className="resize-y"
+              />
+            </div>
+            <Button onClick={handleSaveBranding} disabled={brandingSaving}>
+              {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save branding
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+        </TabsContent>
+
+        <TabsContent value="fleet" className="space-y-6 mt-6">
+          <FleetFormConfigCard />
+        </TabsContent>
+
+        <TabsContent value="drivers" className="space-y-6 mt-6">
+          <DriverFormConfigCard />
+        </TabsContent>
+
+        <TabsContent value="bookings" className="space-y-6 mt-6">
+          <BookingFormConfigCard />
+        </TabsContent>
+
+        <TabsContent value="billings" className="space-y-6 mt-6">
+      {isAdmin && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Bill number
+              </CardTitle>
+              <CardDescription>
+                Prefix for customer and company bill numbers (e.g. PT → PT-BILL-2025-000001, PT-CB-2025-000001).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="bill_prefix_billings">Bill number prefix</Label>
+                <Input
+                  id="bill_prefix_billings"
+                  value={billPrefix}
+                  onChange={(e) => setBillPrefix(e.target.value.toUpperCase())}
+                  placeholder="PT"
+                  maxLength={20}
+                  className="w-24 font-mono"
+                />
+              </div>
+              <Button onClick={handleSaveBillPrefix} disabled={brandingSaving}>
+                {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save prefix
+              </Button>
+            </CardContent>
+          </Card>
+          <BillingLayoutConfigCard />
+        </>
+      )}
+        </TabsContent>
+
+        <TabsContent value="service" className="space-y-6 mt-6">
       {/* Organization code (share with users who want to join) */}
       {org?.join_code && (
         <Card>
@@ -812,6 +1081,8 @@ export default function Settings() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

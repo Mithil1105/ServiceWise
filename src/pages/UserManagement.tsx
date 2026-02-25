@@ -61,6 +61,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useOrg } from '@/hooks/use-org';
 import { invokeAuthed } from '@/lib/functions-invoke';
 import { formatDateDMY } from '@/lib/date';
+import { formatCarLabel } from '@/lib/utils';
 import { usePendingJoinRequests } from '@/hooks/use-join-organization';
 import type { AppRole, Profile } from '@/types';
 
@@ -941,10 +942,7 @@ export default function UserManagement() {
                           {a.supervisor?.name || 'Unknown'}
                         </TableCell>
                         <TableCell>
-                          <div>
-                            <p className="font-medium">{a.cars?.vehicle_number}</p>
-                            <p className="text-xs text-muted-foreground">{a.cars?.model}</p>
-                          </div>
+                          <p className="font-medium">{a.cars ? formatCarLabel(a.cars) : 'Unknown'}</p>
                         </TableCell>
                         <TableCell>{formatDateDMY(a.assigned_at)}</TableCell>
                         <TableCell className="text-right">

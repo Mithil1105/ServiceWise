@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { formatDateTimeFull } from '@/lib/date';
 import { QRCodeSVG } from 'qrcode.react';
@@ -42,7 +42,16 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import patidarLogo from '@/assets/patidar-logo.jpg';
+import { useAuth } from '@/lib/auth-context';
+import { formatCarLabel } from '@/lib/utils';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import {
+  type BillingLayoutConfig,
+  type BillingCustomBlock,
+  BILLING_SECTION_LABELS,
+  type BillingBuiltInSectionKey,
+  DEFAULT_EXTRA_CHARGE_LABELS,
+} from '@/types/billing-config';
 
 const BILL_STATUS_LABELS: Record<Bill['status'], { label: string; color: string }> = {
   draft: { label: 'Draft', color: 'bg-gray-500' },
@@ -53,8 +62,11 @@ const BILL_STATUS_LABELS: Record<Bill['status'], { label: string; color: string 
 export default function Bills() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const billRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const { organization } = useAuth();
+  const { data: orgSettings } = useOrganizationSettings();
   const { data: booking, isLoading: loadingBooking } = useBooking(id);
   const { data: bills, isLoading: loadingBills, refetch: refetchBills } = useBillsByBooking(id);
   const { data: companyBills } = useCompanyBills({ bookingId: id });
@@ -63,6 +75,27 @@ export default function Bills() {
   const updateBillStatus = useUpdateBillStatus();
   const uploadPDF = useUploadBillPDF();
   const markReminderSent = useMarkReminderSent();
+  const companyName = organization?.company_name || organization?.name || 'Company';
+  const logoUrl = organization?.logo_url || '/HERO.png';
+  const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
+
+  const billingConfig: BillingLayoutConfig | undefined = orgSettings?.billing_layout_config ?? undefined;
+  const showSection = (key: BillingBuiltInSectionKey) => billingConfig?.sections?.[key]?.show !== false;
+  const sectionLabel = (key: BillingBuiltInSectionKey) =>
+    billingConfig?.sections?.[key]?.label ?? BILLING_SECTION_LABELS[key];
+  const customBlocksAt = (position: string) =>
+    (billingConfig?.customBlocks ?? []).filter((b) => b.position === position).sort((a, b) => a.order - b.order);
+  const extraChargesConfig = billingConfig?.extraCharges ?? {};
+  const tollLabel = extraChargesConfig.toll_tax?.label ?? DEFAULT_EXTRA_CHARGE_LABELS.toll_tax;
+  const parkingLabel = extraChargesConfig.parking_charges?.label ?? DEFAULT_EXTRA_CHARGE_LABELS.parking_charges;
+  const getCustomBlockValue = (block: BillingCustomBlock, customAttrs: Record<string, string | number | boolean | null> | null | undefined) =>
+    block.valueSource === 'org' ? block.orgValue : (customAttrs ?? {})[block.key];
+  const formatCustomBlockDisplay = (block: BillingCustomBlock, value: string | number | boolean | null | undefined) => {
+    if (value == null || value === '') return '—';
+    if (block.type === 'checkbox') return value ? 'Yes' : 'No';
+    if (block.type === 'date' && typeof value === 'string') return format(new Date(value), 'dd MMM yyyy');
+    return String(value);
+  };
 
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
   const [generateBillOpen, setGenerateBillOpen] = useState(false);
@@ -70,6 +103,18 @@ export default function Bills() {
   const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [billViewTab, setBillViewTab] = useState<'customer' | 'company'>('customer');
+
+  const billIdFromUrl = searchParams.get('billId');
+  const tabFromUrl = searchParams.get('tab');
+  useEffect(() => {
+    if (!id || !bills) return;
+    if (billIdFromUrl && bills.some((b) => b.id === billIdFromUrl)) {
+      setSelectedBillId(billIdFromUrl);
+    }
+  }, [id, billIdFromUrl, bills]);
+  useEffect(() => {
+    if (tabFromUrl === 'company') setBillViewTab('company');
+  }, [tabFromUrl]);
 
   const selectedBill = bills?.find(b => b.id === selectedBillId) || bills?.[0];
   // Find company bill that matches the selected customer bill
@@ -111,21 +156,32 @@ export default function Bills() {
     
     setGeneratingPdf(true);
     try {
-      const canvas = await html2canvas(billRef.current, {
+      const el = billRef.current;
+      const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
+        height: el.scrollHeight,
+        windowHeight: el.scrollHeight,
       });
       
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const pdf = new jsPDF('l', 'mm', 'a4'); // landscape
+      const pdfWidth = 297;
+      const pdfHeight = 210;
+      const imgWidthInMM = pdfWidth;
+      const imgHeightInMM = (canvas.height * pdfWidth) / canvas.width;
       
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      let yPos = 0;
+      let page = 0;
+      while (yPos < imgHeightInMM) {
+        if (page > 0) pdf.addPage('a4', 'l');
+        pdf.addImage(imgData, 'PNG', 0, -yPos, imgWidthInMM, imgHeightInMM);
+        yPos += pdfHeight;
+        page++;
+      }
+      
       const blob = pdf.output('blob');
-      
-      // Upload to storage
       const file = new File([blob], `${bill.bill_number}.pdf`, { type: 'application/pdf' });
       await uploadPDF.mutateAsync({ billId: bill.id, pdfFile: file });
       
@@ -156,7 +212,7 @@ export default function Bills() {
     if (!selectedBill || !booking) return;
     
     const message = encodeURIComponent(
-      `*PATIDAR TRAVELS - Final Bill*\n\n` +
+      `*${companyName} - Final Bill*\n\n` +
       `📋 Bill: ${selectedBill.bill_number}\n` +
       `📋 Booking: ${booking.booking_ref}\n` +
       `👤 Customer: ${selectedBill.customer_name}\n` +
@@ -165,8 +221,8 @@ export default function Bills() {
       `🚗 Total KM: ${selectedBill.total_km_driven} km\n\n` +
       `💰 Total: ${formatCurrency(selectedBill.total_amount)}\n` +
       `✅ Advance: ${formatCurrency(selectedBill.advance_amount)}\n` +
-      `📍 *Balance: ${formatCurrency(selectedBill.balance_amount)}*\n\n` +
-      `Thank you for choosing Patidar Travels!`
+      `📍 *Balance: ${formatCurrency(selectedBill.total_amount - (selectedBill.total_driver_allowance ?? 0) - selectedBill.advance_amount)}*\n\n` +
+      `Thank you for choosing ${companyName}!`
     );
     
     const phone = selectedBill.customer_phone.replace(/\D/g, '');
@@ -275,7 +331,7 @@ export default function Bills() {
                     <div>
                       <p className="font-medium">{bill.bill_number}</p>
                       <p className="text-sm text-muted-foreground">
-                        {formatDateTime(bill.created_at)} • {formatCurrency(bill.balance_amount)} due
+                        {formatDateTime(bill.created_at)} • {formatCurrency(bill.total_amount - (bill.total_driver_allowance ?? 0) - bill.advance_amount)} due
                       </p>
                     </div>
                   </div>
@@ -350,32 +406,40 @@ export default function Bills() {
             )}
           </div>
 
-          <Card className="print:shadow-none print:border-none w-full max-w-3xl min-w-0" ref={billViewTab === 'customer' ? billRef : undefined} data-bill-content={billViewTab === 'customer' ? 'true' : undefined}>
+          <div
+            className="bill-a4 mx-auto bg-white rounded-lg shadow-lg overflow-hidden print:shadow-none print:rounded-none"
+            ref={billViewTab === 'customer' ? billRef : undefined}
+            data-bill-content={billViewTab === 'customer' ? 'true' : undefined}
+          >
+          <Card className="print:shadow-none print:border-none border-0 w-full h-full min-h-0">
             <CardContent className="p-4 sm:p-6 md:p-8">
               {/* Bill Header */}
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6 md:mb-8">
-                <img src={patidarLogo} alt="Patidar Travels" className="h-10 sm:h-12 md:h-14 w-auto object-contain" />
-                <div className="text-left sm:text-right min-w-0">
-                  <h3 className="text-lg sm:text-xl font-semibold">FINAL BILL</h3>
-                  <p className="text-base sm:text-lg font-mono mt-1 break-all">{selectedBill.bill_number}</p>
-                  <p className="text-xs sm:text-sm text-muted-foreground">
-                    Generated: {format(new Date(selectedBill.created_at), 'dd MMM yyyy')}
-                  </p>
-                  {/* Only show status badge if paid (draft/sent bills are final bills, don't show draft badge) */}
-                  {selectedBill.status === 'paid' && (
-                    <Badge className={`mt-2 ${BILL_STATUS_LABELS[selectedBill.status].color}`}>
-                      {BILL_STATUS_LABELS[selectedBill.status].label}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-
-              <Separator className="my-4 md:my-6" />
+              {showSection('header') && (
+                <>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6 md:mb-8">
+                    <img src={logoUrl} alt={companyName} className="h-10 sm:h-12 md:h-14 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }} />
+                    <div className="text-left sm:text-right min-w-0">
+                      <h3 className="text-lg sm:text-xl font-semibold">FINAL BILL</h3>
+                      <p className="text-base sm:text-lg font-mono mt-1 break-all">{selectedBill.bill_number}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground">
+                        Generated: {format(new Date(selectedBill.created_at), 'dd MMM yyyy')}
+                      </p>
+                      {selectedBill.status === 'paid' && (
+                        <Badge className={`mt-2 ${BILL_STATUS_LABELS[selectedBill.status].color}`}>
+                          {BILL_STATUS_LABELS[selectedBill.status].label}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Separator className="my-4 md:my-6" />
+                </>
+              )}
 
               {/* Booking & Customer Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
+                {showSection('trip_km_details') && (
                 <div>
-                  <h4 className="font-semibold text-sm text-muted-foreground mb-3">BOOKING DETAILS</h4>
+                  <h4 className="font-semibold text-sm text-muted-foreground mb-3">{sectionLabel('trip_km_details').toUpperCase()}</h4>
                   <div className="space-y-2 text-sm">
                     <div>
                       <span className="text-muted-foreground">Booking Reference:</span>{' '}
@@ -435,8 +499,12 @@ export default function Bills() {
                     </div>
                   </div>
                 </div>
+                )}
+                {(showSection('billed_to') || showSection('company_details')) && (
                 <div>
-                  <h4 className="font-semibold text-sm text-muted-foreground mb-3">BILLED TO</h4>
+                  {showSection('billed_to') && (
+                  <>
+                  <h4 className="font-semibold text-sm text-muted-foreground mb-3">{sectionLabel('billed_to').toUpperCase()}</h4>
                   <div className="space-y-2 text-sm">
                     <div>
                       <span className="text-muted-foreground">Customer Name:</span>
@@ -447,21 +515,42 @@ export default function Bills() {
                       <p className="font-medium">{selectedBill.customer_phone}</p>
                     </div>
                   </div>
+                  </>
+                  )}
+                  {showSection('company_details') && (
                   <div className="mt-4 pt-4 border-t">
-                    <h5 className="font-semibold text-xs text-muted-foreground mb-2">COMPANY DETAILS</h5>
+                    <h5 className="font-semibold text-xs text-muted-foreground mb-2">{sectionLabel('company_details').toUpperCase()}</h5>
                     <div className="space-y-1 text-xs text-muted-foreground">
-                      <p className="font-medium text-sm">PATIDAR TRAVELS PVT. LTD.</p>
+                      <p className="font-medium text-sm">{companyName}</p>
                       <p>For queries, please contact us</p>
                     </div>
                   </div>
+                  )}
                 </div>
+                )}
               </div>
+
+              {/* Custom blocks: after customer details */}
+              {customBlocksAt('after_customer_details').length > 0 && (
+                <div className="mb-6 space-y-3">
+                  {customBlocksAt('after_customer_details').map((block) => {
+                    const val = getCustomBlockValue(block, selectedBill.custom_attributes ?? undefined);
+                    return (
+                      <div key={block.id}>
+                        <p className="text-xs text-muted-foreground">{block.label}</p>
+                        <p className="font-medium text-sm">{formatCustomBlockDisplay(block, val)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <Separator className="my-4 md:my-6" />
 
               {/* Vehicle Details Table */}
+              {showSection('vehicle_table') && (
               <div className="mb-6 md:mb-8">
-                <h4 className="font-semibold text-sm text-muted-foreground mb-3 md:mb-4">VEHICLE & RATE DETAILS</h4>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 md:mb-4">{sectionLabel('vehicle_table').toUpperCase()}</h4>
                 <div className="space-y-6">
                   {selectedBill.vehicle_details.map((vehicle, idx) => {
                     const tripDays = (() => {
@@ -480,15 +569,8 @@ export default function Bills() {
                       <div key={idx} className="border rounded-lg p-4 bg-muted/20">
                         <div className="grid grid-cols-2 gap-4 mb-4">
                           <div>
-                            <p className="text-xs text-muted-foreground mb-1">Vehicle Number</p>
-                            <p className="font-semibold text-base">{vehicle.vehicle_number}</p>
-                            {(carInfo?.brand || carInfo?.model) && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {carInfo.brand && <span>{carInfo.brand}</span>}
-                                {carInfo.brand && carInfo.model && ' '}
-                                {carInfo.model && <span>{carInfo.model}</span>}
-                              </p>
-                            )}
+                            <p className="text-xs text-muted-foreground mb-1">Vehicle</p>
+                            <p className="font-semibold text-base">{formatCarLabel({ vehicle_number: vehicle.vehicle_number, model: carInfo?.model, brand: carInfo?.brand })}</p>
                             <p className="text-xs text-muted-foreground mt-2">
                               <span className="text-muted-foreground">Total KM Driven:</span>{' '}
                               <span className="font-semibold">{selectedBill.total_km_driven.toLocaleString()} km</span>
@@ -658,6 +740,22 @@ export default function Bills() {
                   })}
                 </div>
               </div>
+              )}
+
+              {/* Custom blocks: after vehicle table */}
+              {customBlocksAt('after_vehicle_table').length > 0 && (
+                <div className="mb-6 space-y-3">
+                  {customBlocksAt('after_vehicle_table').map((block) => {
+                    const val = getCustomBlockValue(block, selectedBill.custom_attributes ?? undefined);
+                    return (
+                      <div key={block.id}>
+                        <p className="text-xs text-muted-foreground">{block.label}</p>
+                        <p className="font-medium text-sm">{formatCustomBlockDisplay(block, val)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Threshold Note */}
               {selectedBill.threshold_note && (
@@ -670,22 +768,65 @@ export default function Bills() {
                 </Alert>
               )}
 
+              {/* Custom blocks: before totals */}
+              {customBlocksAt('before_totals').length > 0 && (
+                <div className="mb-6 space-y-3">
+                  {customBlocksAt('before_totals').map((block) => {
+                    const val = getCustomBlockValue(block, selectedBill.custom_attributes ?? undefined);
+                    return (
+                      <div key={block.id}>
+                        <p className="text-xs text-muted-foreground">{block.label}</p>
+                        <p className="font-medium text-sm">{formatCustomBlockDisplay(block, val)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Payment Summary */}
+              {showSection('totals') && (
               <div className="mb-8">
-                <h4 className="font-semibold text-sm text-muted-foreground mb-4">PAYMENT SUMMARY</h4>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-4">{sectionLabel('totals').toUpperCase()}</h4>
                 <div className="bg-muted/30 rounded-lg p-6">
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Subtotal (All Vehicles):</span>
-                      <span className="font-semibold text-base">{formatCurrency(selectedBill.total_amount)}</span>
-                    </div>
+                    {(() => {
+                      const toll = Number(selectedBill.toll_charges) || 0;
+                      const parking = Number(selectedBill.parking_charges) || 0;
+                      const vehicleSubtotal = selectedBill.total_amount - toll - parking;
+                      return (
+                        <>
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Subtotal (All Vehicles):</span>
+                            <span className="font-semibold text-base">{formatCurrency(vehicleSubtotal)}</span>
+                          </div>
+                          {toll > 0 && (
+                            <div className="flex justify-between items-center text-muted-foreground">
+                              <span>{tollLabel}:</span>
+                              <span className="font-medium">+ {formatCurrency(toll)}</span>
+                            </div>
+                          )}
+                          {parking > 0 && (
+                            <div className="flex justify-between items-center text-muted-foreground">
+                              <span>{parkingLabel}:</span>
+                              <span className="font-medium">+ {formatCurrency(parking)}</span>
+                            </div>
+                          )}
+                          {(toll > 0 || parking > 0) && (
+                            <div className="flex justify-between items-center pt-1 border-t">
+                              <span className="font-medium">Total (incl. charges above):</span>
+                              <span className="font-semibold">{formatCurrency(selectedBill.total_amount)}</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     {selectedBill.total_driver_allowance > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">
-                          Driver Allowance (Total)
-                          <span className="text-xs block italic">* Paid directly to driver</span>
+                      <div className="flex justify-between items-center text-muted-foreground">
+                        <span>
+                          Driver Allowance (paid to driver)
+                          <span className="text-xs block italic">* Deducted – paid directly to driver by customer</span>
                         </span>
-                        <span className="font-semibold text-base">{formatCurrency(selectedBill.total_driver_allowance)}</span>
+                        <span className="font-semibold text-base">- {formatCurrency(selectedBill.total_driver_allowance)}</span>
                       </div>
                     )}
                     {/* Always show advance amount */}
@@ -699,18 +840,38 @@ export default function Bills() {
                     <Separator className="my-3" />
                     <div className="flex justify-between items-center pt-2">
                       <span className="text-lg font-bold">Balance Amount Due:</span>
-                      <span className="text-2xl font-bold text-primary">{formatCurrency(selectedBill.balance_amount)}</span>
+                      <span className="text-2xl font-bold text-primary">
+                        {formatCurrency(selectedBill.total_amount - (selectedBill.total_driver_allowance ?? 0) - selectedBill.advance_amount)}
+                      </span>
                     </div>
                     {selectedBill.total_driver_allowance > 0 && (
                       <p className="text-xs text-muted-foreground mt-2">
-                        Note: Driver allowance of {formatCurrency(selectedBill.total_driver_allowance)} is to be paid directly to the driver(s) by the customer.
+                        Note: Driver allowance of {formatCurrency(selectedBill.total_driver_allowance)} is deducted above (paid directly to the driver by the customer before/during the trip).
                       </p>
                     )}
                   </div>
                 </div>
               </div>
+              )}
+
+              {/* Custom blocks: after totals */}
+              {customBlocksAt('after_totals').length > 0 && (
+                <div className="mb-6 space-y-3">
+                  {customBlocksAt('after_totals').map((block) => {
+                    const val = getCustomBlockValue(block, selectedBill.custom_attributes ?? undefined);
+                    return (
+                      <div key={block.id}>
+                        <p className="text-xs text-muted-foreground">{block.label}</p>
+                        <p className="font-medium text-sm">{formatCustomBlockDisplay(block, val)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* QR Code Section */}
+              {showSection('qr_code') && (
+              <>
               <Separator className="my-6" />
               <div className="flex items-center justify-between">
                 <div>
@@ -721,33 +882,63 @@ export default function Bills() {
                 </div>
                 <div className="p-4 bg-white rounded-lg border">
                   <QRCodeSVG
-                    value={`PATIDAR|BILL:${selectedBill.bill_number}|BOOKING:${booking.booking_ref}|AMOUNT:${selectedBill.balance_amount}|PHONE:${selectedBill.customer_phone}`}
+                    value={`${qrPrefix}|BILL:${selectedBill.bill_number}|BOOKING:${booking.booking_ref}|AMOUNT:${selectedBill.total_amount - (selectedBill.total_driver_allowance ?? 0) - selectedBill.advance_amount}|PHONE:${selectedBill.customer_phone}`}
                     size={100}
                     level="M"
-                    includeMargin={false}
-                  />
+                  includeMargin={false}
+                    />
                 </div>
               </div>
+              </>
+              )}
+
+              {/* Custom blocks: before terms */}
+              {customBlocksAt('before_terms').length > 0 && (
+                <div className="mb-6 space-y-3">
+                  {customBlocksAt('before_terms').map((block) => {
+                    const val = getCustomBlockValue(block, selectedBill.custom_attributes ?? undefined);
+                    return (
+                      <div key={block.id}>
+                        <p className="text-xs text-muted-foreground">{block.label}</p>
+                        <p className="font-medium text-sm whitespace-pre-wrap">{formatCustomBlockDisplay(block, val)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Terms & Conditions */}
-              <Separator className="my-6" />
-              <div className="text-xs text-muted-foreground space-y-2 mb-6">
-                <h5 className="font-semibold text-sm mb-2">Terms & Conditions:</h5>
-                <ul className="list-disc list-inside space-y-1 pl-2">
-                  <li>This is a computer-generated bill and does not require a signature.</li>
-                  <li>Payment should be made within the agreed timeframe.</li>
-                  <li>For any discrepancies, please contact us within 7 days of bill generation.</li>
-                  {selectedBill.threshold_note && (
-                    <li>Minimum KM threshold is applied as per company policy for trip duration.</li>
-                  )}
-                  <li>All amounts are in Indian Rupees (INR).</li>
-                </ul>
-              </div>
+              {showSection('terms') && orgSettings?.terms_and_conditions && (
+                <>
+                  <Separator className="my-6" />
+                  <div className="text-xs text-muted-foreground space-y-2 mb-6">
+                    <h5 className="font-semibold text-sm mb-2">{sectionLabel('terms')}:</h5>
+                    <div className="whitespace-pre-wrap pl-2">{orgSettings.terms_and_conditions}</div>
+                  </div>
+                </>
+              )}
+
+              {/* Custom blocks: before footer */}
+              {customBlocksAt('before_footer').length > 0 && (
+                <div className="mb-6 space-y-3">
+                  {customBlocksAt('before_footer').map((block) => {
+                    const val = getCustomBlockValue(block, selectedBill.custom_attributes ?? undefined);
+                    return (
+                      <div key={block.id}>
+                        <p className="text-xs text-muted-foreground">{block.label}</p>
+                        <p className="font-medium text-sm whitespace-pre-wrap">{formatCustomBlockDisplay(block, val)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Footer */}
+              {showSection('footer') && (
+              <>
               <Separator className="my-6" />
               <div className="text-center space-y-2">
-                <p className="font-medium">Thank you for choosing Patidar Travels!</p>
+                <p className="font-medium">Thank you for choosing {companyName}!</p>
                 <p className="text-xs text-muted-foreground">
                   This bill was generated on {format(new Date(selectedBill.created_at), 'dd MMM yyyy, hh:mm a')} (IST)
                 </p>
@@ -757,22 +948,30 @@ export default function Bills() {
                   </p>
                 )}
               </div>
+              </>
+              )}
             </CardContent>
           </Card>
+          </div>
           </TabsContent>
 
           {/* Company Bill Tab */}
           {hasCompanyBills && (
             <TabsContent value="company" className="space-y-0">
               {selectedCompanyBill ? (
-              <Card ref={billViewTab === 'company' ? billRef : undefined} className="print:shadow-none print:border-0" data-bill-content={billViewTab === 'company' ? 'true' : undefined}>
+              <div
+                className="bill-a4 mx-auto bg-white rounded-lg shadow-lg overflow-hidden print:shadow-none print:rounded-none"
+                ref={billViewTab === 'company' ? billRef : undefined}
+                data-bill-content={billViewTab === 'company' ? 'true' : undefined}
+              >
+              <Card className="print:shadow-none print:border-0 border-0 w-full h-full min-h-0">
                 <CardContent className="p-8 print:p-6">
                   {/* Company Bill Header */}
                   <div className="flex items-start justify-between mb-8 pb-6 border-b">
                     <div className="flex items-center gap-4">
-                      <img src={patidarLogo} alt="Patidar Travels" className="h-16 w-16 object-contain" />
+                      <img src={logoUrl} alt={companyName} className="h-16 w-16 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }} />
                       <div>
-                        <h2 className="text-2xl font-bold text-red-600">PATIDAR TRAVELS PVT. LTD.</h2>
+                        <h2 className="text-2xl font-bold text-red-600">{companyName}</h2>
                         <p className="text-sm text-muted-foreground mt-1">Internal Company Bill</p>
                       </div>
                     </div>
@@ -1037,15 +1236,8 @@ export default function Bills() {
                           <div key={idx} className="border rounded-lg p-4 bg-muted/20">
                             <div className="grid grid-cols-2 gap-4 mb-4">
                               <div>
-                                <p className="text-xs text-muted-foreground mb-1">Vehicle Number</p>
-                                <p className="font-semibold text-base">{vehicle.vehicle_number}</p>
-                                {(carInfo?.brand || carInfo?.model) && (
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    {carInfo.brand && <span>{carInfo.brand}</span>}
-                                    {carInfo.brand && carInfo.model && ' '}
-                                    {carInfo.model && <span>{carInfo.model}</span>}
-                                  </p>
-                                )}
+                                <p className="text-xs text-muted-foreground mb-1">Vehicle</p>
+                                <p className="font-semibold text-base">{formatCarLabel({ vehicle_number: vehicle.vehicle_number, model: carInfo?.model, brand: carInfo?.brand })}</p>
                                 <p className="text-xs text-muted-foreground mt-2">
                                   <span className="text-muted-foreground">Total KM Driven:</span>{' '}
                                   <span className="font-semibold">{selectedBill.total_km_driven.toLocaleString()} km</span>
@@ -1121,6 +1313,7 @@ export default function Bills() {
                   </div>
                 </CardContent>
               </Card>
+              </div>
               ) : (
                 <Card>
                   <CardContent className="p-12 text-center">
@@ -1191,13 +1384,28 @@ export default function Bills() {
         </DialogContent>
       </Dialog>
 
-      {/* Print styles */}
+      {/* A4 Landscape bill dimensions (297mm × 210mm) and print styles */}
       <style>{`
+        .bill-a4 {
+          width: 297mm;
+          min-height: 210mm;
+          max-width: 100%;
+          box-sizing: border-box;
+        }
         @media print {
+          @page { size: A4 landscape; margin: 0; }
           body * { visibility: hidden; }
           .print\\:hidden { display: none !important; }
           [data-bill-content], [data-bill-content] * { visibility: visible; }
-          [data-bill-content] { position: absolute; left: 0; top: 0; width: 100%; }
+          [data-bill-content] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 297mm !important;
+            min-height: 210mm;
+            max-width: none;
+            box-shadow: none;
+          }
         }
       `}</style>
     </div>

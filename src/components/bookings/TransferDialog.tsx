@@ -63,7 +63,8 @@ export function TransferDialog({
 }: TransferDialogProps) {
   const createTransfer = useCreateTransfer();
   const createCompanyBill = useCreateCompanyBill();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const orgId = profile?.organization_id ?? null;
 
   const [transferStatus, setTransferStatus] = useState<'already-transferred' | 'will-transfer-later' | null>(null);
   const [transferDate, setTransferDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -157,22 +158,30 @@ export function TransferDialog({
       }
     }
 
-    // Generate company bill number
+    // Generate company bill number (per-org prefix)
+    const { data: orgSettings } = await supabase
+      .from('organization_settings')
+      .select('bill_number_prefix')
+      .eq('organization_id', orgId)
+      .maybeSingle();
+    const prefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
     const year = new Date().getFullYear();
+    const cbPrefix = `${prefix}-CB`;
     const { data: lastBill } = await supabase
       .from('company_bills')
       .select('bill_number')
-      .like('bill_number', `PT-CB-${year}-%`)
+      .eq('organization_id', orgId)
+      .like('bill_number', `${cbPrefix}-${year}-%`)
       .order('bill_number', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     
     let companyBillNumber = '';
     if (lastBill?.bill_number) {
       const lastNum = parseInt(lastBill.bill_number.split('-').pop() || '0');
-      companyBillNumber = `PT-CB-${year}-${String(lastNum + 1).padStart(6, '0')}`;
+      companyBillNumber = `${cbPrefix}-${year}-${String(lastNum + 1).padStart(6, '0')}`;
     } else {
-      companyBillNumber = `PT-CB-${year}-000001`;
+      companyBillNumber = `${cbPrefix}-${year}-000001`;
     }
 
     // Create company bill
