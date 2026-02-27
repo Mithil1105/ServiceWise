@@ -175,9 +175,10 @@ function AppLayoutContent({
               </Button>
 <Button
                  onClick={() => {
-                   const saveButtons = document.querySelectorAll('[data-settings-save]');
-                   saveButtons.forEach((el) => (el as HTMLButtonElement).click());
-                   onCancel();
+                  const saveButtons = document.querySelectorAll('[data-settings-save]');
+                  saveButtons.forEach((el) => (el as HTMLButtonElement).click());
+                  // After triggering saves, proceed with the original navigation.
+                  onLeave();
                  }}
                >
                  Save settings
