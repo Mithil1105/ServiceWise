@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DollarSign, TrendingUp, Clock, CheckCircle, AlertTriangle, FileText, Calendar, User } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { format } from 'date-fns';
+import { formatDateDMY, formatDateTimeFull } from '@/lib/date';
 import { useAuth } from '@/lib/auth-context';
 
 const formatCurrency = (amount: number | null | undefined) => {
@@ -222,7 +222,7 @@ export default function Financials() {
                           </TableCell>
                           <TableCell>{transfer.collected_by_name}</TableCell>
                           <TableCell>
-                            {transfer.bills?.created_at ? format(new Date(transfer.bills.created_at), 'MMM dd, yyyy') : 'N/A'}
+                            {transfer.bills?.created_at ? formatDateDMY(transfer.bills.created_at) : 'N/A'}
                           </TableCell>
                           <TableCell>
                             <span className={isOverdue ? 'text-destructive font-medium' : ''}>
@@ -313,7 +313,7 @@ export default function Financials() {
                           </TableCell>
                           <TableCell>{transfer.collected_by_name || 'N/A'}</TableCell>
                           <TableCell>
-                            {transfer.transfer_date ? format(new Date(transfer.transfer_date), 'MMM dd, yyyy') : 'N/A'}
+                            {transfer.transfer_date ? formatDateDMY(transfer.transfer_date) : 'N/A'}
                           </TableCell>
                           <TableCell>
                             {(transfer as any).completed_by_name || transfer.cashier_name || 'N/A'}
@@ -404,10 +404,10 @@ export default function Financials() {
                               <Badge variant="secondary">No Transfer Needed</Badge>
                             )}
                           </TableCell>
-                          <TableCell>{format(new Date(bill.created_at), 'MMM dd, yyyy')}</TableCell>
+                          <TableCell>{formatDateDMY(bill.created_at)}</TableCell>
                           <TableCell>
                             {bill.updated_at && bill.updated_at !== bill.created_at ? (
-                              format(new Date(bill.updated_at), 'MMM dd, yyyy HH:mm')
+                              formatDateTimeFull(bill.updated_at)
                             ) : (
                               <span className="text-muted-foreground">-</span>
                             )}

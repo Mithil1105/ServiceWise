@@ -52,7 +52,7 @@ export default function Services() {
       const car = cars?.find((c) => c.id === record.car_id);
       return [
         formatDateDMY(record.serviced_at),
-        car?.vehicle_number || '',
+        car ? formatCarLabel(car) : '',
         record.service_name,
         record.vendor_name || '',
         record.vendor_location || '',

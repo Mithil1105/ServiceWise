@@ -105,6 +105,10 @@ export function useUpsertCarDocument() {
 
       // Upload file if provided
       if (file) {
+        const MAX_SIZE = 2 * 1024 * 1024; // 2 MB
+        if (file.size > MAX_SIZE) {
+          throw new Error(`File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
+        }
         const fileExt = file.name.split('.').pop();
         const fileName = `${carId}/${documentType}-${Date.now()}.${fileExt}`;
 

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { useSettingsLeave } from '@/lib/settings-leave-context';
 import { useServiceRules, useCreateServiceRule, useBrandsWithRules, useCopyServiceRules, useApplyRulesToBrands } from '@/hooks/use-services';
 import { useBrands, useCreateBrand } from '@/hooks/use-brands';
 import { RuleNameAutocomplete } from '@/components/settings/RuleNameAutocomplete';
@@ -30,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Settings as SettingsIcon, Plus, Wrench, Loader2, AlertCircle, Shield, Gauge, Copy, Layers, Building2, ImageIcon, Car, Users, Calendar, FileText } from 'lucide-react';
+import { Settings as SettingsIcon, Plus, Wrench, Loader2, AlertCircle, Shield, Gauge, Copy, Layers, Building2, ImageIcon, Car, Users, Calendar, FileText, PauseCircle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
@@ -42,6 +43,9 @@ import { FleetFormConfigCard } from '@/components/settings/FleetFormConfigCard';
 import { DriverFormConfigCard } from '@/components/settings/DriverFormConfigCard';
 import { BookingFormConfigCard } from '@/components/settings/BookingFormConfigCard';
 import { BillingLayoutConfigCard } from '@/components/settings/BillingLayoutConfigCard';
+import { ServiceRecordFormConfigCard } from '@/components/settings/ServiceRecordFormConfigCard';
+import { DowntimeFormConfigCard } from '@/components/settings/DowntimeFormConfigCard';
+import { IncidentFormConfigCard } from '@/components/settings/IncidentFormConfigCard';
 
 const LOGO_BUCKET = 'organization-logos';
 
@@ -50,6 +54,7 @@ export default function Settings() {
   const { orgId } = useOrg();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const leaveContext = useSettingsLeave();
   const { data: org } = useQuery({
     queryKey: ['organization', orgId],
     queryFn: async () => {
@@ -194,6 +199,47 @@ export default function Settings() {
       setMinKmSettings(prev => ({ ...prev, hybrid_per_day: value }));
     }
   }, [minKmPerKm, minKmHybridPerDay]);
+
+  // Track unsaved changes for leave prompt (branding, bill prefix, min km, form config cards)
+  const brandingDirty = useMemo(() => {
+    const initialName = org?.company_name ?? organization?.company_name ?? '';
+    const initialTerms = orgSettings?.terms_and_conditions ?? '';
+    return companyName !== initialName || termsAndConditions !== initialTerms;
+  }, [companyName, termsAndConditions, org?.company_name, organization?.company_name, orgSettings?.terms_and_conditions]);
+  const billPrefixDirty = useMemo(
+    () => billPrefix !== (orgSettings?.bill_number_prefix ?? 'PT'),
+    [billPrefix, orgSettings?.bill_number_prefix]
+  );
+  const minKmDirty = useMemo(() => {
+    const perKm = minKmPerKm != null ? String(minKmPerKm) : '';
+    const hybrid = minKmHybridPerDay != null ? String(minKmHybridPerDay) : '';
+    return minKmSettings.per_km !== perKm || minKmSettings.hybrid_per_day !== hybrid;
+  }, [minKmSettings.per_km, minKmSettings.hybrid_per_day, minKmPerKm, minKmHybridPerDay]);
+  const [dirtyCardIds, setDirtyCardIds] = useState<Set<string>>(new Set());
+  const registerCardDirty = useCallback((cardId: string, dirty: boolean) => {
+    setDirtyCardIds((prev) => {
+      const next = new Set(prev);
+      if (dirty) next.add(cardId);
+      else next.delete(cardId);
+      return next;
+    });
+  }, []);
+  const hasUnsavedChanges = brandingDirty || billPrefixDirty || minKmDirty || dirtyCardIds.size > 0;
+
+  useEffect(() => {
+    if (!leaveContext) return;
+    leaveContext.setHasUnsavedChanges(hasUnsavedChanges);
+    return () => leaveContext.setHasUnsavedChanges(false);
+  }, [hasUnsavedChanges, leaveContext]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   // Set first brand as selected by default
   useEffect(() => {
@@ -433,6 +479,10 @@ export default function Settings() {
             <Wrench className="h-4 w-4" />
             Service & system
           </TabsTrigger>
+          <TabsTrigger value="incidents-downtime" className="flex items-center gap-2">
+            <PauseCircle className="h-4 w-4" />
+            Incidents & Downtime
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="branding" className="space-y-6 mt-6">
@@ -511,7 +561,7 @@ export default function Settings() {
                 className="resize-y"
               />
             </div>
-            <Button onClick={handleSaveBranding} disabled={brandingSaving}>
+            <Button onClick={handleSaveBranding} disabled={brandingSaving} data-settings-save>
               {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Save branding
             </Button>
@@ -521,15 +571,15 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="fleet" className="space-y-6 mt-6">
-          <FleetFormConfigCard />
+          <FleetFormConfigCard onDirtyChange={(dirty) => registerCardDirty('fleet', dirty)} />
         </TabsContent>
 
         <TabsContent value="drivers" className="space-y-6 mt-6">
-          <DriverFormConfigCard />
+          <DriverFormConfigCard onDirtyChange={(dirty) => registerCardDirty('drivers', dirty)} />
         </TabsContent>
 
         <TabsContent value="bookings" className="space-y-6 mt-6">
-          <BookingFormConfigCard />
+          <BookingFormConfigCard onDirtyChange={(dirty) => registerCardDirty('bookings', dirty)} />
         </TabsContent>
 
         <TabsContent value="billings" className="space-y-6 mt-6">
@@ -557,13 +607,13 @@ export default function Settings() {
                   className="w-24 font-mono"
                 />
               </div>
-              <Button onClick={handleSaveBillPrefix} disabled={brandingSaving}>
+              <Button onClick={handleSaveBillPrefix} disabled={brandingSaving} data-settings-save>
                 {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Save prefix
               </Button>
             </CardContent>
           </Card>
-          <BillingLayoutConfigCard />
+          <BillingLayoutConfigCard onDirtyChange={(dirty) => registerCardDirty('billings', dirty)} />
         </>
       )}
         </TabsContent>
@@ -1068,6 +1118,7 @@ export default function Settings() {
             <Button 
               onClick={handleSaveMinKmSettings}
               disabled={updateSystemConfig.isPending}
+              data-settings-save
             >
               {updateSystemConfig.isPending ? (
                 <>
@@ -1081,6 +1132,17 @@ export default function Settings() {
           </div>
         </CardContent>
       </Card>
+
+      {isAdmin && <ServiceRecordFormConfigCard onDirtyChange={(dirty) => registerCardDirty('service', dirty)} />}
+        </TabsContent>
+
+        <TabsContent value="incidents-downtime" className="space-y-6 mt-6">
+          {isAdmin && (
+            <>
+              <DowntimeFormConfigCard onDirtyChange={(dirty) => registerCardDirty('downtime', dirty)} />
+              <IncidentFormConfigCard onDirtyChange={(dirty) => registerCardDirty('incident', dirty)} />
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </div>

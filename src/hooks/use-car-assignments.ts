@@ -158,6 +158,7 @@ export function useAssignCarToSupervisor() {
       notes?: string;
     }) => {
       if (!orgId) throw new Error('Organization not found');
+      const { data: { user } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('car_assignments')
         .insert({
@@ -170,12 +171,35 @@ export function useAssignCarToSupervisor() {
         .single();
 
       if (error) throw error;
+
+      // Log activity with real details
+      const [
+        { data: supervisorProfile },
+        { data: car },
+      ] = await Promise.all([
+        supabase.from('profiles').select('name').eq('id', supervisorId).single(),
+        supabase.from('cars').select('vehicle_number, model, brand').eq('id', carId).single(),
+      ]);
+      await supabase.from('supervisor_activity_log').insert({
+        organization_id: orgId,
+        supervisor_id: user?.id ?? '',
+        car_id: carId,
+        action_type: 'car_assigned',
+        action_details: {
+          assigned_to_supervisor_name: supervisorProfile?.name ?? 'Unknown',
+          car_vehicle_number: (car as { vehicle_number?: string })?.vehicle_number ?? '',
+          car_model: (car as { model?: string; brand?: string })?.model ? `${(car as { brand?: string }).brand ?? ''} ${(car as { model?: string }).model}`.trim() : '',
+          notes: notes ?? null,
+        },
+      });
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['car-assignments'] });
       queryClient.invalidateQueries({ queryKey: ['supervisor-assignments'] });
       queryClient.invalidateQueries({ queryKey: ['car-assignments-by-car'] });
+      queryClient.invalidateQueries({ queryKey: ['supervisor-activity-logs'] });
       toast.success('Car assigned to supervisor');
     },
     onError: (error) => {
@@ -190,17 +214,53 @@ export function useUnassignCarFromSupervisor() {
 
   return useMutation({
     mutationFn: async ({ id }: { id: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: assignment, error: fetchErr } = await supabase
+        .from('car_assignments')
+        .select('organization_id, car_id, supervisor_id')
+        .eq('id', id)
+        .single();
+      if (fetchErr || !assignment) {
+        const { error } = await supabase.from('car_assignments').delete().eq('id', id);
+        if (error) throw error;
+        return;
+      }
+      const orgId = assignment.organization_id;
+      const carId = assignment.car_id;
+      const prevSupervisorId = assignment.supervisor_id;
+
+      const [
+        { data: supervisorProfile },
+        { data: car },
+      ] = await Promise.all([
+        supabase.from('profiles').select('name').eq('id', prevSupervisorId).single(),
+        supabase.from('cars').select('vehicle_number, model, brand').eq('id', carId).single(),
+      ]);
+
       const { error } = await supabase
         .from('car_assignments')
         .delete()
         .eq('id', id);
 
       if (error) throw error;
+
+      await supabase.from('supervisor_activity_log').insert({
+        organization_id: orgId,
+        supervisor_id: user?.id ?? '',
+        car_id: carId,
+        action_type: 'car_unassigned',
+        action_details: {
+          unassigned_supervisor_name: supervisorProfile?.name ?? 'Unknown',
+          car_vehicle_number: (car as { vehicle_number?: string })?.vehicle_number ?? '',
+          car_model: (car as { model?: string; brand?: string })?.model ? `${(car as { brand?: string }).brand ?? ''} ${(car as { model?: string }).model}`.trim() : '',
+        },
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['car-assignments'] });
       queryClient.invalidateQueries({ queryKey: ['supervisor-assignments'] });
       queryClient.invalidateQueries({ queryKey: ['car-assignments-by-car'] });
+      queryClient.invalidateQueries({ queryKey: ['supervisor-activity-logs'] });
       toast.success('Car unassigned from supervisor');
     },
     onError: (error) => {

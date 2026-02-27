@@ -1,12 +1,30 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useDowntimeLogs, useCarsInDowntime } from '@/hooks/use-downtime';
+import { useDowntimeLogs, useCarsInDowntime, useStartDowntime } from '@/hooks/use-downtime';
 import { useCars } from '@/hooks/use-cars';
 import { useIncidents } from '@/hooks/use-incidents';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import {
+  type DowntimeFormBuiltInFieldKey,
+  DOWNTIME_FORM_FIELD_LABELS,
+  DEFAULT_DOWNTIME_REASON_OPTIONS,
+  type FleetNewCarCustomField,
+} from '@/types/form-config';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -34,7 +52,9 @@ import {
   Calendar,
   User,
   AlertTriangle,
+  Plus,
 } from 'lucide-react';
+import type { DowntimeLog } from '@/types';
 import { formatDateDMY, formatDateTimeDMY } from '@/lib/date';
 import { formatCarLabel } from '@/lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
@@ -58,10 +78,38 @@ export default function DowntimeReport() {
   const [vehicleFilter, setVehicleFilter] = useState<string>('');
   const [reasonFilter, setReasonFilter] = useState<string>('all');
 
+  const [addDowntimeOpen, setAddDowntimeOpen] = useState(false);
+  const [addDowntimeCarId, setAddDowntimeCarId] = useState('');
+  const [addDowntimeReason, setAddDowntimeReason] = useState<string>('service');
+  const [addDowntimeNotes, setAddDowntimeNotes] = useState('');
+  const [addDowntimeEstimated, setAddDowntimeEstimated] = useState('');
+  const [addDowntimeCustomValues, setAddDowntimeCustomValues] = useState<Record<string, string | number | boolean | null>>({});
+  const [addDowntimeErrors, setAddDowntimeErrors] = useState<Record<string, string>>({});
+
   const { data: allDowntimeLogs, isLoading: downtimeLoading } = useDowntimeLogs();
   const { data: carsInDowntime } = useCarsInDowntime();
   const { data: cars } = useCars();
   const { data: incidents, isLoading: incidentsLoading } = useIncidents();
+  const { data: orgSettings } = useOrganizationSettings();
+  const startDowntime = useStartDowntime();
+
+  const downtimeFormConfig = orgSettings?.downtime_form_config ?? {};
+  const downtimeFieldOverrides = downtimeFormConfig.fieldOverrides ?? {};
+  const downtimeReasonOptions = (downtimeFormConfig.reasonOptions?.length ? downtimeFormConfig.reasonOptions : DEFAULT_DOWNTIME_REASON_OPTIONS).filter((o) => o.value && o.label);
+  const defaultReasonValue = downtimeReasonOptions[0]?.value ?? 'service';
+  const getReasonLabel = (value: string) => downtimeReasonOptions.find((o) => o.value === value)?.label ?? REASON_LABELS[value] ?? value;
+  const downtimeCustomFields = (downtimeFormConfig.customFields ?? []).sort((a, b) => a.order - b.order);
+  useEffect(() => {
+    if (addDowntimeOpen && downtimeReasonOptions.length > 0 && !downtimeReasonOptions.some((o) => o.value === addDowntimeReason)) {
+      setAddDowntimeReason(defaultReasonValue);
+    }
+  }, [addDowntimeOpen, defaultReasonValue, downtimeReasonOptions, addDowntimeReason]);
+  const getDowntimeFieldLabel = (key: DowntimeFormBuiltInFieldKey) => downtimeFieldOverrides[key]?.label ?? DOWNTIME_FORM_FIELD_LABELS[key];
+  const isDowntimeFieldHidden = (key: DowntimeFormBuiltInFieldKey) => downtimeFieldOverrides[key]?.hidden === true;
+  const isDowntimeFieldRequired = (key: DowntimeFormBuiltInFieldKey) => {
+    const def = key === 'car_id' || key === 'reason';
+    return downtimeFieldOverrides[key]?.required ?? def;
+  };
 
   const isLoading = downtimeLoading || incidentsLoading;
 
@@ -129,7 +177,7 @@ export default function DowntimeReport() {
 
     // Prepare pie chart data
     const reasonData = Object.entries(reasonCounts).map(([reason, count]) => ({
-      name: REASON_LABELS[reason] || reason,
+      name: getReasonLabel(reason),
       value: count,
       color: REASON_COLORS[reason] || REASON_COLORS.other,
     }));
@@ -166,7 +214,7 @@ export default function DowntimeReport() {
       driverRanking,
       avgDowntimePerIncident: Math.round(totalDowntimeHours / filteredLogs.length * 10) / 10,
     };
-  }, [filteredLogs, cars, carsInDowntime, incidents]);
+  }, [filteredLogs, cars, carsInDowntime, incidents, downtimeReasonOptions]);
 
   // Monthly trend data
   const trendData = useMemo(() => {
@@ -181,7 +229,7 @@ export default function DowntimeReport() {
       const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
       
       const monthKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
-      const monthLabel = start.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      const monthLabel = `${String(start.getMonth() + 1).padStart(2, '0')}/${start.getFullYear()}`;
       
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = { month: monthLabel, hours: 0, count: 0 };
@@ -215,7 +263,7 @@ export default function DowntimeReport() {
         formatDateTimeDMY(log.started_at),
         log.ended_at ? formatDateTimeDMY(log.ended_at) : 'Active',
         hours.toString(),
-        REASON_LABELS[log.reason] || log.reason,
+        getReasonLabel(log.reason),
         log.notes || '',
       ];
     });
@@ -230,10 +278,99 @@ export default function DowntimeReport() {
     URL.revokeObjectURL(url);
   };
 
-  const carOptions = (cars || []).map(car => ({
+  const carOptions = (cars || []).filter(c => c.status === 'active').map(car => ({
     value: car.id,
     label: `${car.vehicle_number} - ${car.model}`,
   }));
+
+  const handleAddDowntimeSubmit = async () => {
+    setAddDowntimeErrors({});
+    const err: Record<string, string> = {};
+    if (isDowntimeFieldRequired('car_id') && !addDowntimeCarId) err.car_id = 'Please select a vehicle';
+    if (isDowntimeFieldRequired('reason') && !addDowntimeReason) err.reason = 'Reason is required';
+    if (isDowntimeFieldRequired('notes') && !addDowntimeNotes?.trim()) err.notes = 'Notes are required';
+    if (isDowntimeFieldRequired('estimated_uptime_at') && !addDowntimeEstimated?.trim()) err.estimated_uptime_at = 'Estimated return is required';
+    for (const f of downtimeCustomFields) {
+      if (!f.required) continue;
+      const v = addDowntimeCustomValues[f.key];
+      if (v === undefined || v === null || v === '') err[`custom_${f.key}`] = `${f.label} is required`;
+    }
+    if (Object.keys(err).length > 0) {
+      setAddDowntimeErrors(err);
+      return;
+    }
+    const customAttrs: Record<string, string | number | boolean | null> = {};
+    for (const f of downtimeCustomFields) {
+      const v = addDowntimeCustomValues[f.key];
+      if (v !== undefined && v !== null && v !== '') customAttrs[f.key] = v;
+    }
+    try {
+      await startDowntime.mutateAsync({
+        car_id: addDowntimeCarId,
+        reason: addDowntimeReason,
+        notes: addDowntimeNotes?.trim() || undefined,
+        estimated_uptime_at: addDowntimeEstimated?.trim() ? new Date(addDowntimeEstimated).toISOString() : undefined,
+        custom_attributes: Object.keys(customAttrs).length ? customAttrs : undefined,
+      });
+      setAddDowntimeOpen(false);
+      setAddDowntimeCarId('');
+      setAddDowntimeReason(defaultReasonValue);
+      setAddDowntimeNotes('');
+      setAddDowntimeEstimated('');
+      setAddDowntimeCustomValues({});
+    } catch {
+      // toast from mutation
+    }
+  };
+
+  const renderDowntimeCustomInput = (f: FleetNewCarCustomField) => {
+    const value = addDowntimeCustomValues[f.key];
+    const setValue = (v: string | number | boolean | null) => setAddDowntimeCustomValues(prev => ({ ...prev, [f.key]: v }));
+    if (f.type === 'number') {
+      return (
+        <Input
+          id={`downtime_custom_${f.key}`}
+          type="number"
+          value={value != null ? String(value) : ''}
+          onChange={(e) => setValue(e.target.value === '' ? null : parseFloat(e.target.value))}
+          placeholder={`${f.label}...`}
+        />
+      );
+    }
+    if (f.type === 'date') {
+      return (
+        <Input
+          id={`downtime_custom_${f.key}`}
+          type="date"
+          value={value != null ? String(value) : ''}
+          onChange={(e) => setValue(e.target.value || null)}
+        />
+      );
+    }
+    if (f.type === 'select') {
+      return (
+        <Select value={value != null ? String(value) : ''} onValueChange={(v) => setValue(v)}>
+          <SelectTrigger id={`downtime_custom_${f.key}`}>
+            <SelectValue placeholder={`Select ${f.label}`} />
+          </SelectTrigger>
+          <SelectContent>
+            {(f.options ?? []).map((opt) => (
+              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+    return (
+      <Input
+        id={`downtime_custom_${f.key}`}
+        type="text"
+        value={value != null ? String(value) : ''}
+        onChange={(e) => setValue(e.target.value || null)}
+        placeholder={`${f.label}...`}
+      />
+    );
+  };
 
   if (isLoading) {
     return (
@@ -250,10 +387,90 @@ export default function DowntimeReport() {
           <h1 className="page-title">Downtime Report</h1>
           <p className="text-muted-foreground">Analyze vehicle downtime patterns and trends</p>
         </div>
-        <Button variant="outline" onClick={handleExportCSV} disabled={!filteredLogs.length}>
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <Dialog open={addDowntimeOpen} onOpenChange={setAddDowntimeOpen}>
+            <Button onClick={() => setAddDowntimeOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add downtime
+            </Button>
+            <DialogContent className="max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+              <DialogHeader className="shrink-0">
+                <DialogTitle>Log downtime</DialogTitle>
+                <DialogDescription>Mark a vehicle as unavailable. Same form as on Fleet Detail, with vehicle selection.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pt-2 overflow-y-auto min-h-0 flex-1 pr-1">
+                {!isDowntimeFieldHidden('car_id') && (
+                  <div className="space-y-2">
+                    <Label>{getDowntimeFieldLabel('car_id')}{isDowntimeFieldRequired('car_id') ? ' *' : ''}</Label>
+                    <SearchableSelect
+                      options={carOptions}
+                      value={addDowntimeCarId}
+                      onValueChange={setAddDowntimeCarId}
+                      placeholder="Select vehicle..."
+                    />
+                    {addDowntimeErrors.car_id && <p className="text-sm text-destructive">{addDowntimeErrors.car_id}</p>}
+                  </div>
+                )}
+                {!isDowntimeFieldHidden('reason') && (
+                  <div className="space-y-2">
+                    <Label>{getDowntimeFieldLabel('reason')}{isDowntimeFieldRequired('reason') ? ' *' : ''}</Label>
+                    <Select value={addDowntimeReason} onValueChange={setAddDowntimeReason}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {downtimeReasonOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {addDowntimeErrors.reason && <p className="text-sm text-destructive">{addDowntimeErrors.reason}</p>}
+                  </div>
+                )}
+                {!isDowntimeFieldHidden('estimated_uptime_at') && (
+                  <div className="space-y-2">
+                    <Label>{getDowntimeFieldLabel('estimated_uptime_at')}{isDowntimeFieldRequired('estimated_uptime_at') ? ' *' : ''}</Label>
+                    <Input
+                      type="date"
+                      value={addDowntimeEstimated}
+                      onChange={(e) => setAddDowntimeEstimated(e.target.value)}
+                    />
+                    {addDowntimeErrors.estimated_uptime_at && <p className="text-sm text-destructive">{addDowntimeErrors.estimated_uptime_at}</p>}
+                  </div>
+                )}
+                {!isDowntimeFieldHidden('notes') && (
+                  <div className="space-y-2">
+                    <Label>{getDowntimeFieldLabel('notes')}{isDowntimeFieldRequired('notes') ? ' *' : ''}</Label>
+                    <Textarea
+                      value={addDowntimeNotes}
+                      onChange={(e) => setAddDowntimeNotes(e.target.value)}
+                      placeholder="Add notes about the downtime..."
+                    />
+                    {addDowntimeErrors.notes && <p className="text-sm text-destructive">{addDowntimeErrors.notes}</p>}
+                  </div>
+                )}
+                {downtimeCustomFields.map((f) => (
+                  <div key={f.id} className="space-y-2">
+                    <Label htmlFor={`downtime_custom_${f.key}`}>{f.label}{f.required ? ' *' : ''}</Label>
+                    {renderDowntimeCustomInput(f)}
+                    {addDowntimeErrors[`custom_${f.key}`] && <p className="text-sm text-destructive">{addDowntimeErrors[`custom_${f.key}`]}</p>}
+                  </div>
+                ))}
+              </div>
+              <DialogFooter className="shrink-0 border-t pt-4 mt-2">
+                <Button variant="outline" onClick={() => setAddDowntimeOpen(false)}>Cancel</Button>
+                <Button onClick={handleAddDowntimeSubmit} disabled={startDowntime.isPending || !addDowntimeCarId}>
+                  {startDowntime.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Start downtime
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline" onClick={handleExportCSV} disabled={!filteredLogs.length}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -288,10 +505,9 @@ export default function DowntimeReport() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Reasons</SelectItem>
-                  <SelectItem value="service">Service</SelectItem>
-                  <SelectItem value="breakdown">Breakdown</SelectItem>
-                  <SelectItem value="accident">Accident</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  {downtimeReasonOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -613,7 +829,7 @@ export default function DowntimeReport() {
                             'muted'
                           }
                         >
-                          {REASON_LABELS[log.reason] || log.reason}
+                          {getReasonLabel(log.reason)}
                         </Badge>
                       </TableCell>
                       <TableCell className="max-w-xs truncate">

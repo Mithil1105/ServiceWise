@@ -158,7 +158,7 @@ export interface DowntimeLog {
   started_at: string;
   ended_at?: string | null;
   estimated_uptime_at?: string | null;
-  reason: 'service' | 'breakdown' | 'accident' | 'other';
+  reason: string;
   notes?: string;
   source: 'manual' | 'system';
   created_by?: string;

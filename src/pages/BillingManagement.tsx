@@ -1,7 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatDateTimeFull, formatDateOnly, formatTime12hr } from '@/lib/date';
-import { format } from 'date-fns';
+import { formatDateTimeFull, formatDateOnly, formatDateDMY, formatTime12hr } from '@/lib/date';
 import { QRCodeSVG } from 'qrcode.react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -1442,7 +1441,7 @@ export default function BillingManagement() {
                                 )}
                                 {transfer.status === 'completed' && transfer.transfer_date && (
                                   <p className="text-success font-medium mt-2">
-                                    ✅ Transferred on: {format(new Date(transfer.transfer_date), 'MMM dd, yyyy')}
+                                    ✅ Transferred on: {formatDateDMY(transfer.transfer_date)}
                                   </p>
                                 )}
                                 {transfer.status === 'pending' && (

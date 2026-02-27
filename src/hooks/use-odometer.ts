@@ -110,7 +110,7 @@ export function useCreateOdometerEntry() {
       queryClient.invalidateQueries({ queryKey: ['latest-odometer', variables.car_id] });
       queryClient.invalidateQueries({ queryKey: ['cars-with-status'] });
       queryClient.invalidateQueries({ queryKey: ['critical-services'] });
-      queryClient.invalidateQueries({ queryKey: ['supervisor-activity'] });
+      queryClient.invalidateQueries({ queryKey: ['supervisor-activity-logs'] });
       toast({
         title: 'Odometer updated',
         description: 'Odometer reading has been recorded.',

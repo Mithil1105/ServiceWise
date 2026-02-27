@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { SettingsLeaveProvider } from '@/lib/settings-leave-context';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import { setNoIndexMeta } from '@/lib/marketing-seo';
 import AppSidebar from './AppSidebar';
 import { Loader2, Menu, LogOut } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
@@ -117,21 +126,82 @@ export default function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Desktop Sidebar */}
-      <div className="hidden md:block">
-        <AppSidebar
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={handleSidebarToggle}
-        />
-      </div>
+    <AppLayoutContent
+      sidebarCollapsed={sidebarCollapsed}
+      onToggleCollapse={handleSidebarToggle}
+      mobileMenuOpen={mobileMenuOpen}
+      setMobileMenuOpen={setMobileMenuOpen}
+      auth={auth}
+      isMobile={isMobile}
+    />
+  );
+}
 
-      {/* Mobile Sidebar Sheet */}
-      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="w-64 p-0 h-full flex flex-col overflow-hidden">
-          <AppSidebar onNavigate={() => setMobileMenuOpen(false)} />
-        </SheetContent>
-      </Sheet>
+function AppLayoutContent({
+  sidebarCollapsed,
+  onToggleCollapse,
+  mobileMenuOpen,
+  setMobileMenuOpen,
+  auth,
+  isMobile,
+}: {
+  sidebarCollapsed: boolean;
+  onToggleCollapse: () => void;
+  mobileMenuOpen: boolean;
+  setMobileMenuOpen: (v: boolean) => void;
+  auth: ReturnType<typeof useAuth>;
+  isMobile: boolean;
+}) {
+  const navigate = useNavigate();
+
+  return (
+    <SettingsLeaveProvider
+      onConfirmLeave={(path) => navigate(path)}
+      renderLeaveDialog={({ open, onOpenChange, onLeave, onCancel }) => (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Unsaved settings</DialogTitle>
+              <DialogDescription>
+                You have unsaved changes. Do you want to save your settings before leaving, or leave without saving?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2">
+              <Button variant="outline" onClick={onCancel}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={onLeave}>
+                Leave without saving
+              </Button>
+<Button
+                 onClick={() => {
+                   const saveButtons = document.querySelectorAll('[data-settings-save]');
+                   saveButtons.forEach((el) => (el as HTMLButtonElement).click());
+                   onCancel();
+                 }}
+               >
+                 Save settings
+               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    >
+      <div className="min-h-screen bg-background">
+        {/* Desktop Sidebar */}
+        <div className="hidden md:block">
+          <AppSidebar
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={onToggleCollapse}
+          />
+        </div>
+
+        {/* Mobile Sidebar Sheet */}
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetContent side="left" className="w-64 p-0 h-full flex flex-col overflow-hidden">
+            <AppSidebar onNavigate={() => setMobileMenuOpen(false)} />
+          </SheetContent>
+        </Sheet>
 
       {/* Mobile Header with Hamburger */}
       {isMobile && (
@@ -162,6 +232,7 @@ export default function AppLayout() {
           <Outlet />
         </div>
       </main>
-    </div>
+      </div>
+    </SettingsLeaveProvider>
   );
 }

@@ -4,16 +4,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Calendar, Plus, Trash2, GripVertical } from 'lucide-react';
+import { Loader2, PauseCircle, Plus, Trash2, GripVertical } from 'lucide-react';
 import { useOrganizationSettings, useUpdateOrganizationSettings } from '@/hooks/use-organization-settings';
 import {
-  type BookingFormConfig,
-  type BookingFormBuiltInFieldKey,
+  type DowntimeFormConfig,
+  type DowntimeFormBuiltInFieldKey,
   type FleetNewCarCustomField,
   type FieldOverride,
-  type SelectOption,
-  BOOKING_FORM_FIELD_LABELS,
-  DEFAULT_TRIP_TYPE_OPTIONS,
+  type DowntimeReasonOption,
+  DOWNTIME_FORM_FIELD_LABELS,
+  DEFAULT_DOWNTIME_REASON_OPTIONS,
   type CustomFieldType,
 } from '@/types/form-config';
 import {
@@ -24,22 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-const BUILT_IN_FIELDS: BookingFormBuiltInFieldKey[] = [
-  'customer_name',
-  'customer_phone',
-  'trip_type',
-  'start_date',
-  'start_time',
-  'end_date',
-  'end_time',
-  'pickup',
-  'dropoff',
-  'estimated_km',
-  'notes',
-  'status',
-  'advance_amount',
-  'advance_payment_method',
-];
+const BUILT_IN_FIELDS: DowntimeFormBuiltInFieldKey[] = ['car_id', 'reason', 'notes', 'estimated_uptime_at'];
 
 const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
   { value: 'text', label: 'Text' },
@@ -49,43 +34,43 @@ const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
 ];
 
 function defaultFieldOverride(): FieldOverride {
-  return { required: true, hidden: false, label: undefined };
+  return { required: false, hidden: false, label: undefined };
 }
 
-interface BookingFormConfigCardProps {
+interface DowntimeFormConfigCardProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardProps = {}) {
+export function DowntimeFormConfigCard({ onDirtyChange }: DowntimeFormConfigCardProps = {}) {
   const { data: orgSettings } = useOrganizationSettings();
   const updateSettings = useUpdateOrganizationSettings();
-  const config: BookingFormConfig = orgSettings?.booking_form_config ?? {};
+  const config: DowntimeFormConfig = orgSettings?.downtime_form_config ?? {};
 
-  const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<BookingFormBuiltInFieldKey, FieldOverride>>>({});
-  const [tripTypeOptions, setTripTypeOptions] = useState<SelectOption[]>([]);
+  const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<DowntimeFormBuiltInFieldKey, FieldOverride>>>({});
+  const [reasonOptions, setReasonOptions] = useState<DowntimeReasonOption[]>([]);
   const [customFields, setCustomFields] = useState<FleetNewCarCustomField[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setFieldOverrides(config.fieldOverrides ?? {});
-    setTripTypeOptions(config.tripTypeOptions?.length ? [...config.tripTypeOptions] : [...DEFAULT_TRIP_TYPE_OPTIONS]);
+    setReasonOptions(config.reasonOptions?.length ? [...config.reasonOptions] : [...DEFAULT_DOWNTIME_REASON_OPTIONS]);
     setCustomFields(config.customFields ?? []);
-  }, [config.fieldOverrides, config.tripTypeOptions, config.customFields]);
+  }, [config.fieldOverrides, config.reasonOptions, config.customFields]);
 
   useEffect(() => {
-    const saved = JSON.stringify({ fieldOverrides: config.fieldOverrides ?? {}, tripTypeOptions: config.tripTypeOptions ?? DEFAULT_TRIP_TYPE_OPTIONS, customFields: config.customFields ?? [] });
-    const current = JSON.stringify({ fieldOverrides, tripTypeOptions, customFields });
+    const saved = JSON.stringify({ fieldOverrides: config.fieldOverrides ?? {}, reasonOptions: config.reasonOptions ?? DEFAULT_DOWNTIME_REASON_OPTIONS, customFields: config.customFields ?? [] });
+    const current = JSON.stringify({ fieldOverrides, reasonOptions, customFields });
     onDirtyChange?.(saved !== current);
-  }, [fieldOverrides, tripTypeOptions, customFields, config, onDirtyChange]);
+  }, [fieldOverrides, reasonOptions, customFields, config, onDirtyChange]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const cleanedTripTypeOptions = tripTypeOptions.filter((o) => o.value.trim() && o.label.trim());
+      const cleanedReasonOptions = reasonOptions.filter((o) => o.value.trim() && o.label.trim());
       await updateSettings.mutateAsync({
-        booking_form_config: {
+        downtime_form_config: {
           fieldOverrides: Object.keys(fieldOverrides).length ? fieldOverrides : undefined,
-          tripTypeOptions: cleanedTripTypeOptions.length > 0 ? cleanedTripTypeOptions : undefined,
+          reasonOptions: cleanedReasonOptions.length > 0 ? cleanedReasonOptions : undefined,
           customFields: customFields.length ? customFields : undefined,
         },
       });
@@ -95,7 +80,7 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
     }
   };
 
-  const setFieldOverride = (key: BookingFormBuiltInFieldKey, override: FieldOverride) => {
+  const setFieldOverride = (key: DowntimeFormBuiltInFieldKey, override: FieldOverride) => {
     setFieldOverrides((prev) => ({ ...prev, [key]: { ...(prev[key] ?? defaultFieldOverride()), ...override } }));
   };
 
@@ -125,24 +110,24 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Calendar className="h-5 w-5" />
-          New Booking form
+          <PauseCircle className="h-5 w-5" />
+          Add downtime form
         </CardTitle>
         <CardDescription>
-          Configure which fields are required or hidden, labels, and add custom fields for the New Booking form.
+          Configure which fields are required or hidden, labels, and add custom fields for the Add Downtime form. Custom fields appear in the form with no separate heading.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
         <div className="space-y-4">
           <Label className="text-base font-medium">Built-in fields</Label>
           <p className="text-sm text-muted-foreground">Set required, hidden, or custom label for each field.</p>
-          <div className="rounded-md border divide-y max-h-[400px] overflow-y-auto">
+          <div className="rounded-md border divide-y">
             {BUILT_IN_FIELDS.map((key) => {
               const override = fieldOverrides[key] ?? defaultFieldOverride();
-              const defaultLabel = BOOKING_FORM_FIELD_LABELS[key];
+              const defaultRequired = key === 'car_id' || key === 'reason';
               return (
                 <div key={key} className="flex flex-wrap items-center gap-4 p-3">
-                  <span className="font-mono text-sm w-44 shrink-0">{defaultLabel}</span>
+                  <span className="font-mono text-sm w-52 shrink-0">{DOWNTIME_FORM_FIELD_LABELS[key]}</span>
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     <label className="flex items-center gap-2 whitespace-nowrap">
                       <Switch
@@ -153,13 +138,13 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
                     </label>
                     <label className="flex items-center gap-2 whitespace-nowrap">
                       <Switch
-                        checked={override.required ?? (key === 'customer_name' || key === 'customer_phone' || key === 'trip_type' || key === 'start_date' || key === 'end_date')}
+                        checked={override.required ?? defaultRequired}
                         onCheckedChange={(checked) => setFieldOverride(key, { ...override, required: checked })}
                       />
                       <span className="text-sm">Required</span>
                     </label>
                     <Input
-                      placeholder={`Label (default: ${defaultLabel})`}
+                      placeholder={`Label (default: ${DOWNTIME_FORM_FIELD_LABELS[key]})`}
                       value={override.label ?? ''}
                       onChange={(e) => setFieldOverride(key, { ...override, label: e.target.value || undefined })}
                       className="max-w-[200px]"
@@ -172,28 +157,28 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
         </div>
 
         <div className="space-y-4">
-          <Label className="text-base font-medium">Trip type dropdown options</Label>
-          <p className="text-sm text-muted-foreground">Customize the options shown in the Trip Type dropdown on New Booking and billing forms. Value is stored; label is what users see.</p>
+          <Label className="text-base font-medium">Reason dropdown options</Label>
+          <p className="text-sm text-muted-foreground">Customize the options shown in the Reason dropdown on the Add Downtime form. Value is stored in the database; label is what users see.</p>
           <div className="rounded-md border divide-y">
-            {tripTypeOptions.map((opt, index) => (
+            {reasonOptions.map((opt, index) => (
               <div key={index} className="flex flex-wrap items-center gap-2 p-2">
                 <Input
-                  placeholder="Value (e.g. local)"
+                  placeholder="Value (e.g. service)"
                   value={opt.value}
                   onChange={(e) => {
-                    const next = [...tripTypeOptions];
+                    const next = [...reasonOptions];
                     next[index] = { ...next[index], value: e.target.value.replace(/\s/g, '_').toLowerCase() || opt.value };
-                    setTripTypeOptions(next);
+                    setReasonOptions(next);
                   }}
-                  className="w-40 font-mono"
+                  className="w-36 font-mono"
                 />
                 <Input
-                  placeholder="Label (e.g. Local)"
+                  placeholder="Label (e.g. Service)"
                   value={opt.label}
                   onChange={(e) => {
-                    const next = [...tripTypeOptions];
+                    const next = [...reasonOptions];
                     next[index] = { ...next[index], label: e.target.value };
-                    setTripTypeOptions(next);
+                    setReasonOptions(next);
                   }}
                   className="flex-1 min-w-[120px]"
                 />
@@ -202,15 +187,15 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
                   variant="ghost"
                   size="icon"
                   className="text-destructive shrink-0"
-                  onClick={() => setTripTypeOptions(tripTypeOptions.filter((_, i) => i !== index))}
-                  disabled={tripTypeOptions.length <= 1}
+                  onClick={() => setReasonOptions(reasonOptions.filter((_, i) => i !== index))}
+                  disabled={reasonOptions.length <= 1}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             ))}
             <div className="p-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setTripTypeOptions([...tripTypeOptions, { value: '', label: '' }])}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setReasonOptions([...reasonOptions, { value: '', label: '' }])}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add option
               </Button>
@@ -222,7 +207,7 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
           <div className="flex items-center justify-between">
             <div>
               <Label className="text-base font-medium">Custom fields</Label>
-              <p className="text-sm text-muted-foreground">Add extra fields. Values are stored per booking.</p>
+              <p className="text-sm text-muted-foreground">Add extra fields. Values are stored per downtime log.</p>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={addCustomField}>
               <Plus className="h-4 w-4 mr-2" />
@@ -275,7 +260,7 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
 
         <Button onClick={handleSave} disabled={saving} data-settings-save>
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          Save Booking form config
+          Save Add downtime form config
         </Button>
       </CardContent>
     </Card>

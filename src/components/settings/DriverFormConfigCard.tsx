@@ -11,7 +11,10 @@ import {
   type DriverFormBuiltInFieldKey,
   type FleetNewCarCustomField,
   type FieldOverride,
+  type SelectOption,
   DRIVER_FORM_FIELD_LABELS,
+  DEFAULT_LICENSE_TYPE_OPTIONS,
+  DEFAULT_DRIVER_TYPE_OPTIONS,
   type CustomFieldType,
 } from '@/types/form-config';
 import {
@@ -30,6 +33,7 @@ const BUILT_IN_FIELDS: DriverFormBuiltInFieldKey[] = [
   'license_type',
   'license_expiry',
   'license_file',
+  'driver_type',
   'notes',
 ];
 
@@ -44,29 +48,52 @@ function defaultFieldOverride(): FieldOverride {
   return { required: true, hidden: false, label: undefined };
 }
 
-export function DriverFormConfigCard() {
+interface DriverFormConfigCardProps {
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export function DriverFormConfigCard({ onDirtyChange }: DriverFormConfigCardProps = {}) {
   const { data: orgSettings } = useOrganizationSettings();
   const updateSettings = useUpdateOrganizationSettings();
   const config: DriverFormConfig = orgSettings?.drivers_form_config ?? {};
 
   const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<DriverFormBuiltInFieldKey, FieldOverride>>>({});
+  const [licenseTypeOptions, setLicenseTypeOptions] = useState<SelectOption[]>([]);
+  const [driverTypeOptions, setDriverTypeOptions] = useState<SelectOption[]>([]);
   const [customFields, setCustomFields] = useState<FleetNewCarCustomField[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setFieldOverrides(config.fieldOverrides ?? {});
+    setLicenseTypeOptions(config.licenseTypeOptions?.length ? [...config.licenseTypeOptions] : [...DEFAULT_LICENSE_TYPE_OPTIONS]);
+    setDriverTypeOptions(config.driverTypeOptions?.length ? [...config.driverTypeOptions] : [...DEFAULT_DRIVER_TYPE_OPTIONS]);
     setCustomFields(config.customFields ?? []);
-  }, [config.fieldOverrides, config.customFields]);
+  }, [config.fieldOverrides, config.licenseTypeOptions, config.driverTypeOptions, config.customFields]);
+
+  useEffect(() => {
+    const saved = JSON.stringify({
+      fieldOverrides: config.fieldOverrides ?? {},
+      licenseTypeOptions: config.licenseTypeOptions ?? DEFAULT_LICENSE_TYPE_OPTIONS,
+      driverTypeOptions: config.driverTypeOptions ?? DEFAULT_DRIVER_TYPE_OPTIONS,
+      customFields: config.customFields ?? [],
+    });
+    const current = JSON.stringify({ fieldOverrides, licenseTypeOptions, driverTypeOptions, customFields });
+    onDirtyChange?.(saved !== current);
+  }, [fieldOverrides, licenseTypeOptions, driverTypeOptions, customFields, config, onDirtyChange]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      const clean = (opts: SelectOption[]) => opts.filter((o) => o.value.trim() && o.label.trim());
       await updateSettings.mutateAsync({
         drivers_form_config: {
           fieldOverrides: Object.keys(fieldOverrides).length ? fieldOverrides : undefined,
+          licenseTypeOptions: clean(licenseTypeOptions).length > 0 ? clean(licenseTypeOptions) : undefined,
+          driverTypeOptions: clean(driverTypeOptions).length > 0 ? clean(driverTypeOptions) : undefined,
           customFields: customFields.length ? customFields : undefined,
         },
       });
+      onDirtyChange?.(false);
     } finally {
       setSaving(false);
     }
@@ -149,6 +176,36 @@ export function DriverFormConfigCard() {
         </div>
 
         <div className="space-y-4">
+          <Label className="text-base font-medium">License type dropdown options</Label>
+          <p className="text-sm text-muted-foreground">Customize options for the License Type (LMV/HMV) dropdown. Value is stored; label is what users see.</p>
+          <div className="rounded-md border divide-y">
+            {licenseTypeOptions.map((opt, index) => (
+              <div key={index} className="flex flex-wrap items-center gap-2 p-2">
+                <Input placeholder="Value" value={opt.value} onChange={(e) => { const n = [...licenseTypeOptions]; n[index] = { ...n[index], value: e.target.value }; setLicenseTypeOptions(n); }} className="w-32 font-mono" />
+                <Input placeholder="Label" value={opt.label} onChange={(e) => { const n = [...licenseTypeOptions]; n[index] = { ...n[index], label: e.target.value }; setLicenseTypeOptions(n); }} className="flex-1 min-w-[120px]" />
+                <Button type="button" variant="ghost" size="icon" className="text-destructive shrink-0" onClick={() => setLicenseTypeOptions(licenseTypeOptions.filter((_, i) => i !== index))} disabled={licenseTypeOptions.length <= 1}><Trash2 className="h-4 w-4" /></Button>
+              </div>
+            ))}
+            <div className="p-2"><Button type="button" variant="outline" size="sm" onClick={() => setLicenseTypeOptions([...licenseTypeOptions, { value: '', label: '' }])}><Plus className="h-4 w-4 mr-2" />Add option</Button></div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <Label className="text-base font-medium">Driver type dropdown options</Label>
+          <p className="text-sm text-muted-foreground">Customize options for the Driver type (Permanent/Temporary) dropdown.</p>
+          <div className="rounded-md border divide-y">
+            {driverTypeOptions.map((opt, index) => (
+              <div key={index} className="flex flex-wrap items-center gap-2 p-2">
+                <Input placeholder="Value" value={opt.value} onChange={(e) => { const n = [...driverTypeOptions]; n[index] = { ...n[index], value: e.target.value }; setDriverTypeOptions(n); }} className="w-32 font-mono" />
+                <Input placeholder="Label" value={opt.label} onChange={(e) => { const n = [...driverTypeOptions]; n[index] = { ...n[index], label: e.target.value }; setDriverTypeOptions(n); }} className="flex-1 min-w-[120px]" />
+                <Button type="button" variant="ghost" size="icon" className="text-destructive shrink-0" onClick={() => setDriverTypeOptions(driverTypeOptions.filter((_, i) => i !== index))} disabled={driverTypeOptions.length <= 1}><Trash2 className="h-4 w-4" /></Button>
+              </div>
+            ))}
+            <div className="p-2"><Button type="button" variant="outline" size="sm" onClick={() => setDriverTypeOptions([...driverTypeOptions, { value: '', label: '' }])}><Plus className="h-4 w-4 mr-2" />Add option</Button></div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <Label className="text-base font-medium">Custom fields</Label>
@@ -203,7 +260,7 @@ export function DriverFormConfigCard() {
           )}
         </div>
 
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={saving} data-settings-save>
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
           Save Driver form config
         </Button>

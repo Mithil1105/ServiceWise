@@ -1,7 +1,7 @@
 // Invoice page for booking billing
 import { useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { format } from 'date-fns';
+import { formatDateDMY, formatDateTimeFull } from '@/lib/date';
 import { QRCodeSVG } from 'qrcode.react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -49,7 +49,7 @@ export default function BookingInvoice() {
   };
 
   const formatDateTime = (date: string) => {
-    return format(new Date(date), 'dd MMM yyyy, hh:mm a');
+    return formatDateTimeFull(date);
   };
 
   // Calculate final totals with actual km if available
@@ -158,7 +158,7 @@ export default function BookingInvoice() {
       `${invoice ? `🧾 Invoice: ${invoice.invoice_no}\n` : ''}` +
       `👤 Customer: ${booking.customer_name}\n` +
       `📞 Phone: ${booking.customer_phone}\n\n` +
-      `📅 Trip: ${format(new Date(booking.start_at), 'dd MMM yyyy')} - ${format(new Date(booking.end_at), 'dd MMM yyyy')}\n` +
+      `📅 Trip: ${formatDateDMY(booking.start_at)} - ${formatDateDMY(booking.end_at)}\n` +
       `🚗 Vehicles: ${booking.booking_vehicles?.length || 0}\n\n` +
       `💰 Total: ${formatCurrency(totalAmount)}\n` +
       `✅ Advance: ${formatCurrency(totalAdvance)}\n` +
@@ -189,7 +189,7 @@ export default function BookingInvoice() {
       `Please find your invoice details below:\n\n` +
       `Booking Reference: ${booking.booking_ref}\n` +
       `${invoice ? `Invoice Number: ${invoice.invoice_no}\n` : ''}` +
-      `Trip Dates: ${format(new Date(booking.start_at), 'dd MMM yyyy')} - ${format(new Date(booking.end_at), 'dd MMM yyyy')}\n\n` +
+      `Trip Dates: ${formatDateDMY(booking.start_at)} - ${formatDateDMY(booking.end_at)}\n\n` +
       `Total Amount: ${formatCurrency(totalAmount)}\n` +
       `Advance Paid: ${formatCurrency(totalAdvance)}\n` +
       `Amount Due: ${formatCurrency(totalAmount - totalAdvance)}\n\n` +
@@ -332,7 +332,7 @@ export default function BookingInvoice() {
                 <>
                   <p className="text-lg font-mono mt-1">{invoice.invoice_no}</p>
                   <p className="text-sm text-muted-foreground">
-                    Issued: {format(new Date(invoice.issued_at), 'dd MMM yyyy')}
+                    Issued: {formatDateDMY(invoice.issued_at)}
                   </p>
                 </>
               ) : (
@@ -472,7 +472,7 @@ export default function BookingInvoice() {
               <p>Booking created by: {booking.created_by_profile.name}</p>
             )}
             <p className="text-[10px] mt-2">
-              Generated on {format(new Date(), 'dd MMM yyyy, hh:mm a')} (IST)
+              Generated on {formatDateTimeFull(new Date().toISOString())} (IST)
             </p>
           </div>
         </CardContent>

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { formatDateDMY } from '@/lib/date';
 import { Building2, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
@@ -122,7 +123,7 @@ export default function AdminOrganizationDetail() {
                   <td className="p-3">{m.displayName ?? m.user_id}</td>
                   <td className="p-3">{m.role}</td>
                   <td className="p-3">{m.status}</td>
-                  <td className="p-3">{new Date(m.created_at).toLocaleDateString()}</td>
+                  <td className="p-3">{formatDateDMY(m.created_at)}</td>
                 </tr>
               ))}
             </tbody>

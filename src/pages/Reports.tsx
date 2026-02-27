@@ -18,6 +18,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { FileText, Download, CalendarIcon, Loader2 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import { formatDateDMY } from '@/lib/date';
 import { cn, formatCarLabel } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { DateRange } from 'react-day-picker';
@@ -80,9 +81,9 @@ export default function Reports() {
       for (const record of filteredServices) {
         const car = cars?.find((c) => c.id === record.car_id);
         rows.push([
-          format(new Date(record.serviced_at), 'yyyy-MM-dd'),
+          formatDateDMY(record.serviced_at),
           '',
-          car?.vehicle_number || '',
+          car ? formatCarLabel(car) : '',
           'SERVICE',
           record.service_name,
           record.vendor_name || '',
@@ -105,9 +106,9 @@ export default function Reports() {
         for (const entry of filteredOdometer) {
           const car = cars?.find((c) => c.id === entry.car_id);
           rows.push([
-            format(new Date(entry.reading_at), 'yyyy-MM-dd'),
+            formatDateDMY(entry.reading_at),
             format(new Date(entry.reading_at), 'HH:mm'),
-            car?.vehicle_number || '',
+            car ? formatCarLabel(car) : '',
             'ODOMETER',
             'Odometer Update',
             '',
@@ -229,11 +230,11 @@ export default function Reports() {
                       {dateRange?.from ? (
                         dateRange.to ? (
                           <>
-                            {format(dateRange.from, 'LLL dd, y')} -{' '}
-                            {format(dateRange.to, 'LLL dd, y')}
+                            {formatDateDMY(dateRange.from)} -{' '}
+                            {formatDateDMY(dateRange.to)}
                           </>
                         ) : (
-                          format(dateRange.from, 'LLL dd, y')
+                          formatDateDMY(dateRange.from)
                         )
                       ) : (
                         <span>Pick a date range</span>

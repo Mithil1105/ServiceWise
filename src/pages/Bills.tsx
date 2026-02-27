@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { format } from 'date-fns';
-import { formatDateTimeFull } from '@/lib/date';
+import { formatDateDMY, formatDateTimeFull } from '@/lib/date';
 import { QRCodeSVG } from 'qrcode.react';
 import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import html2canvas from 'html2canvas';
@@ -93,7 +92,7 @@ export default function Bills() {
   const formatCustomBlockDisplay = (block: BillingCustomBlock, value: string | number | boolean | null | undefined) => {
     if (value == null || value === '') return '—';
     if (block.type === 'checkbox') return value ? 'Yes' : 'No';
-    if (block.type === 'date' && typeof value === 'string') return format(new Date(value), 'dd MMM yyyy');
+    if (block.type === 'date' && typeof value === 'string') return formatDateDMY(value);
     return String(value);
   };
 
@@ -217,7 +216,7 @@ export default function Bills() {
       `📋 Booking: ${booking.booking_ref}\n` +
       `👤 Customer: ${selectedBill.customer_name}\n` +
       `📞 Phone: ${selectedBill.customer_phone}\n\n` +
-      `📅 Trip: ${format(new Date(selectedBill.start_at), 'dd MMM yyyy')} - ${format(new Date(selectedBill.end_at), 'dd MMM yyyy')}\n` +
+      `📅 Trip: ${formatDateDMY(selectedBill.start_at)} - ${formatDateDMY(selectedBill.end_at)}\n` +
       `🚗 Total KM: ${selectedBill.total_km_driven} km\n\n` +
       `💰 Total: ${formatCurrency(selectedBill.total_amount)}\n` +
       `✅ Advance: ${formatCurrency(selectedBill.advance_amount)}\n` +
@@ -422,7 +421,7 @@ export default function Bills() {
                       <h3 className="text-lg sm:text-xl font-semibold">FINAL BILL</h3>
                       <p className="text-base sm:text-lg font-mono mt-1 break-all">{selectedBill.bill_number}</p>
                       <p className="text-xs sm:text-sm text-muted-foreground">
-                        Generated: {format(new Date(selectedBill.created_at), 'dd MMM yyyy')}
+                        Generated: {formatDateDMY(selectedBill.created_at)}
                       </p>
                       {selectedBill.status === 'paid' && (
                         <Badge className={`mt-2 ${BILL_STATUS_LABELS[selectedBill.status].color}`}>
@@ -940,11 +939,11 @@ export default function Bills() {
               <div className="text-center space-y-2">
                 <p className="font-medium">Thank you for choosing {companyName}!</p>
                 <p className="text-xs text-muted-foreground">
-                  This bill was generated on {format(new Date(selectedBill.created_at), 'dd MMM yyyy, hh:mm a')} (IST)
+                  This bill was generated on {formatDateTimeFull(selectedBill.created_at)} (IST)
                 </p>
                 {selectedBill.status === 'paid' && selectedBill.paid_at && (
                   <p className="text-xs text-success font-medium">
-                    Payment received on {format(new Date(selectedBill.paid_at), 'dd MMM yyyy, hh:mm a')} (IST)
+                    Payment received on {formatDateTimeFull(selectedBill.paid_at)} (IST)
                   </p>
                 )}
               </div>
@@ -979,7 +978,7 @@ export default function Bills() {
                       <h3 className="text-xl font-semibold">COMPANY BILL</h3>
                       <p className="text-lg font-mono mt-1">{selectedCompanyBill.bill_number}</p>
                       <p className="text-sm text-muted-foreground">
-                        Generated: {format(new Date(selectedCompanyBill.created_at), 'dd MMM yyyy')}
+                        Generated: {formatDateDMY(selectedCompanyBill.created_at)}
                       </p>
                     </div>
                   </div>
@@ -1201,7 +1200,7 @@ export default function Bills() {
                                     )}
                                     {transfer.status === 'completed' && transfer.transfer_date && (
                                       <p className="text-success font-medium mt-2">
-                                        ✅ Transferred on: {format(new Date(transfer.transfer_date), 'MMM dd, yyyy')}
+                                        ✅ Transferred on: {formatDateDMY(transfer.transfer_date)}
                                       </p>
                                     )}
                                     {transfer.status === 'pending' && (

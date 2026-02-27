@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { FileText, Upload, Download, Trash2, Loader2, AlertTriangle, Plus, Eye } from 'lucide-react';
+import { DocumentFileInput } from '@/components/ui/document-file-input';
 import { formatDateDMY } from '@/lib/date';
 import { differenceInDays, parseISO } from 'date-fns';
 
@@ -212,11 +213,12 @@ export default function DocumentsSection({ carId, isAdmin }: DocumentsSectionPro
                                   />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>Document File</Label>
-                                  <Input
-                                    type="file"
-                                    accept=".pdf,.jpg,.jpeg,.png"
-                                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                                  <Label>Document File (PDF or image, max 2 MB)</Label>
+                                  <DocumentFileInput
+                                    id={`doc-file-${docType}`}
+                                    value={selectedFile}
+                                    onChange={setSelectedFile}
+                                    buttonLabel="Choose file"
                                   />
                                   {doc?.file_name && !selectedFile && (
                                     <p className="text-xs text-muted-foreground">

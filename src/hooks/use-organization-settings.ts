@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrg } from '@/hooks/use-org';
-import type { FleetNewCarFormConfig, DriverFormConfig, BookingFormConfig } from '@/types/form-config';
+import type { FleetNewCarFormConfig, DriverFormConfig, BookingFormConfig, ServiceRecordFormConfig, DowntimeFormConfig, IncidentFormConfig } from '@/types/form-config';
 import type { BillingLayoutConfig } from '@/types/billing-config';
 
 export interface OrganizationSettingsRow {
@@ -17,6 +17,9 @@ export interface OrganizationSettingsRow {
   fleet_new_car_form_config: FleetNewCarFormConfig | null;
   drivers_form_config: DriverFormConfig | null;
   booking_form_config: BookingFormConfig | null;
+  service_record_form_config: ServiceRecordFormConfig | null;
+  downtime_form_config: DowntimeFormConfig | null;
+  incident_form_config: IncidentFormConfig | null;
   updated_at: string;
 }
 
@@ -50,6 +53,9 @@ export function useUpdateOrganizationSettings() {
       fleet_new_car_form_config?: FleetNewCarFormConfig | null;
       drivers_form_config?: DriverFormConfig | null;
       booking_form_config?: BookingFormConfig | null;
+      service_record_form_config?: ServiceRecordFormConfig | null;
+      downtime_form_config?: DowntimeFormConfig | null;
+      incident_form_config?: IncidentFormConfig | null;
     }) => {
       if (!orgId) throw new Error('Organization not found');
       const { data: existing } = await supabase
@@ -76,6 +82,9 @@ export function useUpdateOrganizationSettings() {
           fleet_new_car_form_config: updates.fleet_new_car_form_config ?? null,
           drivers_form_config: updates.drivers_form_config ?? null,
           booking_form_config: updates.booking_form_config ?? null,
+          service_record_form_config: updates.service_record_form_config ?? null,
+          downtime_form_config: updates.downtime_form_config ?? null,
+          incident_form_config: updates.incident_form_config ?? null,
           updated_at: new Date().toISOString(),
         });
         if (error) throw error;

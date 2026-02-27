@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { AttentionItem, MonthlySnapshot, CarUtilization, HighMaintenanceData, CarBookingDays } from '@/types';
 import { startOfMonth, endOfMonth, subDays, subMonths, differenceInDays } from 'date-fns';
+import { formatDateDMY } from '@/lib/date';
 import { toast } from 'sonner';
 import { useOrg } from '@/hooks/use-org';
 
@@ -184,8 +185,8 @@ export function useAttentionItems() {
             ? `${(dt as any).cars?.vehicle_number}: Should be back up!`
             : `${(dt as any).cars?.vehicle_number}: In downtime`,
           description: isOverdue 
-            ? `Expected back on ${estimatedUptime!.toLocaleDateString('en-IN')}`
-            : `Reason: ${dt.reason}${estimatedUptime ? ` • Expected: ${estimatedUptime.toLocaleDateString('en-IN')}` : ''}`,
+            ? `Expected back on ${formatDateDMY(estimatedUptime!)}`
+            : `Reason: ${dt.reason}${estimatedUptime ? ` • Expected: ${formatDateDMY(estimatedUptime)}` : ''}`,
           car_id: dt.car_id,
           vehicle_number: (dt as any).cars?.vehicle_number,
           actionLabel: 'View Fleet',

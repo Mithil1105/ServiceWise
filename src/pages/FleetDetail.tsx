@@ -4,6 +4,8 @@ import { useCar, useUpdateCar } from '@/hooks/use-cars';
 import { useOdometerEntries, useLatestOdometer } from '@/hooks/use-odometer';
 import { useServiceRecords } from '@/hooks/use-services';
 import { useActiveDowntime, useStartDowntime, useEndDowntime, useDowntimeLogs } from '@/hooks/use-downtime';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import { type DowntimeFormBuiltInFieldKey, DOWNTIME_FORM_FIELD_LABELS, DEFAULT_DOWNTIME_REASON_OPTIONS, type FleetNewCarCustomField } from '@/types/form-config';
 import { useIncidents } from '@/hooks/use-incidents';
 import { useCarNotes, useCreateCarNote, useDeleteCarNote, useTogglePinNote } from '@/hooks/use-car-notes';
 import { useHighMaintenanceData } from '@/hooks/use-dashboard';
@@ -91,9 +93,19 @@ export default function FleetDetail() {
   const togglePin = useTogglePinNote();
 
   const [downtimeOpen, setDowntimeOpen] = useState(false);
-  const [downtimeReason, setDowntimeReason] = useState<DowntimeLog['reason']>('service');
+  const [downtimeReason, setDowntimeReason] = useState<string>('service');
   const [downtimeNotes, setDowntimeNotes] = useState('');
   const [estimatedUptime, setEstimatedUptime] = useState('');
+  const [downtimeCustomValues, setDowntimeCustomValues] = useState<Record<string, string | number | boolean | null>>({});
+
+  const { data: orgSettings } = useOrganizationSettings();
+  const downtimeFormConfig = orgSettings?.downtime_form_config ?? {};
+  const downtimeFieldOverrides = downtimeFormConfig.fieldOverrides ?? {};
+  const downtimeReasonOptions = (downtimeFormConfig.reasonOptions?.length ? downtimeFormConfig.reasonOptions : DEFAULT_DOWNTIME_REASON_OPTIONS).filter((o) => o.value && o.label);
+  const downtimeCustomFields = (downtimeFormConfig.customFields ?? []).sort((a, b) => a.order - b.order);
+  const getDowntimeFieldLabel = (key: DowntimeFormBuiltInFieldKey) => downtimeFieldOverrides[key]?.label ?? DOWNTIME_FORM_FIELD_LABELS[key];
+  const isDowntimeFieldHidden = (key: DowntimeFormBuiltInFieldKey) => downtimeFieldOverrides[key]?.hidden === true;
+  const isDowntimeFieldRequired = (key: DowntimeFormBuiltInFieldKey) => downtimeFieldOverrides[key]?.required ?? (key === 'reason');
   const [noteOpen, setNoteOpen] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [pinNewNote, setPinNewNote] = useState(false);
@@ -181,19 +193,26 @@ export default function FleetDetail() {
   };
 
   const handleStartDowntime = () => {
+    const customAttrs: Record<string, string | number | boolean | null> = {};
+    for (const f of downtimeCustomFields) {
+      const v = downtimeCustomValues[f.key];
+      if (v !== undefined && v !== null && v !== '') customAttrs[f.key] = v;
+    }
     startDowntime.mutate(
-      { 
-        car_id: id!, 
-        reason: downtimeReason, 
+      {
+        car_id: id!,
+        reason: downtimeReason,
         notes: downtimeNotes || undefined,
         estimated_uptime_at: estimatedUptime ? new Date(estimatedUptime).toISOString() : undefined,
+        custom_attributes: Object.keys(customAttrs).length ? customAttrs : undefined,
       },
       {
         onSuccess: () => {
           setDowntimeOpen(false);
-          setDowntimeReason('service');
+          setDowntimeReason(downtimeReasonOptions[0]?.value ?? 'service');
           setDowntimeNotes('');
           setEstimatedUptime('');
+          setDowntimeCustomValues({});
         },
       }
     );
@@ -325,8 +344,8 @@ export default function FleetDetail() {
                   Mark Downtime
                 </Button>
               </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
+              <DialogContent className="max-h-[90vh] flex flex-col overflow-hidden">
+                <DialogHeader className="shrink-0">
                   <DialogTitle className="flex items-center gap-2">
                     <PauseCircle className="h-5 w-5" />
                     Start Downtime
@@ -343,40 +362,76 @@ export default function FleetDetail() {
                     </Tooltip>
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Reason</Label>
-                    <Select value={downtimeReason} onValueChange={(v) => setDowntimeReason(v as any)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="service">Service</SelectItem>
-                        <SelectItem value="breakdown">Breakdown</SelectItem>
-                        <SelectItem value="accident">Accident</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Estimated Back Up Date</Label>
-                    <Input
-                      type="date"
-                      value={estimatedUptime}
-                      onChange={(e) => setEstimatedUptime(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">When do you expect the car to be back?</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Notes (optional)</Label>
-                    <Textarea
-                      value={downtimeNotes}
-                      onChange={(e) => setDowntimeNotes(e.target.value)}
-                      placeholder="Add notes about the downtime..."
-                    />
-                  </div>
+                <div className="space-y-4 overflow-y-auto min-h-0 flex-1 pr-1">
+                  {!isDowntimeFieldHidden('reason') && (
+                    <div className="space-y-2">
+                      <Label>{getDowntimeFieldLabel('reason')}{isDowntimeFieldRequired('reason') ? ' *' : ''}</Label>
+                      <Select value={downtimeReason} onValueChange={setDowntimeReason}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {downtimeReasonOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {!isDowntimeFieldHidden('estimated_uptime_at') && (
+                    <div className="space-y-2">
+                      <Label>{getDowntimeFieldLabel('estimated_uptime_at')}{isDowntimeFieldRequired('estimated_uptime_at') ? ' *' : ''}</Label>
+                      <Input
+                        type="date"
+                        value={estimatedUptime}
+                        onChange={(e) => setEstimatedUptime(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">When do you expect the car to be back?</p>
+                    </div>
+                  )}
+                  {!isDowntimeFieldHidden('notes') && (
+                    <div className="space-y-2">
+                      <Label>{getDowntimeFieldLabel('notes')}{isDowntimeFieldRequired('notes') ? ' *' : ''}</Label>
+                      <Textarea
+                        value={downtimeNotes}
+                        onChange={(e) => setDowntimeNotes(e.target.value)}
+                        placeholder="Add notes about the downtime..."
+                      />
+                    </div>
+                  )}
+                  {downtimeCustomFields.map((f) => (
+                    <div key={f.id} className="space-y-2">
+                      <Label>{f.label}{f.required ? ' *' : ''}</Label>
+                      {f.type === 'number' ? (
+                        <Input
+                          type="number"
+                          value={downtimeCustomValues[f.key] != null ? String(downtimeCustomValues[f.key]) : ''}
+                          onChange={(e) => setDowntimeCustomValues(prev => ({ ...prev, [f.key]: e.target.value === '' ? null : parseFloat(e.target.value) }))}
+                          placeholder={`${f.label}...`}
+                        />
+                      ) : f.type === 'date' ? (
+                        <Input
+                          type="date"
+                          value={downtimeCustomValues[f.key] != null ? String(downtimeCustomValues[f.key]) : ''}
+                          onChange={(e) => setDowntimeCustomValues(prev => ({ ...prev, [f.key]: e.target.value || null }))}
+                        />
+                      ) : f.type === 'select' ? (
+                        <Select value={downtimeCustomValues[f.key] != null ? String(downtimeCustomValues[f.key]) : ''} onValueChange={(v) => setDowntimeCustomValues(prev => ({ ...prev, [f.key]: v }))}>
+                          <SelectTrigger><SelectValue placeholder={`Select ${f.label}`} /></SelectTrigger>
+                          <SelectContent>{(f.options ?? []).map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}</SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          type="text"
+                          value={downtimeCustomValues[f.key] != null ? String(downtimeCustomValues[f.key]) : ''}
+                          onChange={(e) => setDowntimeCustomValues(prev => ({ ...prev, [f.key]: e.target.value || null }))}
+                          placeholder={`${f.label}...`}
+                        />
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <DialogFooter>
+                <DialogFooter className="shrink-0 border-t pt-4 mt-2">
                   <Button variant="outline" onClick={() => setDowntimeOpen(false)}>
                     Cancel
                   </Button>

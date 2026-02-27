@@ -13,7 +13,7 @@ import { Loader2, AlertCircle, Calculator, Calendar } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { RATE_TYPE_LABELS } from '@/types/booking';
 import type { RateType } from '@/types/booking';
-import { toLocalDateInputValue } from '@/lib/date';
+import { toLocalDateInputValue, formatDateDMY } from '@/lib/date';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 import { DEFAULT_EXTRA_CHARGE_LABELS } from '@/types/billing-config';
 import { TransferDialog } from './TransferDialog';
@@ -576,13 +576,13 @@ export function GenerateBillDialog({
                 <div>
                   <span className="text-muted-foreground">Start:</span>{' '}
                   <span className="font-medium">
-                    {new Date(booking.start_at).toLocaleDateString()}
+                    {formatDateDMY(booking.start_at)}
                   </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">End:</span>{' '}
                   <span className="font-medium">
-                    {new Date(booking.end_at).toLocaleDateString()}
+                    {formatDateDMY(booking.end_at)}
                   </span>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, addHours } from 'date-fns';
+import { formatDateDMY } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,9 +23,9 @@ import { DriverAutocomplete } from '@/components/bookings/DriverAutocomplete';
 import { useAuth } from '@/lib/auth-context';
 import { toast } from 'sonner';
 import { cn, formatCarLabel } from '@/lib/utils';
-import { TRIP_TYPE_LABELS, RATE_TYPE_LABELS, type TripType, type RateType, type BookingStatus } from '@/types/booking';
+import { RATE_TYPE_LABELS, type TripType, type RateType, type BookingStatus } from '@/types/booking';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
-import { type BookingFormBuiltInFieldKey, BOOKING_FORM_FIELD_LABELS } from '@/types/form-config';
+import { type BookingFormBuiltInFieldKey, BOOKING_FORM_FIELD_LABELS, DEFAULT_TRIP_TYPE_OPTIONS } from '@/types/form-config';
 
 interface RequestedVehicle {
   id?: string;
@@ -67,6 +68,7 @@ export default function BookingNew() {
   const effectiveTerms = (orgSettings?.terms_and_conditions?.trim() || defaultTermsText);
   const bookingFieldOverrides = bookingFormConfig?.fieldOverrides ?? {};
   const bookingCustomFields = (bookingFormConfig?.customFields ?? []).sort((a, b) => a.order - b.order);
+  const tripTypeOptions = (bookingFormConfig?.tripTypeOptions?.length ? bookingFormConfig.tripTypeOptions : DEFAULT_TRIP_TYPE_OPTIONS).filter((o) => o.value && o.label);
   const getBookingFieldLabel = (key: BookingFormBuiltInFieldKey) => bookingFieldOverrides[key]?.label ?? BOOKING_FORM_FIELD_LABELS[key];
   const isBookingFieldHidden = (key: BookingFormBuiltInFieldKey) => bookingFieldOverrides[key]?.hidden === true;
   const isBookingFieldRequired = (key: BookingFormBuiltInFieldKey) => bookingFieldOverrides[key]?.required ?? true;
@@ -93,7 +95,12 @@ export default function BookingNew() {
   // Form state
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [tripType, setTripType] = useState<TripType>('local');
+  const defaultTripValue = tripTypeOptions[0]?.value ?? 'local';
+  const [tripType, setTripType] = useState<string>(defaultTripValue);
+  useEffect(() => {
+    const values = tripTypeOptions.map((o) => o.value);
+    if (values.length && !values.includes(tripType)) setTripType(values[0]);
+  }, [tripTypeOptions, tripType]);
   // Separate date and time states (support range from calendar: start, end with 9am–6pm)
   const defaultStartDate = paramStart || defaultDate || format(new Date(), "yyyy-MM-dd");
   const defaultStartTime = "09:00";
@@ -700,7 +707,7 @@ export default function BookingNew() {
   const getFormattedEstimateText = (): string => {
     const companyName = organization?.company_name || organization?.name || 'Company';
     const tripDates = startDate && endDate
-      ? `${format(new Date(startDate), 'dd MMM yyyy')} – ${format(new Date(endDate), 'dd MMM yyyy')}`
+      ? `${formatDateDMY(startDate)} – ${formatDateDMY(endDate)}`
       : '—';
     let t = `*${companyName}*\n*Trip estimate*\n${'─'.repeat(28)}\n\n`;
     if (customerName.trim()) t += `*Customer:* ${customerName.trim()}\n`;
@@ -752,11 +759,11 @@ export default function BookingNew() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Trip Type</Label>
-              <Select value={tripType} onValueChange={(v) => setTripType(v as TripType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select value={tripType} onValueChange={setTripType}>
+                <SelectTrigger><SelectValue placeholder="Select trip type" /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(TRIP_TYPE_LABELS).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  {tripTypeOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1000,7 +1007,6 @@ export default function BookingNew() {
 
           {bookingCustomFields.length > 0 && (
             <div className="space-y-3">
-              <Label className="text-base font-semibold">Custom fields</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {bookingCustomFields.map((f) => (
                   <div key={f.id} className="space-y-1">

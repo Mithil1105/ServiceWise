@@ -27,6 +27,10 @@ import {
   type FleetNewCarDocumentTypeKey,
   FLEET_NEW_CAR_FIELD_LABELS,
   FLEET_NEW_CAR_DOC_LABELS,
+  DEFAULT_VEHICLE_TYPE_OPTIONS,
+  DEFAULT_VEHICLE_CLASS_OPTIONS,
+  DEFAULT_FUEL_TYPE_OPTIONS,
+  DEFAULT_SEATS_OPTIONS,
 } from '@/types/form-config';
 
 /** Build zod schema from org form config (current behaviour when config is empty). */
@@ -603,7 +607,6 @@ export default function FleetNew() {
 
             {customFields.length > 0 && (
             <div className="space-y-4 border-t pt-4">
-              <Label className="text-base font-medium">Custom fields</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {customFields.map((f) => (
                   <div key={f.id} className="space-y-2">
@@ -721,7 +724,7 @@ export default function FleetNew() {
                           className="flex items-center justify-center gap-2 p-3 border-2 border-dashed rounded-lg cursor-pointer hover:border-accent hover:bg-muted/50 transition-colors"
                         >
                           <Upload className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground">Upload PDF or Image</span>
+                          <span className="text-sm text-muted-foreground">Upload PDF or Image (max 2 MB)</span>
                           <input
                             id={`${docType}-file`}
                             type="file"
@@ -729,8 +732,12 @@ export default function FleetNew() {
                             className="hidden"
                             onChange={(e) => {
                               const file = e.target.files?.[0] || null;
-                              handleDocumentFile(docType, file);
                               e.target.value = '';
+                              if (file && file.size > 2 * 1024 * 1024) {
+                                toast({ title: 'File too large', description: `File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`, variant: 'destructive' });
+                                return;
+                              }
+                              handleDocumentFile(docType, file);
                             }}
                           />
                         </label>

@@ -220,7 +220,8 @@ export function useBookingsForCalendar(startDate: Date, endDate: Date) {
           booking_vehicles(
             *,
             cars(id, vehicle_number, model, seats, vehicle_class)
-          )
+          ),
+          booking_requested_vehicles(id, brand, model)
         `)
         .gte('end_at', startDate.toISOString())
         .lte('start_at', endDate.toISOString())

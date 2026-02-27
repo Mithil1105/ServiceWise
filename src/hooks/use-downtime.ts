@@ -70,6 +70,7 @@ export function useStartDowntime() {
       reason: DowntimeLog['reason'];
       notes?: string;
       estimated_uptime_at?: string;
+      custom_attributes?: Record<string, string | number | boolean | null>;
     }) => {
       if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
@@ -82,12 +83,34 @@ export function useStartDowntime() {
           reason: params.reason,
           notes: params.notes,
           estimated_uptime_at: params.estimated_uptime_at,
+          custom_attributes: params.custom_attributes ?? undefined,
           created_by: user?.id,
         })
         .select()
         .single();
       
       if (error) throw error;
+
+      // Log supervisor activity if user is supervisor
+      const { data: userRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user?.id)
+        .single();
+      if (userRole?.role === 'supervisor') {
+        await supabase.from('supervisor_activity_log').insert({
+          organization_id: orgId,
+          supervisor_id: user?.id,
+          car_id: params.car_id,
+          action_type: 'downtime_started',
+          action_details: {
+            reason: params.reason,
+            notes: params.notes ?? null,
+            estimated_uptime_at: params.estimated_uptime_at ?? null,
+          },
+        });
+      }
+
       return data as DowntimeLog;
     },
     onSuccess: (_, variables) => {
@@ -95,6 +118,7 @@ export function useStartDowntime() {
       queryClient.invalidateQueries({ queryKey: ['active-downtime', variables.car_id] });
       queryClient.invalidateQueries({ queryKey: ['cars-in-downtime'] });
       queryClient.invalidateQueries({ queryKey: ['attention-items'] });
+      queryClient.invalidateQueries({ queryKey: ['supervisor-activity-logs'] });
       toast({
         title: 'Downtime started',
         description: 'Car marked as unavailable.',
@@ -113,9 +137,11 @@ export function useStartDowntime() {
 export function useEndDowntime() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (downtimeId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('downtime_logs')
         .update({ ended_at: new Date().toISOString() })
@@ -124,10 +150,29 @@ export function useEndDowntime() {
         .single();
       
       if (error) throw error;
+
+      if (orgId && user) {
+        const { data: userRole } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+        if (userRole?.role === 'supervisor') {
+          await supabase.from('supervisor_activity_log').insert({
+            organization_id: orgId,
+            supervisor_id: user.id,
+            car_id: data.car_id,
+            action_type: 'downtime_ended',
+            action_details: { reason: data.reason },
+          });
+        }
+      }
+
       return data as DowntimeLog;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['downtime-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['supervisor-activity-logs'] });
       queryClient.invalidateQueries({ queryKey: ['active-downtime', data.car_id] });
       queryClient.invalidateQueries({ queryKey: ['cars-in-downtime'] });
       queryClient.invalidateQueries({ queryKey: ['attention-items'] });

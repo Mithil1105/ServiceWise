@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { useSettingsLeave } from '@/lib/settings-leave-context';
 import {
   LayoutDashboard,
   Car,
@@ -55,11 +56,17 @@ interface AppSidebarProps {
   onToggleCollapse?: () => void;
 }
 
+const SETTINGS_PATH = '/app/settings';
+
 export default function AppSidebar({ onNavigate, collapsed = false, onToggleCollapse }: AppSidebarProps = {}) {
   const { profile, role, signOut, isAdmin, isManager, isSupervisor, organization } = useAuth();
   const { isMasterAdmin } = useIsMasterAdmin();
   const location = useLocation();
+  const leaveContext = useSettingsLeave();
   const [hoverExpanded, setHoverExpanded] = useState(false);
+
+  const isOnSettings = location.pathname === SETTINGS_PATH || location.pathname.startsWith(SETTINGS_PATH + '/');
+  const shouldPromptLeave = isOnSettings && leaveContext?.hasUnsavedChanges;
 
   // When collapsed, hover temporarily shows full sidebar; leave collapses it again
   const visuallyNarrow = collapsed && !hoverExpanded;
@@ -73,7 +80,12 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
     return true;
   });
 
-  const handleNavClick = () => {
+  const handleNavClick = (e: React.MouseEvent, href: string) => {
+    if (shouldPromptLeave && href !== SETTINGS_PATH) {
+      e.preventDefault();
+      leaveContext?.promptLeave(href);
+      return;
+    }
     if (onNavigate) {
       onNavigate();
     }
@@ -129,7 +141,7 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
             <NavLink
               key={item.href}
               to={item.href}
-              onClick={handleNavClick}
+              onClick={(e) => handleNavClick(e, item.href)}
               title={visuallyNarrow ? item.title : undefined}
               className={cn(
                 'flex items-center rounded-lg text-sm font-medium transition-all',
@@ -165,7 +177,7 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
             )}
             <NavLink
               to="/admin"
-              onClick={handleNavClick}
+              onClick={(e) => handleNavClick(e, '/admin')}
               title={visuallyNarrow ? 'Admin' : undefined}
               className={cn(
                 'flex items-center rounded-lg text-sm font-medium transition-all',
@@ -196,7 +208,7 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
                 <NavLink
                   key={item.href}
                   to={item.href}
-                  onClick={handleNavClick}
+                  onClick={(e) => handleNavClick(e, item.href)}
                   title={visuallyNarrow ? item.title : undefined}
                   className={cn(
                     'flex items-center rounded-lg text-sm font-medium transition-all',

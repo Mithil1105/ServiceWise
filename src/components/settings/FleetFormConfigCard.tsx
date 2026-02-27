@@ -13,8 +13,13 @@ import {
   type FleetNewCarCustomField,
   type FieldOverride,
   type DocumentTypeConfig,
+  type SelectOption,
   FLEET_NEW_CAR_FIELD_LABELS,
   FLEET_NEW_CAR_DOC_LABELS,
+  DEFAULT_VEHICLE_TYPE_OPTIONS,
+  DEFAULT_VEHICLE_CLASS_OPTIONS,
+  DEFAULT_FUEL_TYPE_OPTIONS,
+  DEFAULT_SEATS_OPTIONS,
   type CustomFieldType,
 } from '@/types/form-config';
 import {
@@ -57,32 +62,64 @@ function defaultDocConfig(): DocumentTypeConfig {
   return { show: true, required: false, label: undefined };
 }
 
-export function FleetFormConfigCard() {
+interface FleetFormConfigCardProps {
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export function FleetFormConfigCard({ onDirtyChange }: FleetFormConfigCardProps = {}) {
   const { data: orgSettings } = useOrganizationSettings();
   const updateSettings = useUpdateOrganizationSettings();
   const config: FleetNewCarFormConfig = orgSettings?.fleet_new_car_form_config ?? {};
 
   const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<FleetNewCarBuiltInFieldKey, FieldOverride>>>({});
   const [documentTypes, setDocumentTypes] = useState<Partial<Record<FleetNewCarDocumentTypeKey, DocumentTypeConfig>>>({});
+  const [vehicleTypeOptions, setVehicleTypeOptions] = useState<SelectOption[]>([]);
+  const [vehicleClassOptions, setVehicleClassOptions] = useState<SelectOption[]>([]);
+  const [fuelTypeOptions, setFuelTypeOptions] = useState<SelectOption[]>([]);
+  const [seatsOptions, setSeatsOptions] = useState<SelectOption[]>([]);
   const [customFields, setCustomFields] = useState<FleetNewCarCustomField[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setFieldOverrides(config.fieldOverrides ?? {});
     setDocumentTypes(config.documentTypes ?? {});
+    setVehicleTypeOptions(config.vehicleTypeOptions?.length ? [...config.vehicleTypeOptions] : [...DEFAULT_VEHICLE_TYPE_OPTIONS]);
+    setVehicleClassOptions(config.vehicleClassOptions?.length ? [...config.vehicleClassOptions] : [...DEFAULT_VEHICLE_CLASS_OPTIONS]);
+    setFuelTypeOptions(config.fuelTypeOptions?.length ? [...config.fuelTypeOptions] : [...DEFAULT_FUEL_TYPE_OPTIONS]);
+    setSeatsOptions(config.seatsOptions?.length ? [...config.seatsOptions] : [...DEFAULT_SEATS_OPTIONS]);
     setCustomFields(config.customFields ?? []);
-  }, [config.fieldOverrides, config.documentTypes, config.customFields]);
+  }, [config.fieldOverrides, config.documentTypes, config.vehicleTypeOptions, config.vehicleClassOptions, config.fuelTypeOptions, config.seatsOptions, config.customFields]);
+
+  useEffect(() => {
+    const saved = JSON.stringify({
+      fieldOverrides: config.fieldOverrides ?? {},
+      documentTypes: config.documentTypes ?? {},
+      vehicleTypeOptions: config.vehicleTypeOptions ?? DEFAULT_VEHICLE_TYPE_OPTIONS,
+      vehicleClassOptions: config.vehicleClassOptions ?? DEFAULT_VEHICLE_CLASS_OPTIONS,
+      fuelTypeOptions: config.fuelTypeOptions ?? DEFAULT_FUEL_TYPE_OPTIONS,
+      seatsOptions: config.seatsOptions ?? DEFAULT_SEATS_OPTIONS,
+      customFields: config.customFields ?? [],
+    });
+    const current = JSON.stringify({ fieldOverrides, documentTypes, vehicleTypeOptions, vehicleClassOptions, fuelTypeOptions, seatsOptions, customFields });
+    onDirtyChange?.(saved !== current);
+  }, [fieldOverrides, documentTypes, vehicleTypeOptions, vehicleClassOptions, fuelTypeOptions, seatsOptions, customFields, config, onDirtyChange]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      const clean = (opts: SelectOption[]) => opts.filter((o) => o.value.trim() && o.label.trim());
       await updateSettings.mutateAsync({
         fleet_new_car_form_config: {
           fieldOverrides: Object.keys(fieldOverrides).length ? fieldOverrides : undefined,
           documentTypes: Object.keys(documentTypes).length ? documentTypes : undefined,
+          vehicleTypeOptions: clean(vehicleTypeOptions).length > 0 ? clean(vehicleTypeOptions) : undefined,
+          vehicleClassOptions: clean(vehicleClassOptions).length > 0 ? clean(vehicleClassOptions) : undefined,
+          fuelTypeOptions: clean(fuelTypeOptions).length > 0 ? clean(fuelTypeOptions) : undefined,
+          seatsOptions: clean(seatsOptions).length > 0 ? clean(seatsOptions) : undefined,
           customFields: customFields.length ? customFields : undefined,
         },
       });
+      onDirtyChange?.(false);
     } finally {
       setSaving(false);
     }
@@ -208,6 +245,57 @@ export function FleetFormConfigCard() {
           </div>
         </div>
 
+        {/* Dropdown options */}
+        <div className="space-y-4">
+          <Label className="text-base font-medium">Dropdown options (Category, Type of vehicle, Fuel type, Seats)</Label>
+          <p className="text-sm text-muted-foreground">Customize options for Category, Type of vehicle, Fuel type, and Seats on the Add Vehicle form. Value is stored; label is what users see.</p>
+          {[
+            { title: 'Category (vehicle type)', options: vehicleTypeOptions, setOptions: setVehicleTypeOptions },
+            { title: 'Type of vehicle (LMV/HMV)', options: vehicleClassOptions, setOptions: setVehicleClassOptions },
+            { title: 'Fuel type', options: fuelTypeOptions, setOptions: setFuelTypeOptions },
+            { title: 'Seats', options: seatsOptions, setOptions: setSeatsOptions },
+          ].map(({ title, options, setOptions }) => (
+            <div key={title} className="rounded-md border p-3 space-y-2">
+              <span className="text-sm font-medium">{title}</span>
+              <div className="divide-y">
+                {options.map((opt, index) => (
+                  <div key={index} className="flex flex-wrap items-center gap-2 py-2 first:pt-0">
+                    <Input
+                      placeholder="Value"
+                      value={opt.value}
+                      onChange={(e) => {
+                        const next = [...options];
+                        next[index] = { ...next[index], value: e.target.value.replace(/\s/g, '_') || opt.value };
+                        setOptions(next);
+                      }}
+                      className="w-32 font-mono text-sm"
+                    />
+                    <Input
+                      placeholder="Label"
+                      value={opt.label}
+                      onChange={(e) => {
+                        const next = [...options];
+                        next[index] = { ...next[index], label: e.target.value };
+                        setOptions(next);
+                      }}
+                      className="flex-1 min-w-[100px] text-sm"
+                    />
+                    <Button type="button" variant="ghost" size="icon" className="text-destructive shrink-0 h-8 w-8" onClick={() => setOptions(options.filter((_, i) => i !== index))} disabled={options.length <= 1}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <div className="pt-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setOptions([...options, { value: '', label: '' }])}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add option
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
         {/* Custom fields */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -280,7 +368,7 @@ export function FleetFormConfigCard() {
           )}
         </div>
 
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={saving} data-settings-save>
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
           Save Add vehicle form config
         </Button>

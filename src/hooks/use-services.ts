@@ -121,6 +121,7 @@ export function useCreateServiceRecord() {
       bill_path?: string;
       warranty_expiry?: string;
       serial_number?: string;
+      custom_attributes?: Record<string, string | number | boolean | null>;
     }) => {
       if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
@@ -214,7 +215,7 @@ export function useCreateServiceRecord() {
       queryClient.invalidateQueries({ queryKey: ['latest-odometer', variables.car_id] });
       queryClient.invalidateQueries({ queryKey: ['cars-with-status'] });
       queryClient.invalidateQueries({ queryKey: ['critical-services'] });
-      queryClient.invalidateQueries({ queryKey: ['supervisor-activity'] });
+      queryClient.invalidateQueries({ queryKey: ['supervisor-activity-logs'] });
       toast({
         title: 'Service recorded',
         description: 'Service record has been added.',

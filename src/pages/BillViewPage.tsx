@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { format } from 'date-fns';
 import { formatDateTimeFull, formatDateOnly } from '@/lib/date';
 import { QRCodeSVG } from 'qrcode.react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -261,9 +260,9 @@ export default function BillViewPage() {
           <Separator className="my-6" />
           <div className="text-center space-y-2">
             <p className="font-medium">Thank you for choosing {companyName}!</p>
-            <p className="text-xs text-muted-foreground">Generated on {format(new Date(bill.created_at), 'dd MMM yyyy, hh:mm a')} (IST)</p>
+            <p className="text-xs text-muted-foreground">Generated on {formatDateTimeFull(bill.created_at)} (IST)</p>
             {bill.status === 'paid' && bill.paid_at && (
-              <p className="text-xs text-success font-medium">Payment received on {format(new Date(bill.paid_at), 'dd MMM yyyy, hh:mm a')} (IST)</p>
+              <p className="text-xs text-success font-medium">Payment received on {formatDateTimeFull(bill.paid_at)} (IST)</p>
             )}
           </div>
         </CardContent>

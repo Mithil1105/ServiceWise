@@ -45,7 +45,11 @@ function defaultSectionOverride(): BillingSectionOverride {
   return { show: true, label: undefined };
 }
 
-export function BillingLayoutConfigCard() {
+interface BillingLayoutConfigCardProps {
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export function BillingLayoutConfigCard({ onDirtyChange }: BillingLayoutConfigCardProps = {}) {
   const { data: orgSettings } = useOrganizationSettings();
   const updateSettings = useUpdateOrganizationSettings();
   const config: BillingLayoutConfig = orgSettings?.billing_layout_config ?? {};
@@ -63,6 +67,17 @@ export function BillingLayoutConfigCard() {
     setExtraCharges(config.extraCharges ?? {});
   }, [config.useSameLayoutForCompanyBills, config.sections, config.customBlocks, config.extraCharges]);
 
+  useEffect(() => {
+    const saved = JSON.stringify({
+      useSameLayoutForCompanyBills: config.useSameLayoutForCompanyBills !== false,
+      sections: config.sections ?? {},
+      customBlocks: config.customBlocks ?? [],
+      extraCharges: config.extraCharges ?? {},
+    });
+    const current = JSON.stringify({ useSameLayoutForCompanyBills, sections, customBlocks, extraCharges });
+    onDirtyChange?.(saved !== current);
+  }, [useSameLayoutForCompanyBills, sections, customBlocks, extraCharges, config, onDirtyChange]);
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -74,6 +89,7 @@ export function BillingLayoutConfigCard() {
           extraCharges: Object.keys(extraCharges).length ? extraCharges : undefined,
         },
       });
+      onDirtyChange?.(false);
     } finally {
       setSaving(false);
     }
@@ -321,7 +337,7 @@ export function BillingLayoutConfigCard() {
           )}
         </div>
 
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={saving} data-settings-save>
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
           Save bill layout
         </Button>

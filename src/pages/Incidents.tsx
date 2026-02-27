@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useIncidents, useCreateIncident, useResolveIncident } from '@/hooks/use-incidents';
 import { useCars } from '@/hooks/use-cars';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import { type IncidentFormBuiltInFieldKey, INCIDENT_FORM_FIELD_LABELS, type FleetNewCarCustomField } from '@/types/form-config';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -88,6 +90,16 @@ export default function Incidents() {
   const [driverName, setDriverName] = useState('');
   const [incidentDate, setIncidentDate] = useState(() => toLocalDateTimeInputValue());
   const [estimatedReturn, setEstimatedReturn] = useState('');
+  const [incidentCustomValues, setIncidentCustomValues] = useState<Record<string, string | number | boolean | null>>({});
+  const [addFormErrors, setAddFormErrors] = useState<Record<string, string>>({});
+
+  const { data: orgSettings } = useOrganizationSettings();
+  const incidentFormConfig = orgSettings?.incident_form_config ?? {};
+  const incidentFieldOverrides = incidentFormConfig.fieldOverrides ?? {};
+  const incidentCustomFields = (incidentFormConfig.customFields ?? []).sort((a, b) => a.order - b.order);
+  const getIncidentFieldLabel = (key: IncidentFormBuiltInFieldKey) => incidentFieldOverrides[key]?.label ?? INCIDENT_FORM_FIELD_LABELS[key];
+  const isIncidentFieldHidden = (key: IncidentFormBuiltInFieldKey) => incidentFieldOverrides[key]?.hidden === true;
+  const isIncidentFieldRequired = (key: IncidentFormBuiltInFieldKey) => incidentFieldOverrides[key]?.required ?? (key === 'car_id' || key === 'incident_at');
 
   // Resolve incident
   const [resolveOpen, setResolveOpen] = useState(false);
@@ -121,7 +133,32 @@ export default function Incidents() {
   }));
 
   const handleAddIncident = () => {
-    if (!selectedCarId) return;
+    setAddFormErrors({});
+    const err: Record<string, string> = {};
+    if (isIncidentFieldRequired('car_id') && !selectedCarId) err.car_id = 'Please select a vehicle';
+    if (isIncidentFieldRequired('incident_at') && !incidentDate) err.incident_at = 'Incident date & time is required';
+    if (isIncidentFieldRequired('estimated_return_at') && !estimatedReturn?.trim()) err.estimated_return_at = 'Est. return to road is required';
+    if (isIncidentFieldRequired('type') && !incidentType) err.type = 'Type is required';
+    if (isIncidentFieldRequired('severity') && !severity) err.severity = 'Severity is required';
+    if (isIncidentFieldRequired('description') && !description?.trim()) err.description = 'Description is required';
+    if (isIncidentFieldRequired('location') && !location?.trim()) err.location = 'Location is required';
+    if (isIncidentFieldRequired('cost') && (cost === '' || cost == null)) err.cost = 'Cost is required';
+    if (isIncidentFieldRequired('driver_name') && !driverName?.trim()) err.driver_name = 'Driver name is required';
+    for (const f of incidentCustomFields) {
+      if (!f.required) continue;
+      const v = incidentCustomValues[f.key];
+      if (v === undefined || v === null || v === '') err[`custom_${f.key}`] = `${f.label} is required`;
+    }
+    if (Object.keys(err).length > 0) {
+      setAddFormErrors(err);
+      return;
+    }
+
+    const customAttrs: Record<string, string | number | boolean | null> = {};
+    for (const f of incidentCustomFields) {
+      const v = incidentCustomValues[f.key];
+      if (v !== undefined && v !== null && v !== '') customAttrs[f.key] = v;
+    }
 
     createMutation.mutate(
       {
@@ -134,6 +171,7 @@ export default function Incidents() {
         location: location || undefined,
         cost: cost ? parseFloat(cost) : undefined,
         driver_name: driverName || undefined,
+        custom_attributes: Object.keys(customAttrs).length ? customAttrs : undefined,
       },
       {
         onSuccess: () => {
@@ -174,6 +212,8 @@ export default function Incidents() {
     setDriverName('');
     setIncidentDate(toLocalDateTimeInputValue());
     setEstimatedReturn('');
+    setIncidentCustomValues({});
+    setAddFormErrors({});
   };
 
   const getSeverityVariant = (sev: Incident['severity']) => {
@@ -239,117 +279,177 @@ export default function Incidents() {
             </DialogHeader>
 
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Vehicle *</Label>
-                <SearchableSelect
-                  options={carOptions}
-                  value={selectedCarId}
-                  onValueChange={setSelectedCarId}
-                  placeholder="Select vehicle..."
-                />
+              {!isIncidentFieldHidden('car_id') && (
+                <div className="space-y-2">
+                  <Label>{getIncidentFieldLabel('car_id')}{isIncidentFieldRequired('car_id') ? ' *' : ''}</Label>
+                  <SearchableSelect
+                    options={carOptions}
+                    value={selectedCarId}
+                    onValueChange={setSelectedCarId}
+                    placeholder="Select vehicle..."
+                  />
+                  {addFormErrors.car_id && <p className="text-sm text-destructive">{addFormErrors.car_id}</p>}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                {!isIncidentFieldHidden('incident_at') && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {getIncidentFieldLabel('incident_at')}{isIncidentFieldRequired('incident_at') ? ' *' : ''}
+                    </Label>
+                    <Input
+                      type="datetime-local"
+                      value={incidentDate}
+                      onChange={(e) => setIncidentDate(e.target.value)}
+                    />
+                    {addFormErrors.incident_at && <p className="text-sm text-destructive">{addFormErrors.incident_at}</p>}
+                  </div>
+                )}
+
+                {!isIncidentFieldHidden('estimated_return_at') && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {getIncidentFieldLabel('estimated_return_at')}{isIncidentFieldRequired('estimated_return_at') ? ' *' : ''}
+                    </Label>
+                    <Input
+                      type="datetime-local"
+                      value={estimatedReturn}
+                      onChange={(e) => setEstimatedReturn(e.target.value)}
+                      min={incidentDate}
+                    />
+                    {addFormErrors.estimated_return_at && <p className="text-sm text-destructive">{addFormErrors.estimated_return_at}</p>}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    Incident Date & Time *
-                  </Label>
-                  <Input
-                    type="datetime-local"
-                    value={incidentDate}
-                    onChange={(e) => setIncidentDate(e.target.value)}
-                  />
-                </div>
+                {!isIncidentFieldHidden('type') && (
+                  <div className="space-y-2">
+                    <Label>{getIncidentFieldLabel('type')}{isIncidentFieldRequired('type') ? ' *' : ''}</Label>
+                    <Select value={incidentType} onValueChange={(v) => setIncidentType(v as Incident['type'])}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {INCIDENT_TYPES.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>
+                            {t.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {addFormErrors.type && <p className="text-sm text-destructive">{addFormErrors.type}</p>}
+                  </div>
+                )}
 
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Est. Return to Road
-                  </Label>
-                  <Input
-                    type="datetime-local"
-                    value={estimatedReturn}
-                    onChange={(e) => setEstimatedReturn(e.target.value)}
-                    min={incidentDate}
-                  />
-                </div>
+                {!isIncidentFieldHidden('severity') && (
+                  <div className="space-y-2">
+                    <Label>{getIncidentFieldLabel('severity')}{isIncidentFieldRequired('severity') ? ' *' : ''}</Label>
+                    <Select value={severity} onValueChange={(v) => setSeverity(v as Incident['severity'])}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SEVERITY_OPTIONS.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {addFormErrors.severity && <p className="text-sm text-destructive">{addFormErrors.severity}</p>}
+                  </div>
+                )}
               </div>
+
+              {!isIncidentFieldHidden('description') && (
+                <div className="space-y-2">
+                  <Label>{getIncidentFieldLabel('description')}{isIncidentFieldRequired('description') ? ' *' : ''}</Label>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="What happened?"
+                  />
+                  {addFormErrors.description && <p className="text-sm text-destructive">{addFormErrors.description}</p>}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Type</Label>
-                  <Select value={incidentType} onValueChange={(v) => setIncidentType(v as Incident['type'])}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {INCIDENT_TYPES.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>
-                          {t.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Severity</Label>
-                  <Select value={severity} onValueChange={(v) => setSeverity(v as Incident['severity'])}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SEVERITY_OPTIONS.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {!isIncidentFieldHidden('location') && (
+                  <div className="space-y-2">
+                    <Label>{getIncidentFieldLabel('location')}{isIncidentFieldRequired('location') ? ' *' : ''}</Label>
+                    <Input
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="Where it happened"
+                    />
+                    {addFormErrors.location && <p className="text-sm text-destructive">{addFormErrors.location}</p>}
+                  </div>
+                )}
+                {!isIncidentFieldHidden('driver_name') && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1">
+                      <User className="h-3 w-3" />
+                      {getIncidentFieldLabel('driver_name')}{isIncidentFieldRequired('driver_name') ? ' *' : ''}
+                    </Label>
+                    <Input
+                      value={driverName}
+                      onChange={(e) => setDriverName(e.target.value)}
+                      placeholder="Driver at the time"
+                    />
+                    {addFormErrors.driver_name && <p className="text-sm text-destructive">{addFormErrors.driver_name}</p>}
+                  </div>
+                )}
               </div>
 
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="What happened?"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+              {!isIncidentFieldHidden('cost') && (
                 <div className="space-y-2">
-                  <Label>Location</Label>
+                  <Label>{getIncidentFieldLabel('cost')}{isIncidentFieldRequired('cost') ? ' *' : ''}</Label>
                   <Input
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Where it happened"
+                    type="number"
+                    value={cost}
+                    onChange={(e) => setCost(e.target.value)}
+                    placeholder="0"
                   />
+                  {addFormErrors.cost && <p className="text-sm text-destructive">{addFormErrors.cost}</p>}
                 </div>
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    Driver Name
-                  </Label>
-                  <Input
-                    value={driverName}
-                    onChange={(e) => setDriverName(e.target.value)}
-                    placeholder="Driver at the time"
-                  />
-                </div>
-              </div>
+              )}
 
-              <div className="space-y-2">
-                <Label>Cost (₹)</Label>
-                <Input
-                  type="number"
-                  value={cost}
-                  onChange={(e) => setCost(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
+              {incidentCustomFields.map((f) => (
+                <div key={f.id} className="space-y-2">
+                  <Label>{f.label}{f.required ? ' *' : ''}</Label>
+                  {f.type === 'number' ? (
+                    <Input
+                      type="number"
+                      value={incidentCustomValues[f.key] != null ? String(incidentCustomValues[f.key]) : ''}
+                      onChange={(e) => setIncidentCustomValues(prev => ({ ...prev, [f.key]: e.target.value === '' ? null : parseFloat(e.target.value) }))}
+                      placeholder={`${f.label}...`}
+                    />
+                  ) : f.type === 'date' ? (
+                    <Input
+                      type="date"
+                      value={incidentCustomValues[f.key] != null ? String(incidentCustomValues[f.key]) : ''}
+                      onChange={(e) => setIncidentCustomValues(prev => ({ ...prev, [f.key]: e.target.value || null }))}
+                    />
+                  ) : f.type === 'select' ? (
+                    <Select value={incidentCustomValues[f.key] != null ? String(incidentCustomValues[f.key]) : ''} onValueChange={(v) => setIncidentCustomValues(prev => ({ ...prev, [f.key]: v }))}>
+                      <SelectTrigger><SelectValue placeholder={`Select ${f.label}`} /></SelectTrigger>
+                      <SelectContent>{(f.options ?? []).map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}</SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      type="text"
+                      value={incidentCustomValues[f.key] != null ? String(incidentCustomValues[f.key]) : ''}
+                      onChange={(e) => setIncidentCustomValues(prev => ({ ...prev, [f.key]: e.target.value || null }))}
+                      placeholder={`${f.label}...`}
+                    />
+                  )}
+                  {addFormErrors[`custom_${f.key}`] && <p className="text-sm text-destructive">{addFormErrors[`custom_${f.key}`]}</p>}
+                </div>
+              ))}
             </div>
 
             <DialogFooter>

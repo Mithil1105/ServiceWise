@@ -124,7 +124,7 @@ export default function BookingHistory() {
           <div>
             <p className="text-muted-foreground text-xs">Created By</p>
             <p className="font-medium">{booking.created_by_profile?.name || 'Unknown'}</p>
-            <p className="text-xs text-muted-foreground">{format(new Date(booking.created_at), 'dd MMM yyyy, HH:mm')}</p>
+            <p className="text-xs text-muted-foreground">{formatDateTimeFull(booking.created_at)}</p>
           </div>
           <div>
             <p className="text-muted-foreground text-xs">Last Updated By</p>

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays, isSameDay, eachDayOfInterval, startOfDay, endOfDay } from 'date-fns';
+import { formatDateDMY } from '@/lib/date';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -409,8 +410,8 @@ export default function BookingCalendar() {
               <h2 className="text-lg font-semibold ml-2">
                 {viewMode === 'availability' && format(currentDate, 'MMMM yyyy')}
                 {viewMode === 'bookings' && view === 'month' && format(currentDate, 'MMMM yyyy')}
-                {viewMode === 'bookings' && view === 'week' && `${format(startOfWeek(currentDate), 'dd MMM')} - ${format(endOfWeek(currentDate), 'dd MMM yyyy')}`}
-                {viewMode === 'bookings' && view === 'day' && format(currentDate, 'EEEE, dd MMMM yyyy')}
+                {viewMode === 'bookings' && view === 'week' && `${formatDateDMY(startOfWeek(currentDate))} - ${formatDateDMY(endOfWeek(currentDate))}`}
+                {viewMode === 'bookings' && view === 'day' && `${format(currentDate, 'EEEE')}, ${formatDateDMY(currentDate)}`}
               </h2>
             </div>
 
@@ -537,22 +538,39 @@ export default function BookingCalendar() {
                             {format(day, 'd')}
                           </div>
                           <div className="space-y-0.5 max-h-[80px] overflow-hidden">
-                            {dayBookings.slice(0, 3).map(booking => (
-                              <div
-                                key={booking.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleBookingClick(booking);
-                                }}
-                                className={cn(
-                                  'text-xs p-1 rounded truncate cursor-pointer',
-                                  BOOKING_STATUS_COLORS[booking.status].bg,
-                                  BOOKING_STATUS_COLORS[booking.status].text
-                                )}
-                              >
-                                {booking.customer_name}
-                              </div>
-                            ))}
+                            {dayBookings.slice(0, 3).map(booking => {
+                              const assignedLabels = booking.booking_vehicles
+                                ?.map(bv => {
+                                  const car = bv.car ?? (bv as { cars?: { vehicle_number: string; model?: string | null; brand?: string | null } }).cars;
+                                  return car ? formatCarLabel(car) : null;
+                                })
+                                .filter(Boolean) as string[] | undefined;
+                              const requestedLabels = booking.booking_requested_vehicles
+                                ?.map(rv => [rv.brand, rv.model].filter(Boolean).join(' ').trim() || null)
+                                .filter(Boolean) as string[] | undefined;
+                              const vehicleText = (assignedLabels?.length ? assignedLabels : requestedLabels?.length ? requestedLabels : null)
+                                ?.join(', ') ?? null;
+                              const displayLabel = vehicleText ? (assignedLabels?.length ? vehicleText : `Requested: ${vehicleText}`) : null;
+                              return (
+                                <div
+                                  key={booking.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleBookingClick(booking);
+                                  }}
+                                  className={cn(
+                                    'text-xs p-1 rounded truncate cursor-pointer',
+                                    BOOKING_STATUS_COLORS[booking.status].bg,
+                                    BOOKING_STATUS_COLORS[booking.status].text
+                                  )}
+                                  title={displayLabel ? `${booking.customer_name} — ${displayLabel}` : booking.customer_name}
+                                >
+                                  {displayLabel
+                                    ? `${booking.customer_name} · ${displayLabel}`
+                                    : booking.customer_name}
+                                </div>
+                              );
+                            })}
                             {dayBookings.length > 3 && (
                               <div className="text-xs text-muted-foreground px-1">
                                 +{dayBookings.length - 3} more

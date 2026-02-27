@@ -16,8 +16,10 @@ import { BookingStatusBadge } from '@/components/bookings/BookingStatusBadge';
 import { DriverAutocomplete } from '@/components/bookings/DriverAutocomplete';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { TRIP_TYPE_LABELS, RATE_TYPE_LABELS, BOOKING_STATUS_LABELS, type TripType, type RateType, type BookingStatus } from '@/types/booking';
+import { RATE_TYPE_LABELS, BOOKING_STATUS_LABELS, type RateType, type BookingStatus } from '@/types/booking';
 import { useSystemConfig } from '@/hooks/use-dashboard';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import { DEFAULT_TRIP_TYPE_OPTIONS } from '@/types/form-config';
 import { useBankAccounts } from '@/hooks/use-bank-accounts';
 
 interface VehicleAssignment {
@@ -49,11 +51,13 @@ export default function BookingEdit() {
   const { data: minKmHybridPerDay } = useSystemConfig('minimum_km_hybrid_per_day');
   const { data: companyAccounts } = useBankAccounts('company');
   const { data: personalAccounts } = useBankAccounts('personal');
+  const { data: orgSettings } = useOrganizationSettings();
+  const tripTypeOptions = (orgSettings?.booking_form_config?.tripTypeOptions?.length ? orgSettings.booking_form_config.tripTypeOptions : DEFAULT_TRIP_TYPE_OPTIONS).filter((o) => o.value && o.label);
 
   // Form state - initialized from booking data
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [tripType, setTripType] = useState<TripType>('local');
+  const [tripType, setTripType] = useState<string>('local');
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
   const [pickup, setPickup] = useState('');
@@ -82,7 +86,7 @@ export default function BookingEdit() {
   if (booking && !initialized) {
     setCustomerName(booking.customer_name);
     setCustomerPhone(booking.customer_phone);
-    setTripType(booking.trip_type);
+    setTripType(booking.trip_type ?? 'local');
     setStartAt(format(new Date(booking.start_at), "yyyy-MM-dd'T'HH:mm"));
     setEndAt(format(new Date(booking.end_at), "yyyy-MM-dd'T'HH:mm"));
     setPickup(booking.pickup || '');
@@ -449,11 +453,11 @@ export default function BookingEdit() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>Trip Type</Label>
-              <Select value={tripType} onValueChange={(v) => setTripType(v as TripType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select value={tripType} onValueChange={setTripType}>
+                <SelectTrigger><SelectValue placeholder="Select trip type" /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(TRIP_TYPE_LABELS).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  {tripTypeOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -4,6 +4,13 @@ import { useCars } from '@/hooks/use-cars';
 import { useLatestOdometer } from '@/hooks/use-odometer';
 import { useServiceRules, useServiceRecords, useCreateServiceRecord } from '@/hooks/use-services';
 import { useUploadServiceBills } from '@/hooks/use-service-bills';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import {
+  type ServiceRecordFormBuiltInFieldKey,
+  SERVICE_RECORD_FORM_FIELD_LABELS,
+  SERVICE_RECORD_WARRANTY_FIELD_LABELS,
+  type FleetNewCarCustomField,
+} from '@/types/form-config';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,6 +35,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ArrowLeft, Wrench, Loader2, AlertCircle, Upload, X, HelpCircle, Lightbulb, FileText, Image as ImageIcon, Plus, Trash2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { toLocalDateInputValue } from '@/lib/date';
@@ -40,8 +48,8 @@ interface WarrantyItem {
 
 // File size limits
 const MAX_TOTAL_SIZE_MB = 10;
-const MAX_IMAGE_SIZE_MB = 1;
-const MAX_PDF_SIZE_MB = 4;
+const MAX_IMAGE_SIZE_MB = 2;
+const MAX_PDF_SIZE_MB = 2;
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
 
 const serviceSchema = z.object({
@@ -71,6 +79,32 @@ export default function ServiceNew() {
   const { data: serviceRules } = useServiceRules();
   const createRecord = useCreateServiceRecord();
   const uploadBills = useUploadServiceBills();
+  const { data: orgSettings } = useOrganizationSettings();
+
+  const formConfig = orgSettings?.service_record_form_config ?? {};
+  const fieldOverrides = formConfig.fieldOverrides ?? {};
+  const customFields = (formConfig.customFields ?? []).sort((a, b) => a.order - b.order);
+  const warrantySection = formConfig.warrantySection;
+  const warrantyShow = warrantySection?.show !== false;
+  const warrantySectionLabel = warrantySection?.sectionLabel ?? 'Warranty Details (Optional)';
+  const warrantyFieldOverrides = warrantySection?.fieldOverrides ?? {};
+  const billsSection = formConfig.billsSection;
+  const billsShow = billsSection?.show !== false;
+  const billsRequired = billsSection?.required ?? false;
+  const billsLabel = billsSection?.label ?? 'Bills / Invoices';
+
+  const getFieldLabel = (key: ServiceRecordFormBuiltInFieldKey) => fieldOverrides[key]?.label ?? SERVICE_RECORD_FORM_FIELD_LABELS[key];
+  const isFieldHidden = (key: ServiceRecordFormBuiltInFieldKey) => fieldOverrides[key]?.hidden === true;
+  const isFieldRequired = (key: ServiceRecordFormBuiltInFieldKey) => {
+    const def = key === 'car_id' || key === 'service_name' || key === 'serviced_at' || key === 'odometer_km';
+    return fieldOverrides[key]?.required ?? def;
+  };
+  const getWarrantyFieldLabel = (key: 'warranty_part_name' | 'warranty_serial_number' | 'warranty_expiry') =>
+    warrantyFieldOverrides[key]?.label ?? SERVICE_RECORD_WARRANTY_FIELD_LABELS[key];
+  const isWarrantyFieldHidden = (key: 'warranty_part_name' | 'warranty_serial_number' | 'warranty_expiry') =>
+    warrantyFieldOverrides[key]?.hidden === true;
+  const isWarrantyFieldRequired = (key: 'warranty_part_name' | 'warranty_serial_number' | 'warranty_expiry') =>
+    warrantyFieldOverrides[key]?.required === true;
 
   const [selectedCarId, setSelectedCarId] = useState(preselectedCarId || '');
   const { data: latestOdo } = useLatestOdometer(selectedCarId);
@@ -89,6 +123,7 @@ export default function ServiceNew() {
   const [warrantyItems, setWarrantyItems] = useState<WarrantyItem[]>([
     { itemName: '', serialNumber: '', expiryDate: '' }
   ]);
+  const [customValues, setCustomValues] = useState<Record<string, string | number | boolean | null>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [billFiles, setBillFiles] = useState<File[]>([]);
   const [warrantyFile, setWarrantyFile] = useState<File | null>(null);
@@ -100,6 +135,7 @@ export default function ServiceNew() {
   const [showOdoWarning, setShowOdoWarning] = useState(false);
   const [showSuspiciousJump, setShowSuspiciousJump] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<any>(null);
+  const [pendingCustomAttrs, setPendingCustomAttrs] = useState<Record<string, string | number | boolean | null> | undefined>(undefined);
 
   // Smart suggestions
   const [suggestedVendor, setSuggestedVendor] = useState<string | null>(null);
@@ -207,6 +243,35 @@ export default function ServiceNew() {
       return;
     }
 
+    // Config-based required validation for built-in fields
+    const fieldErrors: Record<string, string> = {};
+    if (isFieldRequired('car_id') && !result.data.car_id) fieldErrors.car_id = 'Please select a vehicle';
+    if (isFieldRequired('service_name') && !result.data.service_name?.trim()) fieldErrors.service_name = 'Service name is required';
+    if (isFieldRequired('serviced_at') && !result.data.serviced_at) fieldErrors.serviced_at = 'Service date is required';
+    if (isFieldRequired('odometer_km') && (result.data.odometer_km == null || result.data.odometer_km < 0)) fieldErrors.odometer_km = 'Odometer is required';
+    if (isFieldRequired('cost') && (result.data.cost == null || (typeof result.data.cost === 'number' && Number.isNaN(result.data.cost)))) fieldErrors.cost = 'Total cost is required';
+    if (isFieldRequired('vendor_name') && !result.data.vendor_name?.trim()) fieldErrors.vendor_name = 'Vendor / Garage name is required';
+    if (isFieldRequired('vendor_location') && !result.data.vendor_location?.trim()) fieldErrors.vendor_location = 'Vendor location is required';
+    if (isFieldRequired('notes') && !result.data.notes?.trim()) fieldErrors.notes = 'Notes are required';
+    if (billsShow && billsRequired && billFiles.length === 0) fieldErrors.billFiles = 'At least one bill or invoice is required';
+    for (const f of customFields) {
+      if (!f.required) continue;
+      const v = customValues[f.key];
+      if (v === undefined || v === null || v === '') {
+        fieldErrors[`custom_${f.key}`] = `${f.label} is required`;
+      }
+    }
+    if (Object.keys(fieldErrors).length > 0) {
+      setErrors(fieldErrors);
+      return;
+    }
+
+    const customAttributes: Record<string, string | number | boolean | null> = {};
+    for (const f of customFields) {
+      const v = customValues[f.key];
+      if (v !== undefined && v !== null && v !== '') customAttributes[f.key] = v;
+    }
+
     const lastKm = latestOdo?.odometer_km || 0;
 
     // Check if odometer is less than latest
@@ -219,6 +284,7 @@ export default function ServiceNew() {
         return;
       }
       
+      setPendingCustomAttrs(Object.keys(customAttributes).length ? customAttributes : undefined);
       setPendingSubmit(result.data);
       setShowOdoWarning(true);
       return;
@@ -226,15 +292,16 @@ export default function ServiceNew() {
 
     // Check for suspicious jump
     if (result.data.odometer_km - lastKm > SUSPICIOUS_JUMP_KM) {
+      setPendingCustomAttrs(Object.keys(customAttributes).length ? customAttributes : undefined);
       setPendingSubmit(result.data);
       setShowSuspiciousJump(true);
       return;
     }
 
-    await submitRecord(result.data);
+    await submitRecord(result.data, Object.keys(customAttributes).length ? customAttributes : undefined);
   };
 
-  const submitRecord = async (data: typeof serviceSchema._output) => {
+  const submitRecord = async (data: typeof serviceSchema._output, customAttrs?: Record<string, string | number | boolean | null>) => {
     setIsUploading(true);
     
     try {
@@ -251,6 +318,7 @@ export default function ServiceNew() {
         notes: data.notes,
         warranty_expiry: data.warranty_expiry,
         serial_number: data.serial_number,
+        custom_attributes: customAttrs ?? undefined,
       });
 
       // Upload bill files if any
@@ -272,18 +340,20 @@ export default function ServiceNew() {
 
   const handleConfirmLowerOdo = () => {
     if (pendingSubmit) {
-      submitRecord(pendingSubmit);
+      submitRecord(pendingSubmit, pendingCustomAttrs);
     }
     setShowOdoWarning(false);
     setPendingSubmit(null);
+    setPendingCustomAttrs(undefined);
   };
 
   const handleConfirmSuspiciousJump = () => {
     if (pendingSubmit) {
-      submitRecord(pendingSubmit);
+      submitRecord(pendingSubmit, pendingCustomAttrs);
     }
     setShowSuspiciousJump(false);
     setPendingSubmit(null);
+    setPendingCustomAttrs(undefined);
   };
 
   const processFiles = useCallback((newFiles: File[]) => {
@@ -442,6 +512,55 @@ export default function ServiceNew() {
     ));
   };
 
+  function renderCustomFieldInput(f: FleetNewCarCustomField) {
+    const value = customValues[f.key];
+    const setValue = (v: string | number | boolean | null) => setCustomValues((prev) => ({ ...prev, [f.key]: v }));
+    if (f.type === 'number') {
+      return (
+        <Input
+          id={`custom_${f.key}`}
+          type="number"
+          value={value != null ? String(value) : ''}
+          onChange={(e) => setValue(e.target.value === '' ? null : parseFloat(e.target.value))}
+          placeholder={`${f.label}...`}
+        />
+      );
+    }
+    if (f.type === 'date') {
+      return (
+        <Input
+          id={`custom_${f.key}`}
+          type="date"
+          value={value != null ? String(value) : ''}
+          onChange={(e) => setValue(e.target.value || null)}
+        />
+      );
+    }
+    if (f.type === 'select') {
+      return (
+        <Select value={value != null ? String(value) : ''} onValueChange={(v) => setValue(v)}>
+          <SelectTrigger id={`custom_${f.key}`}>
+            <SelectValue placeholder={`Select ${f.label}`} />
+          </SelectTrigger>
+          <SelectContent>
+            {(f.options ?? []).map((opt) => (
+              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+    return (
+      <Input
+        id={`custom_${f.key}`}
+        type="text"
+        value={value != null ? String(value) : ''}
+        onChange={(e) => setValue(e.target.value || null)}
+        placeholder={`${f.label}...`}
+      />
+    );
+  }
+
   const carOptions = (cars?.filter((c) => c.status === 'active') || []).map((car) => ({
     value: car.id,
     label: `${car.vehicle_number} - ${car.model} ${car.fuel_type ? `(${car.fuel_type})` : ''} ${car.seats ? `• ${car.seats} seats` : ''}`,
@@ -492,105 +611,116 @@ export default function ServiceNew() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="car">Vehicle *</Label>
-                <SearchableSelect
-                  id="car"
-                  options={carOptions}
-                  value={selectedCarId}
-                  onValueChange={setSelectedCarId}
-                  placeholder={carsLoading ? 'Loading...' : 'Select a vehicle'}
-                  searchPlaceholder="Search vehicles..."
-                  disabled={carsLoading}
-                />
-                {errors.car_id && (
-                  <p className="text-sm text-destructive flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.car_id}
-                  </p>
-                )}
-              </div>
+              {!isFieldHidden('car_id') && (
+                <div className="space-y-2">
+                  <Label htmlFor="car">{getFieldLabel('car_id')}{isFieldRequired('car_id') ? ' *' : ''}</Label>
+                  <SearchableSelect
+                    id="car"
+                    options={carOptions}
+                    value={selectedCarId}
+                    onValueChange={setSelectedCarId}
+                    placeholder={carsLoading ? 'Loading...' : 'Select a vehicle'}
+                    searchPlaceholder="Search vehicles..."
+                    disabled={carsLoading}
+                  />
+                  {errors.car_id && (
+                    <p className="text-sm text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.car_id}
+                    </p>
+                  )}
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="service_type">Service Type</Label>
-                <SearchableSelect
-                  id="service_type"
-                  options={serviceTypeOptions}
-                  value={formData.rule_id || 'custom'}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, rule_id: value === 'custom' ? '' : value })
-                  }
-                  placeholder="Select or custom"
-                  searchPlaceholder="Search service types..."
-                />
-              </div>
+              {!isFieldHidden('rule_id') && (
+                <div className="space-y-2">
+                  <Label htmlFor="service_type">{getFieldLabel('rule_id')}{isFieldRequired('rule_id') ? ' *' : ''}</Label>
+                  <SearchableSelect
+                    id="service_type"
+                    options={serviceTypeOptions}
+                    value={formData.rule_id || 'custom'}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, rule_id: value === 'custom' ? '' : value })
+                    }
+                    placeholder="Select or custom"
+                    searchPlaceholder="Search service types..."
+                  />
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="service_name">Service Name *</Label>
-                <Input
-                  id="service_name"
-                  placeholder="e.g., Oil Change, Brake Pad Replacement"
-                  value={formData.service_name}
-                  onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
-                />
-                {errors.service_name && (
-                  <p className="text-sm text-destructive flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.service_name}
-                  </p>
-                )}
-              </div>
+              {!isFieldHidden('service_name') && (
+                <div className="space-y-2">
+                  <Label htmlFor="service_name">{getFieldLabel('service_name')}{isFieldRequired('service_name') ? ' *' : ''}</Label>
+                  <Input
+                    id="service_name"
+                    placeholder="e.g., Oil Change, Brake Pad Replacement"
+                    value={formData.service_name}
+                    onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
+                  />
+                  {errors.service_name && (
+                    <p className="text-sm text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.service_name}
+                    </p>
+                  )}
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="serviced_at">Service Date *</Label>
-                <Input
-                  id="serviced_at"
-                  type="date"
-                  value={formData.serviced_at}
-                  onChange={(e) => setFormData({ ...formData, serviced_at: e.target.value })}
-                />
-                {errors.serviced_at && (
-                  <p className="text-sm text-destructive flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.serviced_at}
-                  </p>
-                )}
-              </div>
+              {!isFieldHidden('serviced_at') && (
+                <div className="space-y-2">
+                  <Label htmlFor="serviced_at">{getFieldLabel('serviced_at')}{isFieldRequired('serviced_at') ? ' *' : ''}</Label>
+                  <Input
+                    id="serviced_at"
+                    type="date"
+                    value={formData.serviced_at}
+                    onChange={(e) => setFormData({ ...formData, serviced_at: e.target.value })}
+                  />
+                  {errors.serviced_at && (
+                    <p className="text-sm text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.serviced_at}
+                    </p>
+                  )}
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="odometer_km" className="flex items-center gap-1">
-                  Odometer at Service (km) *
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p>Always enter the latest km from the car meter. If you enter a smaller number, the system blocks it to protect accuracy.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </Label>
-                <Input
-                  id="odometer_km"
-                  type="number"
-                  placeholder="e.g., 55000"
-                  value={formData.odometer_km}
-                  onChange={(e) => setFormData({ ...formData, odometer_km: e.target.value })}
-                />
-                {latestOdo && (
-                  <p className="text-xs text-muted-foreground">
-                    Last recorded: {latestOdo.odometer_km.toLocaleString()} km
-                  </p>
-                )}
-                {errors.odometer_km && (
-                  <p className="text-sm text-destructive flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.odometer_km}
-                  </p>
-                )}
-              </div>
+              {!isFieldHidden('odometer_km') && (
+                <div className="space-y-2">
+                  <Label htmlFor="odometer_km" className="flex items-center gap-1">
+                    {getFieldLabel('odometer_km')}{isFieldRequired('odometer_km') ? ' *' : ''}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p>Always enter the latest km from the car meter. If you enter a smaller number, the system blocks it to protect accuracy.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </Label>
+                  <Input
+                    id="odometer_km"
+                    type="number"
+                    placeholder="e.g., 55000"
+                    value={formData.odometer_km}
+                    onChange={(e) => setFormData({ ...formData, odometer_km: e.target.value })}
+                  />
+                  {latestOdo && (
+                    <p className="text-xs text-muted-foreground">
+                      Last recorded: {latestOdo.odometer_km.toLocaleString()} km
+                    </p>
+                  )}
+                  {errors.odometer_km && (
+                    <p className="text-sm text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.odometer_km}
+                    </p>
+                  )}
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="cost">Total Cost (₹)</Label>
+              {!isFieldHidden('cost') && (
+                <div className="space-y-2">
+                  <Label htmlFor="cost">{getFieldLabel('cost')}{isFieldRequired('cost') ? ' *' : ''}</Label>
                 <div className="relative">
                   <Input
                     id="cost"
@@ -612,45 +742,82 @@ export default function ServiceNew() {
                     </Button>
                   )}
                 </div>
+                {errors.cost && (
+                  <p className="text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.cost}
+                  </p>
+                )}
               </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="vendor_name">Vendor / Garage Name</Label>
-                <div className="relative">
-                  <Input
-                    id="vendor_name"
-                    placeholder="e.g., ABC Motors"
-                    value={formData.vendor_name}
-                    onChange={(e) => setFormData({ ...formData, vendor_name: e.target.value })}
-                  />
-                  {suggestedVendor && !formData.vendor_name && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 h-6 text-xs text-accent"
-                      onClick={applySuggestedVendor}
-                    >
-                      <Lightbulb className="h-3 w-3 mr-1" />
-                      {suggestedVendor}
-                    </Button>
+              {!isFieldHidden('vendor_name') && (
+                <div className="space-y-2">
+                  <Label htmlFor="vendor_name">{getFieldLabel('vendor_name')}{isFieldRequired('vendor_name') ? ' *' : ''}</Label>
+                  <div className="relative">
+                    <Input
+                      id="vendor_name"
+                      placeholder="e.g., ABC Motors"
+                      value={formData.vendor_name}
+                      onChange={(e) => setFormData({ ...formData, vendor_name: e.target.value })}
+                    />
+                    {suggestedVendor && !formData.vendor_name && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 h-6 text-xs text-accent"
+                        onClick={applySuggestedVendor}
+                      >
+                        <Lightbulb className="h-3 w-3 mr-1" />
+                        {suggestedVendor}
+                      </Button>
+                    )}
+                  </div>
+                  {errors.vendor_name && (
+                    <p className="text-sm text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.vendor_name}
+                    </p>
                   )}
                 </div>
-              </div>
+              )}
 
-              <div className="space-y-2">
-                <Label htmlFor="vendor_location">Vendor Location</Label>
-                <Input
-                  id="vendor_location"
-                  placeholder="e.g., Ahmedabad, Gujarat"
-                  value={formData.vendor_location}
-                  onChange={(e) => setFormData({ ...formData, vendor_location: e.target.value })}
-                />
-              </div>
+              {!isFieldHidden('vendor_location') && (
+                <div className="space-y-2">
+                  <Label htmlFor="vendor_location">{getFieldLabel('vendor_location')}{isFieldRequired('vendor_location') ? ' *' : ''}</Label>
+                  <Input
+                    id="vendor_location"
+                    placeholder="e.g., Ahmedabad, Gujarat"
+                    value={formData.vendor_location}
+                    onChange={(e) => setFormData({ ...formData, vendor_location: e.target.value })}
+                  />
+                  {errors.vendor_location && (
+                    <p className="text-sm text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.vendor_location}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {customFields.map((f) => (
+                <div key={f.id} className="space-y-2">
+                  <Label htmlFor={`custom_${f.key}`}>{f.label}{f.required ? ' *' : ''}</Label>
+                  {renderCustomFieldInput(f)}
+                  {errors[`custom_${f.key}`] && (
+                    <p className="text-sm text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors[`custom_${f.key}`]}
+                    </p>
+                  )}
+                </div>
+              ))}
             </div>
 
+            {!isFieldHidden('notes') && (
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="notes">{getFieldLabel('notes')}{isFieldRequired('notes') ? ' *' : ''}</Label>
               <Textarea
                 id="notes"
                 placeholder="Any additional notes about the service..."
@@ -658,13 +825,20 @@ export default function ServiceNew() {
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={3}
               />
+              {errors.notes && (
+                <p className="text-sm text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.notes}
+                </p>
+              )}
             </div>
+            )}
 
-            {/* Warranty Section */}
+            {warrantyShow && (
             <div className="border-t pt-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <Label className="text-base font-medium">Warranty Details (Optional)</Label>
+                  <Label className="text-base font-medium">{warrantySectionLabel}</Label>
                   <p className="text-xs text-muted-foreground">Add warranty information for parts replaced</p>
                 </div>
                 <Button
@@ -681,30 +855,36 @@ export default function ServiceNew() {
               <div className="space-y-4">
                 {warrantyItems.map((item, index) => (
                   <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 rounded-lg bg-muted/30 relative">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Part/Item Name</Label>
-                      <Input
-                        placeholder="e.g., Battery, Tyres"
-                        value={item.itemName}
-                        onChange={(e) => updateWarrantyItem(index, 'itemName', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Serial Number</Label>
-                      <Input
-                        placeholder="e.g., SN-12345"
-                        value={item.serialNumber}
-                        onChange={(e) => updateWarrantyItem(index, 'serialNumber', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Warranty Expiry</Label>
-                      <Input
-                        type="date"
-                        value={item.expiryDate}
-                        onChange={(e) => updateWarrantyItem(index, 'expiryDate', e.target.value)}
-                      />
-                    </div>
+                    {!isWarrantyFieldHidden('warranty_part_name') && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">{getWarrantyFieldLabel('warranty_part_name')}{isWarrantyFieldRequired('warranty_part_name') ? ' *' : ''}</Label>
+                        <Input
+                          placeholder="e.g., Battery, Tyres"
+                          value={item.itemName}
+                          onChange={(e) => updateWarrantyItem(index, 'itemName', e.target.value)}
+                        />
+                      </div>
+                    )}
+                    {!isWarrantyFieldHidden('warranty_serial_number') && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">{getWarrantyFieldLabel('warranty_serial_number')}{isWarrantyFieldRequired('warranty_serial_number') ? ' *' : ''}</Label>
+                        <Input
+                          placeholder="e.g., SN-12345"
+                          value={item.serialNumber}
+                          onChange={(e) => updateWarrantyItem(index, 'serialNumber', e.target.value)}
+                        />
+                      </div>
+                    )}
+                    {!isWarrantyFieldHidden('warranty_expiry') && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">{getWarrantyFieldLabel('warranty_expiry')}{isWarrantyFieldRequired('warranty_expiry') ? ' *' : ''}</Label>
+                        <Input
+                          type="date"
+                          value={item.expiryDate}
+                          onChange={(e) => updateWarrantyItem(index, 'expiryDate', e.target.value)}
+                        />
+                      </div>
+                    )}
                     <div className="flex items-end">
                       {warrantyItems.length > 1 && (
                         <Button
@@ -722,9 +902,11 @@ export default function ServiceNew() {
                 ))}
               </div>
             </div>
+            )}
 
+            {billsShow && (
             <div className="space-y-2">
-              <Label>Bills / Invoices</Label>
+              <Label>{billsLabel}{billsRequired ? ' *' : ''}</Label>
               <p className="text-xs text-muted-foreground">
                 Max {MAX_TOTAL_SIZE_MB}MB total. Images: {MAX_IMAGE_SIZE_MB}MB each. PDFs: {MAX_PDF_SIZE_MB}MB each.
               </p>
@@ -794,7 +976,14 @@ export default function ServiceNew() {
                   </p>
                 </label>
               </div>
+              {errors.billFiles && (
+                <p className="text-sm text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.billFiles}
+                </p>
+              )}
             </div>
+            )}
 
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" asChild>

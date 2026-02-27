@@ -93,6 +93,7 @@ export function useCreateIncident() {
       location?: string;
       cost?: number;
       driver_name?: string;
+      custom_attributes?: Record<string, string | number | boolean | null>;
     }) => {
       if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
@@ -111,6 +112,29 @@ export function useCreateIncident() {
         .single();
       
       if (error) throw error;
+
+      // Log supervisor activity if user is supervisor
+      const { data: userRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user?.id)
+        .single();
+      if (userRole?.role === 'supervisor') {
+        const { data: car } = await supabase.from('cars').select('vehicle_number, model, brand').eq('id', incident.car_id).single();
+        const carLabel = car ? `${(car as { brand?: string }).brand ?? ''} ${(car as { model?: string }).model}`.trim() || (car as { vehicle_number?: string }).vehicle_number : '';
+        await supabase.from('supervisor_activity_log').insert({
+          organization_id: orgId,
+          supervisor_id: user?.id,
+          car_id: incident.car_id,
+          action_type: 'incident_reported',
+          action_details: {
+            type: incident.type,
+            severity: incident.severity || 'medium',
+            description: incident.description ?? null,
+            vehicle: carLabel || (car as { vehicle_number?: string })?.vehicle_number,
+          },
+        });
+      }
 
       // Auto-create downtime log for the incident
       const { error: downtimeError } = await supabase
@@ -134,6 +158,7 @@ export function useCreateIncident() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['supervisor-activity-logs'] });
       queryClient.invalidateQueries({ queryKey: ['unresolved-incidents-count'] });
       queryClient.invalidateQueries({ queryKey: ['attention-items'] });
       queryClient.invalidateQueries({ queryKey: ['downtime-logs'] });
@@ -156,9 +181,11 @@ export function useCreateIncident() {
 export function useResolveIncident() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { orgId } = useOrg();
 
   return useMutation({
     mutationFn: async (params: { id: string; resolved_notes?: string; resolved_at?: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
       // Get incident to find car_id
       const { data: incident, error: fetchError } = await supabase
         .from('incidents')
@@ -184,6 +211,23 @@ export function useResolveIncident() {
       
       if (error) throw error;
 
+      if (orgId && user) {
+        const { data: userRole } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+        if (userRole?.role === 'supervisor') {
+          await supabase.from('supervisor_activity_log').insert({
+            organization_id: orgId,
+            supervisor_id: user.id,
+            car_id: incident.car_id,
+            action_type: 'incident_resolved',
+            action_details: { resolved_notes: params.resolved_notes ?? null },
+          });
+        }
+      }
+
       // End any active downtime for this car that started around the incident time
       const { data: activeDowntime } = await supabase
         .from('downtime_logs')
@@ -206,6 +250,7 @@ export function useResolveIncident() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      queryClient.invalidateQueries({ queryKey: ['supervisor-activity-logs'] });
       queryClient.invalidateQueries({ queryKey: ['unresolved-incidents-count'] });
       queryClient.invalidateQueries({ queryKey: ['attention-items'] });
       queryClient.invalidateQueries({ queryKey: ['downtime-logs'] });

@@ -32,7 +32,7 @@ export function useSupervisorActivityLogs(supervisorId?: string) {
         .from('supervisor_activity_log')
         .select(`
           *,
-          cars:car_id (id, vehicle_number, model)
+          cars:car_id (id, vehicle_number, model, brand)
         `)
         .order('created_at', { ascending: false })
         .limit(100);

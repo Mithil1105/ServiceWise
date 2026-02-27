@@ -23,7 +23,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { AlertTriangle, Wrench, Loader2, Calendar, Filter } from 'lucide-react';
-import { format, addDays, isBefore, isAfter, parseISO } from 'date-fns';
+import { addDays, isBefore, isAfter, parseISO } from 'date-fns';
+import { formatDateDMY } from '@/lib/date';
 import { formatCarLabel } from '@/lib/utils';
 
 // Estimated daily km for projecting service dates
@@ -144,7 +145,7 @@ export default function CriticalQueue() {
                   <span className="text-destructive">Now!</span>
                 ) : (
                   <span className="text-muted-foreground">
-                    ~{format(item.estimatedDueDate, 'MMM d, yyyy')}
+                    ~{formatDateDMY(item.estimatedDueDate)}
                     <span className="text-xs ml-1">({item.daysUntilDue}d)</span>
                   </span>
                 )}
@@ -155,7 +156,7 @@ export default function CriticalQueue() {
                     <span>{item.last_serviced_km.toLocaleString()} km</span>
                     {item.last_serviced_at && (
                       <span className="text-xs text-muted-foreground block">
-                        {format(new Date(item.last_serviced_at), 'MMM d, yyyy')}
+                        {formatDateDMY(item.last_serviced_at)}
                       </span>
                     )}
                   </div>

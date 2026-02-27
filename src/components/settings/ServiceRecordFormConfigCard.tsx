@@ -4,16 +4,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Calendar, Plus, Trash2, GripVertical } from 'lucide-react';
+import { Loader2, Wrench, Plus, Trash2, GripVertical } from 'lucide-react';
 import { useOrganizationSettings, useUpdateOrganizationSettings } from '@/hooks/use-organization-settings';
 import {
-  type BookingFormConfig,
-  type BookingFormBuiltInFieldKey,
+  type ServiceRecordFormConfig,
+  type ServiceRecordFormBuiltInFieldKey,
+  type ServiceRecordWarrantyFieldKey,
   type FleetNewCarCustomField,
   type FieldOverride,
-  type SelectOption,
-  BOOKING_FORM_FIELD_LABELS,
-  DEFAULT_TRIP_TYPE_OPTIONS,
+  SERVICE_RECORD_FORM_FIELD_LABELS,
+  SERVICE_RECORD_WARRANTY_FIELD_LABELS,
   type CustomFieldType,
 } from '@/types/form-config';
 import {
@@ -24,21 +24,22 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-const BUILT_IN_FIELDS: BookingFormBuiltInFieldKey[] = [
-  'customer_name',
-  'customer_phone',
-  'trip_type',
-  'start_date',
-  'start_time',
-  'end_date',
-  'end_time',
-  'pickup',
-  'dropoff',
-  'estimated_km',
+const BUILT_IN_FIELDS: ServiceRecordFormBuiltInFieldKey[] = [
+  'car_id',
+  'rule_id',
+  'service_name',
+  'serviced_at',
+  'odometer_km',
+  'cost',
+  'vendor_name',
+  'vendor_location',
   'notes',
-  'status',
-  'advance_amount',
-  'advance_payment_method',
+];
+
+const WARRANTY_FIELDS: ServiceRecordWarrantyFieldKey[] = [
+  'warranty_part_name',
+  'warranty_serial_number',
+  'warranty_expiry',
 ];
 
 const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
@@ -49,43 +50,76 @@ const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
 ];
 
 function defaultFieldOverride(): FieldOverride {
-  return { required: true, hidden: false, label: undefined };
+  return { required: false, hidden: false, label: undefined };
 }
 
-interface BookingFormConfigCardProps {
+interface ServiceRecordFormConfigCardProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardProps = {}) {
+export function ServiceRecordFormConfigCard({ onDirtyChange }: ServiceRecordFormConfigCardProps = {}) {
   const { data: orgSettings } = useOrganizationSettings();
   const updateSettings = useUpdateOrganizationSettings();
-  const config: BookingFormConfig = orgSettings?.booking_form_config ?? {};
+  const config: ServiceRecordFormConfig = orgSettings?.service_record_form_config ?? {};
 
-  const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<BookingFormBuiltInFieldKey, FieldOverride>>>({});
-  const [tripTypeOptions, setTripTypeOptions] = useState<SelectOption[]>([]);
+  const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<ServiceRecordFormBuiltInFieldKey, FieldOverride>>>({});
+  const [warrantyShow, setWarrantyShow] = useState(true);
+  const [warrantySectionLabel, setWarrantySectionLabel] = useState('');
+  const [warrantyFieldOverrides, setWarrantyFieldOverrides] = useState<Partial<Record<ServiceRecordWarrantyFieldKey, FieldOverride>>>({});
+  const [billsShow, setBillsShow] = useState(true);
+  const [billsRequired, setBillsRequired] = useState(false);
+  const [billsLabel, setBillsLabel] = useState('');
   const [customFields, setCustomFields] = useState<FleetNewCarCustomField[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setFieldOverrides(config.fieldOverrides ?? {});
-    setTripTypeOptions(config.tripTypeOptions?.length ? [...config.tripTypeOptions] : [...DEFAULT_TRIP_TYPE_OPTIONS]);
+    setWarrantyShow(config.warrantySection?.show !== false);
+    setWarrantySectionLabel(config.warrantySection?.sectionLabel ?? '');
+    setWarrantyFieldOverrides(config.warrantySection?.fieldOverrides ?? {});
+    setBillsShow(config.billsSection?.show !== false);
+    setBillsRequired(config.billsSection?.required ?? false);
+    setBillsLabel(config.billsSection?.label ?? '');
     setCustomFields(config.customFields ?? []);
-  }, [config.fieldOverrides, config.tripTypeOptions, config.customFields]);
+  }, [
+    config.fieldOverrides,
+    config.warrantySection,
+    config.billsSection,
+    config.customFields,
+  ]);
 
   useEffect(() => {
-    const saved = JSON.stringify({ fieldOverrides: config.fieldOverrides ?? {}, tripTypeOptions: config.tripTypeOptions ?? DEFAULT_TRIP_TYPE_OPTIONS, customFields: config.customFields ?? [] });
-    const current = JSON.stringify({ fieldOverrides, tripTypeOptions, customFields });
+    const saved = JSON.stringify({
+      fieldOverrides: config.fieldOverrides ?? {},
+      warrantySection: config.warrantySection ?? {},
+      billsSection: config.billsSection ?? {},
+      customFields: config.customFields ?? [],
+    });
+    const current = JSON.stringify({
+      fieldOverrides,
+      warrantySection: { show: warrantyShow, sectionLabel: warrantySectionLabel, fieldOverrides: warrantyFieldOverrides },
+      billsSection: { show: billsShow, required: billsRequired, label: billsLabel },
+      customFields,
+    });
     onDirtyChange?.(saved !== current);
-  }, [fieldOverrides, tripTypeOptions, customFields, config, onDirtyChange]);
+  }, [fieldOverrides, warrantyShow, warrantySectionLabel, warrantyFieldOverrides, billsShow, billsRequired, billsLabel, customFields, config, onDirtyChange]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const cleanedTripTypeOptions = tripTypeOptions.filter((o) => o.value.trim() && o.label.trim());
       await updateSettings.mutateAsync({
-        booking_form_config: {
+        service_record_form_config: {
           fieldOverrides: Object.keys(fieldOverrides).length ? fieldOverrides : undefined,
-          tripTypeOptions: cleanedTripTypeOptions.length > 0 ? cleanedTripTypeOptions : undefined,
+          warrantySection: {
+            show: warrantyShow,
+            sectionLabel: warrantySectionLabel.trim() || undefined,
+            fieldOverrides: Object.keys(warrantyFieldOverrides).length ? warrantyFieldOverrides : undefined,
+          },
+          billsSection: {
+            show: billsShow,
+            required: billsRequired,
+            label: billsLabel.trim() || undefined,
+          },
           customFields: customFields.length ? customFields : undefined,
         },
       });
@@ -95,8 +129,12 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
     }
   };
 
-  const setFieldOverride = (key: BookingFormBuiltInFieldKey, override: FieldOverride) => {
+  const setFieldOverride = (key: ServiceRecordFormBuiltInFieldKey, override: FieldOverride) => {
     setFieldOverrides((prev) => ({ ...prev, [key]: { ...(prev[key] ?? defaultFieldOverride()), ...override } }));
+  };
+
+  const setWarrantyFieldOverride = (key: ServiceRecordWarrantyFieldKey, override: FieldOverride) => {
+    setWarrantyFieldOverrides((prev) => ({ ...prev, [key]: { ...(prev[key] ?? defaultFieldOverride()), ...override } }));
   };
 
   const addCustomField = () => {
@@ -125,24 +163,24 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Calendar className="h-5 w-5" />
-          New Booking form
+          <Wrench className="h-5 w-5" />
+          Add service record form
         </CardTitle>
         <CardDescription>
-          Configure which fields are required or hidden, labels, and add custom fields for the New Booking form.
+          Configure which fields are required or hidden, labels, warranty and bills sections, and add custom fields for the Add Service Record form.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
         <div className="space-y-4">
           <Label className="text-base font-medium">Built-in fields</Label>
           <p className="text-sm text-muted-foreground">Set required, hidden, or custom label for each field.</p>
-          <div className="rounded-md border divide-y max-h-[400px] overflow-y-auto">
+          <div className="rounded-md border divide-y">
             {BUILT_IN_FIELDS.map((key) => {
               const override = fieldOverrides[key] ?? defaultFieldOverride();
-              const defaultLabel = BOOKING_FORM_FIELD_LABELS[key];
+              const defaultRequired = key === 'car_id' || key === 'service_name' || key === 'serviced_at' || key === 'odometer_km';
               return (
                 <div key={key} className="flex flex-wrap items-center gap-4 p-3">
-                  <span className="font-mono text-sm w-44 shrink-0">{defaultLabel}</span>
+                  <span className="font-mono text-sm w-52 shrink-0">{SERVICE_RECORD_FORM_FIELD_LABELS[key]}</span>
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     <label className="flex items-center gap-2 whitespace-nowrap">
                       <Switch
@@ -153,13 +191,13 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
                     </label>
                     <label className="flex items-center gap-2 whitespace-nowrap">
                       <Switch
-                        checked={override.required ?? (key === 'customer_name' || key === 'customer_phone' || key === 'trip_type' || key === 'start_date' || key === 'end_date')}
+                        checked={override.required ?? defaultRequired}
                         onCheckedChange={(checked) => setFieldOverride(key, { ...override, required: checked })}
                       />
                       <span className="text-sm">Required</span>
                     </label>
                     <Input
-                      placeholder={`Label (default: ${defaultLabel})`}
+                      placeholder={`Label (default: ${SERVICE_RECORD_FORM_FIELD_LABELS[key]})`}
                       value={override.label ?? ''}
                       onChange={(e) => setFieldOverride(key, { ...override, label: e.target.value || undefined })}
                       className="max-w-[200px]"
@@ -172,49 +210,64 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
         </div>
 
         <div className="space-y-4">
-          <Label className="text-base font-medium">Trip type dropdown options</Label>
-          <p className="text-sm text-muted-foreground">Customize the options shown in the Trip Type dropdown on New Booking and billing forms. Value is stored; label is what users see.</p>
-          <div className="rounded-md border divide-y">
-            {tripTypeOptions.map((opt, index) => (
-              <div key={index} className="flex flex-wrap items-center gap-2 p-2">
-                <Input
-                  placeholder="Value (e.g. local)"
-                  value={opt.value}
-                  onChange={(e) => {
-                    const next = [...tripTypeOptions];
-                    next[index] = { ...next[index], value: e.target.value.replace(/\s/g, '_').toLowerCase() || opt.value };
-                    setTripTypeOptions(next);
-                  }}
-                  className="w-40 font-mono"
-                />
-                <Input
-                  placeholder="Label (e.g. Local)"
-                  value={opt.label}
-                  onChange={(e) => {
-                    const next = [...tripTypeOptions];
-                    next[index] = { ...next[index], label: e.target.value };
-                    setTripTypeOptions(next);
-                  }}
-                  className="flex-1 min-w-[120px]"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="text-destructive shrink-0"
-                  onClick={() => setTripTypeOptions(tripTypeOptions.filter((_, i) => i !== index))}
-                  disabled={tripTypeOptions.length <= 1}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-            <div className="p-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setTripTypeOptions([...tripTypeOptions, { value: '', label: '' }])}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add option
-              </Button>
+          <Label className="text-base font-medium">Warranty details section</Label>
+          <p className="text-sm text-muted-foreground">Show or hide the section and configure warranty fields.</p>
+          <div className="rounded-md border p-4 space-y-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2">
+                <Switch checked={warrantyShow} onCheckedChange={setWarrantyShow} />
+                <span className="text-sm">Show warranty section</span>
+              </label>
+              <Input
+                placeholder="Section label (default: Warranty Details (Optional))"
+                value={warrantySectionLabel}
+                onChange={(e) => setWarrantySectionLabel(e.target.value)}
+                className="max-w-[280px]"
+              />
             </div>
+            {WARRANTY_FIELDS.map((key) => {
+              const override = warrantyFieldOverrides[key] ?? defaultFieldOverride();
+              return (
+                <div key={key} className="flex flex-wrap items-center gap-4 pl-4 border-l-2 border-muted">
+                  <span className="font-mono text-sm w-40 shrink-0">{SERVICE_RECORD_WARRANTY_FIELD_LABELS[key]}</span>
+                  <label className="flex items-center gap-2">
+                    <Switch checked={!override.hidden} onCheckedChange={(checked) => setWarrantyFieldOverride(key, { ...override, hidden: !checked })} />
+                    <span className="text-sm">Show</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <Switch checked={override.required ?? false} onCheckedChange={(checked) => setWarrantyFieldOverride(key, { ...override, required: checked })} />
+                    <span className="text-sm">Required</span>
+                  </label>
+                  <Input
+                    placeholder={`Label (default: ${SERVICE_RECORD_WARRANTY_FIELD_LABELS[key]})`}
+                    value={override.label ?? ''}
+                    onChange={(e) => setWarrantyFieldOverride(key, { ...override, label: e.target.value || undefined })}
+                    className="max-w-[180px]"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <Label className="text-base font-medium">Bills / Invoices section</Label>
+          <p className="text-sm text-muted-foreground">Show or hide the file upload section and optionally require at least one bill.</p>
+          <div className="rounded-md border p-4 flex flex-wrap items-center gap-6">
+            <label className="flex items-center gap-2">
+              <Switch checked={billsShow} onCheckedChange={setBillsShow} />
+              <span className="text-sm">Show bills section</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <Switch checked={billsRequired} onCheckedChange={setBillsRequired} />
+              <span className="text-sm">At least one bill required</span>
+            </label>
+            <Input
+              placeholder="Label (default: Bills / Invoices)"
+              value={billsLabel}
+              onChange={(e) => setBillsLabel(e.target.value)}
+              className="max-w-[220px]"
+            />
           </div>
         </div>
 
@@ -222,7 +275,7 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
           <div className="flex items-center justify-between">
             <div>
               <Label className="text-base font-medium">Custom fields</Label>
-              <p className="text-sm text-muted-foreground">Add extra fields. Values are stored per booking.</p>
+              <p className="text-sm text-muted-foreground">Add extra fields. They appear in the form with the rest of the fields (no separate heading).</p>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={addCustomField}>
               <Plus className="h-4 w-4 mr-2" />
@@ -275,7 +328,7 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
 
         <Button onClick={handleSave} disabled={saving} data-settings-save>
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          Save Booking form config
+          Save Add service record form config
         </Button>
       </CardContent>
     </Card>

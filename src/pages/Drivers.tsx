@@ -48,6 +48,7 @@ import {
   Pencil,
   Trash2,
   AlertTriangle,
+  Eye,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatDateDMY } from '@/lib/date';
@@ -57,6 +58,9 @@ import {
   type DriverFormBuiltInFieldKey,
   DRIVER_FORM_FIELD_LABELS,
 } from '@/types/form-config';
+import { DocumentFileInput } from '@/components/ui/document-file-input';
+import { DocumentViewerDialog } from '@/components/ui/document-viewer-dialog';
+import { supabase } from '@/integrations/supabase/client';
 
 function LicenseExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
   if (!expiryDate) return <Badge variant="muted">No expiry set</Badge>;
@@ -108,6 +112,8 @@ function DriverFormDialog({
   const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
   const [policeVerificationFile, setPoliceVerificationFile] = useState<File | null>(null);
   const [healthCertificateFile, setHealthCertificateFile] = useState<File | null>(null);
+  const [viewDocUrl, setViewDocUrl] = useState<string | null>(null);
+  const [viewDocName, setViewDocName] = useState<string>('');
 
   const isEditing = !!driver;
   const isPending = createDriver.isPending || updateDriver.isPending;
@@ -160,6 +166,25 @@ function DriverFormDialog({
       setHealthCertificateFile(null);
     }
   }, [open]);
+
+  const openViewForFile = (file: File) => {
+    setViewDocUrl(URL.createObjectURL(file));
+    setViewDocName(file.name);
+  };
+  const openViewForPath = async (path: string, name: string) => {
+    const { data, error } = await supabase.storage.from('driver-licenses').createSignedUrl(path, 3600);
+    if (!error && data?.signedUrl) {
+      setViewDocUrl(data.signedUrl);
+      setViewDocName(name || 'Document');
+    }
+  };
+  const closeViewer = () => {
+    if (viewDocUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(viewDocUrl);
+    }
+    setViewDocUrl(null);
+    setViewDocName('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,42 +325,58 @@ function DriverFormDialog({
           {(isFieldHidden('license_file') && isFieldHidden('aadhaar_file') && isFieldHidden('police_verification_file') && isFieldHidden('health_certificate_file')) ? null : (
             <div className="space-y-3">
               <h4 className="text-sm font-semibold text-foreground">Documents</h4>
-              <p className="text-xs text-muted-foreground">PDF or image (JPG, PNG). Replace by choosing a new file.</p>
+              <p className="text-xs text-muted-foreground">PDF or image (JPG, PNG). Max 2 MB per file. Replace by choosing a new file.</p>
               <div className="rounded-lg border bg-muted/30 p-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {!isFieldHidden('license_file') && (
                     <div className="space-y-1.5">
                       <Label htmlFor="license_file" className="text-xs font-medium text-muted-foreground">{getFieldLabel('license_file')}{isFieldRequired('license_file') ? ' *' : ''}</Label>
-                      <div className="flex items-center gap-2">
-                        <Input id="license_file" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setLicenseFile(e.target.files?.[0] || null)} className="h-9 text-sm file:mr-2 file:text-xs" />
-                        {(licenseFile || driver?.license_file_name) && <Badge variant="secondary" className="shrink-0 text-xs font-normal">{licenseFile ? licenseFile.name : driver?.license_file_name}</Badge>}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DocumentFileInput id="license_file" value={licenseFile} onChange={setLicenseFile} buttonLabel="Choose file" />
+                        {(licenseFile || driver?.license_file_path) && (
+                          <Button type="button" variant="ghost" size="sm" className="cursor-pointer h-8" onClick={() => licenseFile ? openViewForFile(licenseFile) : driver?.license_file_path && openViewForPath(driver.license_file_path, driver?.license_file_name || 'License')}>
+                            <Eye className="h-4 w-4 mr-1" /> View
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )}
                   {!isFieldHidden('aadhaar_file') && (
                     <div className="space-y-1.5">
                       <Label htmlFor="aadhaar_file" className="text-xs font-medium text-muted-foreground">{getFieldLabel('aadhaar_file')}{isFieldRequired('aadhaar_file') ? ' *' : ''}</Label>
-                      <div className="flex items-center gap-2">
-                        <Input id="aadhaar_file" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setAadhaarFile(e.target.files?.[0] || null)} className="h-9 text-sm file:mr-2 file:text-xs" />
-                        {(aadhaarFile || driver?.aadhaar_file_name) && <Badge variant="secondary" className="shrink-0 text-xs font-normal">{aadhaarFile ? aadhaarFile.name : driver?.aadhaar_file_name}</Badge>}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DocumentFileInput id="aadhaar_file" value={aadhaarFile} onChange={setAadhaarFile} buttonLabel="Choose file" />
+                        {(aadhaarFile || driver?.aadhaar_file_path) && (
+                          <Button type="button" variant="ghost" size="sm" className="cursor-pointer h-8" onClick={() => aadhaarFile ? openViewForFile(aadhaarFile) : driver?.aadhaar_file_path && openViewForPath(driver.aadhaar_file_path, driver?.aadhaar_file_name || 'Aadhaar')}>
+                            <Eye className="h-4 w-4 mr-1" /> View
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )}
                   {!isFieldHidden('police_verification_file') && (
                     <div className="space-y-1.5">
                       <Label htmlFor="police_verification_file" className="text-xs font-medium text-muted-foreground">{getFieldLabel('police_verification_file')}{isFieldRequired('police_verification_file') ? ' *' : ''}</Label>
-                      <div className="flex items-center gap-2">
-                        <Input id="police_verification_file" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setPoliceVerificationFile(e.target.files?.[0] || null)} className="h-9 text-sm file:mr-2 file:text-xs" />
-                        {(policeVerificationFile || driver?.police_verification_file_name) && <Badge variant="secondary" className="shrink-0 text-xs font-normal">{policeVerificationFile ? policeVerificationFile.name : driver?.police_verification_file_name}</Badge>}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DocumentFileInput id="police_verification_file" value={policeVerificationFile} onChange={setPoliceVerificationFile} buttonLabel="Choose file" />
+                        {(policeVerificationFile || driver?.police_verification_file_path) && (
+                          <Button type="button" variant="ghost" size="sm" className="cursor-pointer h-8" onClick={() => policeVerificationFile ? openViewForFile(policeVerificationFile) : driver?.police_verification_file_path && openViewForPath(driver.police_verification_file_path, driver?.police_verification_file_name || 'Police verification')}>
+                            <Eye className="h-4 w-4 mr-1" /> View
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )}
                   {!isFieldHidden('health_certificate_file') && (
                     <div className="space-y-1.5">
                       <Label htmlFor="health_certificate_file" className="text-xs font-medium text-muted-foreground">{getFieldLabel('health_certificate_file')}{isFieldRequired('health_certificate_file') ? ' *' : ''}</Label>
-                      <div className="flex items-center gap-2">
-                        <Input id="health_certificate_file" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setHealthCertificateFile(e.target.files?.[0] || null)} className="h-9 text-sm file:mr-2 file:text-xs" />
-                        {(healthCertificateFile || driver?.health_certificate_file_name) && <Badge variant="secondary" className="shrink-0 text-xs font-normal">{healthCertificateFile ? healthCertificateFile.name : driver?.health_certificate_file_name}</Badge>}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DocumentFileInput id="health_certificate_file" value={healthCertificateFile} onChange={setHealthCertificateFile} buttonLabel="Choose file" />
+                        {(healthCertificateFile || driver?.health_certificate_file_path) && (
+                          <Button type="button" variant="ghost" size="sm" className="cursor-pointer h-8" onClick={() => healthCertificateFile ? openViewForFile(healthCertificateFile) : driver?.health_certificate_file_path && openViewForPath(driver.health_certificate_file_path, driver?.health_certificate_file_name || 'Health certificate')}>
+                            <Eye className="h-4 w-4 mr-1" /> View
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -358,7 +399,6 @@ function DriverFormDialog({
             <>
               <Separator />
               <div className="space-y-3">
-                <Label className="text-sm font-semibold">Custom fields</Label>
                 <div className="grid grid-cols-2 gap-4">
                 {customFields.map((f) => (
                   <div key={f.id} className="space-y-2">
@@ -398,6 +438,8 @@ function DriverFormDialog({
               </div>
             </>
           )}
+
+          <DocumentViewerDialog open={!!viewDocUrl} onOpenChange={(open) => !open && closeViewer()} url={viewDocUrl} fileName={viewDocName} />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

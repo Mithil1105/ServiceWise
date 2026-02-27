@@ -121,7 +121,12 @@ export function useUpsertDriver() {
   });
 }
 
+const MAX_DOCUMENT_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+
 const uploadDriverFile = async (file: File, prefix: string): Promise<{ path: string; name: string }> => {
+  if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+    throw new Error(`File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
+  }
   const fileExt = file.name.split('.').pop();
   const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
   const { error } = await supabase.storage.from('driver-licenses').upload(fileName, file);

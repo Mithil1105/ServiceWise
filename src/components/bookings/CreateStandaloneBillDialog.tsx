@@ -10,8 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Loader2, AlertCircle, Calculator, Plus, X, MapPin } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { RATE_TYPE_LABELS, TRIP_TYPE_LABELS } from '@/types/booking';
-import type { RateType, TripType, VehicleBillDetail } from '@/types/booking';
+import { RATE_TYPE_LABELS } from '@/types/booking';
+import type { RateType, VehicleBillDetail } from '@/types/booking';
+import { DEFAULT_TRIP_TYPE_OPTIONS } from '@/types/form-config';
 import { toLocalDateInputValue, isoAtNoonUtcFromDateInput } from '@/lib/date';
 import { formatCarLabel } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -62,6 +63,7 @@ export function CreateStandaloneBillDialog({
   const { user, profile } = useAuth();
   const orgId = profile?.organization_id ?? null;
   const { data: orgSettings } = useOrganizationSettings();
+  const tripTypeOptions = (orgSettings?.booking_form_config?.tripTypeOptions?.length ? orgSettings.booking_form_config.tripTypeOptions : DEFAULT_TRIP_TYPE_OPTIONS).filter((o) => o.value && o.label);
   const perBillBlocks = (orgSettings?.billing_layout_config?.customBlocks ?? []).filter((b) => b.valueSource === 'per_bill');
   const extraChargesConfig = orgSettings?.billing_layout_config?.extraCharges ?? {};
   const showToll = extraChargesConfig.toll_tax?.show !== false;
@@ -87,7 +89,7 @@ export function CreateStandaloneBillDialog({
   const [customerPhone, setCustomerPhone] = useState('');
   
   // Trip details
-  const [tripType, setTripType] = useState<TripType>('local');
+  const [tripType, setTripType] = useState<string>(tripTypeOptions[0]?.value ?? 'local');
   const [startDate, setStartDate] = useState(toLocalDateInputValue(new Date()));
   const [endDate, setEndDate] = useState(toLocalDateInputValue(new Date()));
   const [pickup, setPickup] = useState('');
@@ -267,7 +269,7 @@ export function CreateStandaloneBillDialog({
     setErrors({});
     setCustomerName('');
     setCustomerPhone('');
-    setTripType('local');
+    setTripType(tripTypeOptions[0]?.value ?? 'local');
     setStartDate(toLocalDateInputValue(new Date()));
     setEndDate(toLocalDateInputValue(new Date()));
     setPickup('');
@@ -583,13 +585,13 @@ export function CreateStandaloneBillDialog({
             <h3 className="font-semibold">Trip Details</h3>
             <div className="space-y-2">
               <Label>Trip Type</Label>
-              <Select value={tripType} onValueChange={(v) => setTripType(v as TripType)}>
+              <Select value={tripType} onValueChange={setTripType}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select trip type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(TRIP_TYPE_LABELS).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  {tripTypeOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
