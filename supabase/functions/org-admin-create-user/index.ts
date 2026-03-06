@@ -89,34 +89,31 @@ Deno.serve(async (req) => {
             auth: { autoRefreshToken: false, persistSession: false },
         });
 
-        const authHeader = req.headers.get("Authorization");
-        if (!authHeader?.startsWith("Bearer ")) {
-            return new Response(JSON.stringify({ error: "Missing or invalid authorization header" }), {
-                status: 401,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-
-        const token = authHeader.replace("Bearer ", "").trim();
-        const authResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
-            headers: { Authorization: `Bearer ${token}`, apikey: serviceRoleKey },
-        });
-        if (!authResponse.ok) {
-            return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
-                status: 401,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-
-        const callerData = await authResponse.json();
-        if (!callerData?.id) {
-            return new Response(JSON.stringify({ error: "User data not found" }), {
-                status: 401,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-
         const body = await req.json().catch(() => ({}));
+        const authHeader = req.headers.get("Authorization");
+        const tokenFromBody = (body?.access_token as string)?.trim();
+        const tokenFromHeader = authHeader?.startsWith("Bearer ") ? authHeader.replace("Bearer ", "").trim() : "";
+        const token = tokenFromBody || tokenFromHeader;
+        if (!token) {
+            return new Response(JSON.stringify({ error: "Missing token: send access_token in body or Authorization header" }), {
+                status: 401,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+
+        const apiKey = req.headers.get("apikey") || serviceRoleKey;
+        const authClient = createClient(supabaseUrl, apiKey, { auth: { autoRefreshToken: false, persistSession: false } });
+        const { data: claims, error: claimsError } = await authClient.auth.getClaims(token);
+        if (claimsError || !claims?.claims?.sub) {
+            return new Response(JSON.stringify({
+                error: "Invalid or expired token",
+                details: claimsError?.message?.slice(0, 120),
+            }), {
+                status: 401,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+        const callerData = { id: claims.claims.sub as string, email: claims.claims.email as string | undefined };
         const email = (body.email as string)?.trim()?.toLowerCase();
         const tempPassword = (body.tempPassword as string)?.trim();
         const role = (body.role as "supervisor" | "manager" | "admin") || "supervisor";
@@ -173,18 +170,25 @@ Deno.serve(async (req) => {
             }
         }
 
-        const password = tempPassword && tempPassword.length >= 6 ? tempPassword : generateTempPassword();
-        const serverGeneratedPassword = !tempPassword || tempPassword.length < 6;
+        const password = tempPassword && tempPassword.length >= 8 ? tempPassword : generateTempPassword();
+        const serverGeneratedPassword = !tempPassword || tempPassword.length < 8;
 
         const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
             email,
             password,
             email_confirm: true,
-            user_metadata: { name: fullName || email.split("@")[0] },
+            user_metadata: {
+                name: fullName || email.split("@")[0],
+                organization_id: organizationId,
+            },
         });
 
         if (createError) {
-            return new Response(JSON.stringify({ error: "Failed to create user", details: createError.message }), {
+            const msg = createError.message?.toLowerCase() ?? "";
+            const friendlyError = msg.includes("already registered") || msg.includes("already exists")
+                ? "An account with this email already exists"
+                : createError.message || "Failed to create user";
+            return new Response(JSON.stringify({ error: friendlyError }), {
                 status: 400,
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
@@ -220,6 +224,16 @@ Deno.serve(async (req) => {
                 created_at: now,
             },
             { onConflict: "user_id,organization_id" }
+        );
+
+        await supabaseAdmin.from("organization_members").upsert(
+            {
+                organization_id: organizationId,
+                user_id: newUser.user.id,
+                role,
+                status: "active",
+            },
+            { onConflict: "organization_id,user_id" }
         );
 
         await logOrgAudit(supabaseAdmin, organizationId, callerData.id, "create_user", newUser.user.id, null, {

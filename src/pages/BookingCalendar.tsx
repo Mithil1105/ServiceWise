@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Car, CalendarDays } from 'lucide-react';
 import { useBookingsForCalendar, useAvailableCars } from '@/hooks/use-bookings';
 import { useCars } from '@/hooks/use-cars';
+import { useAuth } from '@/lib/auth-context';
 import { useDowntimeLogs } from '@/hooks/use-downtime';
 import { BookingStatusBadge } from '@/components/bookings/BookingStatusBadge';
 import { BookingDetailsDrawer } from '@/components/bookings/BookingDetailsDrawer';
@@ -270,6 +271,7 @@ function AvailabilityMonitor({
 
 export default function BookingCalendar() {
   const navigate = useNavigate();
+  const { isSupervisor, isAdmin, isManager } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewType>('month');
   const [viewMode, setViewMode] = useState<CalendarViewMode>('bookings');
@@ -386,10 +388,12 @@ export default function BookingCalendar() {
           <Button variant="outline" onClick={() => navigate('/app/bookings')}>
             List View
           </Button>
-          <Button onClick={() => navigate('/app/bookings/new')}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Booking
-          </Button>
+          {!(isSupervisor && !isAdmin && !isManager) && (
+            <Button onClick={() => navigate('/app/bookings/new')}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Booking
+            </Button>
+          )}
         </div>
       </div>
 

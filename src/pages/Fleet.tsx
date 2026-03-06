@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useCarsWithStatus, useUpdateCar } from '@/hooks/use-cars';
 import { useCarsInDowntime } from '@/hooks/use-downtime';
 import { useCarUtilization, useHighMaintenanceData, useCarBookingDays } from '@/hooks/use-dashboard';
-import { useSupervisorAssignments } from '@/hooks/use-car-assignments';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useAuth } from '@/lib/auth-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -76,13 +76,14 @@ export default function Fleet() {
   const [fuelFilter, setFuelFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('attention');
 
-  const { user, isSupervisor, isAdmin, isManager } = useAuth();
+  const { isAdmin, isManager, isSupervisor } = useAuth();
   const { data: cars, isLoading } = useCarsWithStatus();
   const updateCar = useUpdateCar();
   const { data: carsInDowntime } = useCarsInDowntime();
   const { data: utilization } = useCarUtilization();
   const { data: carBookingDays } = useCarBookingDays();
-  const { data: supervisorAssignments } = useSupervisorAssignments(isSupervisor ? user?.id : undefined);
+  const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
+  const assignedCarIdSet = assignedCarIds ? new Set(assignedCarIds) : null;
 
   // Create a set of car IDs that are in downtime
   const downtimeCarIds = new Set(carsInDowntime?.map((d: any) => d.car_id) || []);
@@ -97,13 +98,9 @@ export default function Fleet() {
     carBookingDays?.map((d) => [d.car_id, d.total_booking_days]) || []
   );
 
-  // For supervisors, filter cars to only assigned ones
-  const assignedCarIds = new Set(supervisorAssignments?.map((a) => a.car_id) || []);
-
-  // Filter and sort cars
+  // Filter and sort cars (supervisors only see assigned cars)
   const filteredCars = cars?.filter((car) => {
-    // For supervisors, only show assigned cars
-    if (isSupervisor && !assignedCarIds.has(car.id)) return false;
+    if (assignedCarIdSet && !assignedCarIdSet.has(car.id)) return false;
 
     const matchesSearch =
       car.vehicle_number.toLowerCase().includes(search.toLowerCase()) ||

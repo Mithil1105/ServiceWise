@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrg } from '@/hooks/use-org';
+import { useAuth } from '@/lib/auth-context';
 
 export interface CarAssignment {
   id: string;
@@ -77,6 +78,28 @@ export function useSupervisorAssignments(supervisorId: string | undefined) {
     },
     enabled: !!supervisorId,
   });
+}
+
+/**
+ * For the current user: when they are a supervisor-only (not admin/manager),
+ * returns the list of car IDs they are assigned to. Use this to scope lists
+ * and records to assigned cars on supervisor-visible pages.
+ * Returns { assignedCarIds: string[] | null, isRestricted: boolean }.
+ * When isRestricted is false (admin/manager), assignedCarIds is null = show all.
+ */
+export function useAssignedCarIdsForCurrentUser() {
+  const { user, isSupervisor, isAdmin, isManager } = useAuth();
+  const restrictToAssigned = isSupervisor && !isAdmin && !isManager;
+  const { data: assignments = [] } = useSupervisorAssignments(
+    restrictToAssigned ? user?.id : undefined
+  );
+  const assignedCarIds = restrictToAssigned
+    ? assignments.map((a) => a.car_id)
+    : null;
+  return {
+    assignedCarIds,
+    isRestricted: restrictToAssigned,
+  };
 }
 
 // Get assignments for a specific car

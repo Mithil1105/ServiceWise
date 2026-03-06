@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAuth } from '@/lib/auth-context';
+import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 import { formatCarLabel } from '@/lib/utils';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 
@@ -31,7 +32,7 @@ export default function BookingInvoice() {
   const { data: invoice, isLoading: loadingInvoice, refetch: refetchInvoice } = useInvoice(id);
   const generateInvoice = useGenerateInvoice();
   const companyName = organization?.company_name || organization?.name || 'Company';
-  const logoUrl = organization?.logo_url || '/HERO.png';
+  const logoUrl = organization?.logo_url || DEFAULT_ORG_LOGO_URL;
   const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
   const [finalKms, setFinalKms] = useState<Record<string, string>>({});
@@ -325,7 +326,7 @@ export default function BookingInvoice() {
         <CardContent className="p-8" ref={invoiceRef}>
           {/* Invoice Header */}
           <div className="flex justify-between items-start mb-8">
-            <img src={logoUrl} alt={companyName} className="h-14 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }} />
+            <img src={logoUrl} alt={companyName} className="h-14 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }} />
             <div className="text-right">
               <h3 className="text-xl font-semibold">INVOICE</h3>
               {invoice ? (

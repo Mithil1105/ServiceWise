@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { formatDateTimeFull, formatDateOnly } from '@/lib/date';
+import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 import { QRCodeSVG } from 'qrcode.react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,7 +31,7 @@ export default function BillViewPage() {
   const { data: orgSettings } = useOrganizationSettings();
 
   const companyName = organization?.company_name || organization?.name || 'Company';
-  const logoUrl = organization?.logo_url || '/HERO.png';
+  const logoUrl = organization?.logo_url || DEFAULT_ORG_LOGO_URL;
   const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
   useEffect(() => {
@@ -94,7 +95,7 @@ export default function BillViewPage() {
       <Card className="print:shadow-none print:border-none border-0 w-full h-full min-h-0">
         <CardContent className="p-4 sm:p-6 md:p-8">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6 md:mb-8">
-            <img src={logoUrl} alt={companyName} className="h-10 sm:h-12 md:h-14 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }} />
+            <img src={logoUrl} alt={companyName} className="h-10 sm:h-12 md:h-14 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }} />
             <div className="text-left sm:text-right min-w-0">
               <h3 className="text-lg sm:text-xl font-semibold">FINAL BILL</h3>
               <p className="text-base sm:text-lg font-mono mt-1 break-all">{bill.bill_number}</p>

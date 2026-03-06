@@ -22,6 +22,7 @@ import Reports from "./pages/Reports";
 import Financials from "./pages/Financials";
 import Settings from "./pages/Settings";
 import UserManagement from "./pages/UserManagement";
+import Import from "./pages/Import";
 import Bookings from "./pages/Bookings";
 import BookingCalendar from "./pages/BookingCalendar";
 import BookingNew from "./pages/BookingNew";
@@ -105,6 +106,7 @@ const App = () => (
               <Route path="reports" element={<Reports />} />
               <Route path="financials" element={<Financials />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="import" element={<Import />} />
               <Route path="users" element={<UserManagement />} />
               <Route path="supervisors" element={<Supervisors />} />
               <Route path="bookings" element={<Bookings />} />

@@ -17,6 +17,7 @@ export interface Booking {
   end_at: string;
   pickup: string | null;
   dropoff: string | null;
+  estimated_km?: number | null;
   start_odometer_reading?: number | null;
   end_odometer_reading?: number | null;
   notes: string | null;

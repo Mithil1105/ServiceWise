@@ -171,7 +171,7 @@ export interface Incident {
   car_id: string;
   incident_at: string;
   estimated_return_at?: string | null;
-  type: 'breakdown' | 'overheating' | 'puncture' | 'towing' | 'accident' | 'other';
+  type: 'breakdown' | 'overheating' | 'puncture' | 'towing' | 'accident' | 'other' | 'traffic_challan';
   severity: 'low' | 'medium' | 'high';
   description?: string;
   location?: string;
@@ -182,6 +182,32 @@ export interface Incident {
   resolved_notes?: string;
   created_by?: string;
   created_at: string;
+}
+
+// Traffic challan types (org-defined)
+export interface ChallanType {
+  id: string;
+  organization_id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
+// Traffic challan record (linked to incident when logged from incident form)
+export interface TrafficChallan {
+  id: string;
+  organization_id: string;
+  incident_id: string | null;
+  car_id: string;
+  driver_name: string | null;
+  driver_phone: string | null;
+  challan_type_id: string | null;
+  amount: number;
+  incident_at: string;
+  location: string | null;
+  description: string | null;
+  created_at: string;
+  created_by: string | null;
 }
 
 // Car notes

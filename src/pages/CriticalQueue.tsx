@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useCriticalServices } from '@/hooks/use-services';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +33,14 @@ const ESTIMATED_DAILY_KM = 150;
 
 export default function CriticalQueue() {
   const { data: criticalServices, isLoading } = useCriticalServices();
-  
+  const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
+
+  const scopedCriticalServices = useMemo(() => {
+    if (!criticalServices) return [];
+    if (!assignedCarIds) return criticalServices;
+    return criticalServices.filter((s) => assignedCarIds.includes(s.car_id));
+  }, [criticalServices, assignedCarIds]);
+
   // Date range filter
   const [dateFilter, setDateFilter] = useState<'all' | '7' | '14' | '30' | 'custom'>('all');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -40,9 +48,9 @@ export default function CriticalQueue() {
 
   // Calculate estimated due date for each service
   const servicesWithDates = useMemo(() => {
-    if (!criticalServices) return [];
+    if (!scopedCriticalServices.length) return [];
 
-    return criticalServices.map(service => {
+    return scopedCriticalServices.map(service => {
       // Estimate when the service will be due based on remaining km
       const daysUntilDue = service.remaining_km / ESTIMATED_DAILY_KM;
       const estimatedDueDate = addDays(new Date(), daysUntilDue);
@@ -53,7 +61,7 @@ export default function CriticalQueue() {
         daysUntilDue: Math.round(daysUntilDue),
       };
     });
-  }, [criticalServices]);
+  }, [scopedCriticalServices]);
 
   // Filter by date range
   const filteredServices = useMemo(() => {

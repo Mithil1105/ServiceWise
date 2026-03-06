@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link, Navigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,8 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Car, Check, X, Plus, Trash2, Loader2, AlertTriangle, History } from 'lucide-react';
+import { ArrowLeft, Car, Check, X, Plus, Trash2, Loader2, AlertTriangle, History, MapPin } from 'lucide-react';
 import { useBooking, useUpdateBooking, useAvailableCars, useAssignVehicle, useRemoveVehicle } from '@/hooks/use-bookings';
+import { useAuth } from '@/lib/auth-context';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { BookingStatusBadge } from '@/components/bookings/BookingStatusBadge';
 import { DriverAutocomplete } from '@/components/bookings/DriverAutocomplete';
 import { toast } from 'sonner';
@@ -21,6 +23,7 @@ import { useSystemConfig } from '@/hooks/use-dashboard';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 import { DEFAULT_TRIP_TYPE_OPTIONS } from '@/types/form-config';
 import { useBankAccounts } from '@/hooks/use-bank-accounts';
+import { getEstimatedKmFromDistance } from '@/lib/estimated-km';
 
 interface VehicleAssignment {
   id?: string;
@@ -43,6 +46,9 @@ interface VehicleAssignment {
 export default function BookingEdit() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const { isSupervisor, isAdmin, isManager } = useAuth();
+  const isSupervisorMode = isSupervisor && !isAdmin && !isManager;
+  const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
   const { data: booking, isLoading } = useBooking(id);
   const updateBooking = useUpdateBooking();
   const assignVehicle = useAssignVehicle();
@@ -64,6 +70,8 @@ export default function BookingEdit() {
   const [dropoff, setDropoff] = useState('');
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<BookingStatus>('inquiry');
+  const [estimatedKm, setEstimatedKm] = useState('');
+  const [estimatedKmFormula, setEstimatedKmFormula] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
   
   // Advance payment state
@@ -80,6 +88,7 @@ export default function BookingEdit() {
   // Vehicle management
   const [selectedVehicles, setSelectedVehicles] = useState<VehicleAssignment[]>([]);
   const [showVehicleSelect, setShowVehicleSelect] = useState(false);
+  const [selectedRequestedVehicleId, setSelectedRequestedVehicleId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Initialize form from booking data
@@ -93,6 +102,7 @@ export default function BookingEdit() {
     setDropoff(booking.dropoff || '');
     setNotes(booking.notes || '');
     setStatus(booking.status);
+    setEstimatedKm(booking.estimated_km != null ? String(booking.estimated_km) : '');
     
     // Initialize advance payment
     setAdvanceAmount(booking.advance_amount ? booking.advance_amount.toString() : '');
@@ -136,9 +146,13 @@ export default function BookingEdit() {
 
   const availableForSelection = useMemo(() => {
     if (!availableCars) return [];
+    let list = availableCars.filter(c => c.is_available);
+    if (isSupervisorMode && assignedCarIds) {
+      list = list.filter(c => assignedCarIds.includes(c.car_id));
+    }
     const selectedIds = new Set(selectedVehicles.map(v => v.car_id));
-    return availableCars.filter(c => c.is_available && !selectedIds.has(c.car_id));
-  }, [availableCars, selectedVehicles]);
+    return list.filter(c => !selectedIds.has(c.car_id));
+  }, [availableCars, selectedVehicles, isSupervisorMode, assignedCarIds]);
 
   // Calculate totals with threshold logic
   const calculateVehicleTotal = (v: VehicleAssignment): number => {
@@ -189,13 +203,14 @@ export default function BookingEdit() {
     if (requestedVehicleId && booking?.booking_requested_vehicles) {
       const requestedVehicle = booking.booking_requested_vehicles.find(rv => rv.id === requestedVehicleId);
       if (requestedVehicle) {
+        const estKmValue = estimatedKm.trim() ? estimatedKm : (booking.estimated_km != null ? String(booking.estimated_km) : '');
         rateData = {
           requested_vehicle_id: requestedVehicleId,
           rate_type: requestedVehicle.rate_type,
           rate_total: requestedVehicle.rate_total || '',
           rate_per_day: requestedVehicle.rate_per_day || '',
           rate_per_km: requestedVehicle.rate_per_km || '',
-          estimated_km: booking.estimated_km ? booking.estimated_km.toString() : '',
+          estimated_km: estKmValue,
         };
       }
     }
@@ -324,63 +339,51 @@ export default function BookingEdit() {
     if (!id) return;
     setIsSubmitting(true);
     
-    try {
-      // Update booking
-      await updateBooking.mutateAsync({
-        id,
-        customer_name: customerName.trim(),
-        customer_phone: customerPhone.trim(),
-        trip_type: tripType,
-        start_at: new Date(startAt).toISOString(),
-        end_at: new Date(endAt).toISOString(),
-        pickup: pickup.trim() || null,
-        dropoff: dropoff.trim() || null,
-        notes: notes.trim() || null,
-        status,
-        // Only update advance if it can be edited
-        ...(canEditAdvance ? {
-          advance_amount: Number(advanceAmount) || 0,
-          advance_payment_method: advancePaymentMethod || null,
-          advance_collected_by: advanceCollectedBy.trim() || null,
-          advance_account_type: advanceAccountType || null,
-          advance_account_id: advanceAccountId || null,
-        } : {}),
-      });
+    const assignPayload = (v: VehicleAssignment) => ({
+      booking_id: id,
+      car_id: v.car_id,
+      driver_name: v.driver_name || undefined,
+      driver_phone: v.driver_phone || undefined,
+      rate_type: v.rate_type,
+      rate_total: v.rate_type === 'total' ? Number(v.rate_total) : undefined,
+      rate_per_day: ['per_day', 'hybrid'].includes(v.rate_type) ? Number(v.rate_per_day) : undefined,
+      rate_per_km: ['per_km', 'hybrid'].includes(v.rate_type) ? Number(v.rate_per_km) : undefined,
+      estimated_km: ['per_km', 'hybrid'].includes(v.rate_type) ? Number(v.estimated_km) : undefined,
+      advance_amount: Number(v.advance_amount) || 0,
+      requested_vehicle_id: v.requested_vehicle_id || null,
+    });
 
-      // Handle vehicle changes
-      for (const v of selectedVehicles) {
-        if (v.isNew) {
-          // New vehicle assignment
-          await assignVehicle.mutateAsync({
-            booking_id: id,
-            car_id: v.car_id,
-            driver_name: v.driver_name || undefined,
-            driver_phone: v.driver_phone || undefined,
-            rate_type: v.rate_type,
-            rate_total: v.rate_type === 'total' ? Number(v.rate_total) : undefined,
-            rate_per_day: ['per_day', 'hybrid'].includes(v.rate_type) ? Number(v.rate_per_day) : undefined,
-            rate_per_km: ['per_km', 'hybrid'].includes(v.rate_type) ? Number(v.rate_per_km) : undefined,
-            estimated_km: ['per_km', 'hybrid'].includes(v.rate_type) ? Number(v.estimated_km) : undefined,
-            advance_amount: Number(v.advance_amount) || 0,
-          });
-        } else {
-          // Update existing - use assign which does upsert
-          await assignVehicle.mutateAsync({
-            booking_id: id,
-            car_id: v.car_id,
-            driver_name: v.driver_name || undefined,
-            driver_phone: v.driver_phone || undefined,
-            rate_type: v.rate_type,
-            rate_total: v.rate_type === 'total' ? Number(v.rate_total) : undefined,
-            rate_per_day: ['per_day', 'hybrid'].includes(v.rate_type) ? Number(v.rate_per_day) : undefined,
-            rate_per_km: ['per_km', 'hybrid'].includes(v.rate_type) ? Number(v.rate_per_km) : undefined,
-            estimated_km: ['per_km', 'hybrid'].includes(v.rate_type) ? Number(v.estimated_km) : undefined,
-            advance_amount: Number(v.advance_amount) || 0,
-          });
-        }
+    try {
+      if (!isSupervisorMode) {
+        // Update booking (admin/manager)
+        await updateBooking.mutateAsync({
+          id,
+          customer_name: customerName.trim(),
+          customer_phone: customerPhone.trim(),
+          trip_type: tripType,
+          start_at: new Date(startAt).toISOString(),
+          end_at: new Date(endAt).toISOString(),
+          pickup: pickup.trim() || null,
+          dropoff: dropoff.trim() || null,
+          notes: notes.trim() || null,
+          estimated_km: estimatedKm.trim() ? Number(estimatedKm) : null,
+          status,
+          ...(canEditAdvance ? {
+            advance_amount: Number(advanceAmount) || 0,
+            advance_payment_method: advancePaymentMethod || null,
+            advance_collected_by: advanceCollectedBy.trim() || null,
+            advance_account_type: advanceAccountType || null,
+            advance_account_id: advanceAccountId || null,
+          } : {}),
+        });
       }
 
-      navigate('/app/bookings/calendar');
+      // Handle vehicle changes: assign new vehicles, upsert existing (driver/rates)
+      for (const v of selectedVehicles) {
+        await assignVehicle.mutateAsync(assignPayload(v));
+      }
+
+      navigate(isSupervisorMode ? '/app/bookings' : '/app/bookings/calendar');
     } catch (error) {
       // Error handled in mutations
     } finally {
@@ -408,16 +411,20 @@ export default function BookingEdit() {
     );
   }
 
+  if (isSupervisorMode && booking.status !== 'confirmed' && booking.status !== 'ongoing') {
+    return <Navigate to="/app/bookings" replace />;
+  }
+
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="icon" onClick={() => navigate(isSupervisorMode ? '/app/bookings' : -1)}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="flex-1">
             <div className="flex items-center gap-3">
-              <h1 className="page-title">Edit Booking</h1>
+              <h1 className="page-title">{isSupervisorMode ? 'Assign vehicles' : 'Edit Booking'}</h1>
               <BookingStatusBadge status={booking.status} />
             </div>
             <p className="text-sm text-muted-foreground">{booking.booking_ref}</p>
@@ -428,14 +435,59 @@ export default function BookingEdit() {
             <History className="h-4 w-4 mr-1" />
             History
           </Button>
-          <Button size="sm" onClick={() => navigate('/app/bookings/new')}>
-            <Plus className="h-4 w-4 mr-1" />
-            New Booking
-          </Button>
+          {!isSupervisorMode && (
+            <Button size="sm" onClick={() => navigate('/app/bookings/new')}>
+              <Plus className="h-4 w-4 mr-1" />
+              New Booking
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* Customer & Trip Details */}
+      {/* Supervisor: read-only booking summary */}
+      {isSupervisorMode && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Booking summary</CardTitle>
+            <CardDescription>Destination, dates, requested vehicles and creator</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Customer</p>
+              <p className="font-medium">{booking.customer_name}</p>
+              <p className="text-muted-foreground">{booking.customer_phone}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Dates</p>
+              <p className="font-medium">{format(new Date(booking.start_at), 'dd MMM yyyy, HH:mm')}</p>
+              <p className="text-muted-foreground">to {format(new Date(booking.end_at), 'dd MMM yyyy, HH:mm')}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">From / Pickup</p>
+              <p className="font-medium">{booking.pickup || '—'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">To / Dropoff</p>
+              <p className="font-medium">{booking.dropoff || '—'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Requested vehicles</p>
+              <p className="font-medium">
+                {booking.booking_requested_vehicles?.length
+                  ? booking.booking_requested_vehicles.map((rv, i) => `${rv.brand} ${rv.model}`).join(', ')
+                  : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Created by</p>
+              <p className="font-medium">{booking.created_by_profile?.name ?? '—'}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Customer & Trip Details - hidden for supervisor */}
+      {!isSupervisorMode && (
       <Card>
         <CardHeader><CardTitle>Trip Details</CardTitle></CardHeader>
         <CardContent className="space-y-4">
@@ -482,6 +534,48 @@ export default function BookingEdit() {
               <Input value={dropoff} onChange={e => setDropoff(e.target.value)} />
             </div>
           </div>
+          {pickup && dropoff && (
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const { calculateDistance } = await import('@/lib/google-maps');
+                  const result = await calculateDistance(pickup, dropoff);
+                  if (result.error) {
+                    toast.error(result.error);
+                  } else {
+                    const { estimatedKm: computed, formulaLabel } = getEstimatedKmFromDistance(result.distance, tripType);
+                    setEstimatedKm(computed.toString());
+                    setEstimatedKmFormula(formulaLabel);
+                    toast.success(formulaLabel);
+                  }
+                }}
+              >
+                <MapPin className="h-4 w-4 mr-2" />
+                Calculate Distance
+              </Button>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>Estimated KM</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="Trip estimated km (for per km / hybrid rates)"
+              value={estimatedKm}
+              onChange={e => {
+                setEstimatedKm(e.target.value);
+                setEstimatedKmFormula(null);
+              }}
+            />
+            {estimatedKmFormula && (
+              <p className="text-xs text-muted-foreground font-medium" role="status">
+                {estimatedKmFormula}
+              </p>
+            )}
+          </div>
 
           <div className="space-y-2">
             <Label>Notes</Label>
@@ -489,6 +583,7 @@ export default function BookingEdit() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Requested Vehicles Section - Show rates and estimated KM */}
       {booking?.booking_requested_vehicles && booking.booking_requested_vehicles.length > 0 && (
@@ -500,7 +595,7 @@ export default function BookingEdit() {
           <CardContent className="space-y-3">
             {booking.booking_requested_vehicles.map((rv, index) => {
               const days = startDate && endDate ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) || 1 : 0;
-              const estimatedKm = booking.estimated_km || 0;
+              const estKm = Number(estimatedKm) || 0;
               
               let calculatedTotal = 0;
               if (rv.rate_type === 'total') {
@@ -508,10 +603,12 @@ export default function BookingEdit() {
               } else if (rv.rate_type === 'per_day') {
                 calculatedTotal = (rv.rate_per_day || 0) * days;
               } else if (rv.rate_type === 'per_km') {
-                calculatedTotal = (rv.rate_per_km || 0) * estimatedKm;
+                calculatedTotal = (rv.rate_per_km || 0) * estKm;
               } else if (rv.rate_type === 'hybrid') {
-                calculatedTotal = ((rv.rate_per_day || 0) * days) + ((rv.rate_per_km || 0) * estimatedKm);
+                calculatedTotal = ((rv.rate_per_day || 0) * days) + ((rv.rate_per_km || 0) * estKm);
               }
+              const driverAllowanceTotal = (rv.driver_allowance_per_day || 0) * days;
+              const displayTotal = calculatedTotal + driverAllowanceTotal;
 
               return (
                 <div key={rv.id || index} className="p-4 border rounded-lg bg-muted/30 space-y-2">
@@ -547,7 +644,7 @@ export default function BookingEdit() {
                         </div>
                         <div>
                           <span className="text-muted-foreground">Est. KM:</span>
-                          <p className="font-medium">{estimatedKm} km</p>
+                          <p className="font-medium">{estKm} km</p>
                         </div>
                       </>
                     )}
@@ -567,8 +664,13 @@ export default function BookingEdit() {
                   <div className="pt-2 border-t">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Calculated Total:</span>
-                      <span className="font-semibold text-lg">{formatCurrency(calculatedTotal)}</span>
+                      <span className="font-semibold text-lg">{formatCurrency(displayTotal)}</span>
                     </div>
+                    {driverAllowanceTotal > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        (Vehicle: {formatCurrency(calculatedTotal)} + Driver allowance: {formatCurrency(driverAllowanceTotal)})
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -581,7 +683,7 @@ export default function BookingEdit() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Assigned Vehicles</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => setShowVehicleSelect(true)} disabled={!startDate || !endDate}>
+          <Button variant="outline" size="sm" onClick={() => { setShowVehicleSelect(true); setSelectedRequestedVehicleId(null); }} disabled={!startDate || !endDate}>
             <Plus className="h-4 w-4 mr-1" /> Add Vehicle
           </Button>
         </CardHeader>
@@ -594,16 +696,12 @@ export default function BookingEdit() {
               </div>
               {booking?.booking_requested_vehicles && booking.booking_requested_vehicles.length > 0 && (
                 <div className="space-y-2">
-                  <Label className="text-xs">Link to Requested Vehicle (Optional)</Label>
-                  <Select onValueChange={(requestedVehicleId) => {
-                    // Store selected requested vehicle ID for when vehicle is selected
-                    (window as any).__selectedRequestedVehicleId = requestedVehicleId;
-                  }}>
+                  <Label className="text-xs">Link to Requested Vehicle *</Label>
+                  <Select value={selectedRequestedVehicleId ?? ''} onValueChange={(value) => setSelectedRequestedVehicleId(value || null)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select requested vehicle to auto-fill rates" />
+                      <SelectValue placeholder="Select requested vehicle to auto-fill rates (required)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No link (manual rates)</SelectItem>
                       {booking.booking_requested_vehicles.map((rv, idx) => (
                         <SelectItem key={rv.id || idx} value={rv.id || ''}>
                           Requested Vehicle {idx + 1} - {rv.brand} {rv.model} ({RATE_TYPE_LABELS[rv.rate_type]})
@@ -611,17 +709,20 @@ export default function BookingEdit() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {!selectedRequestedVehicleId && (
+                    <p className="text-xs text-muted-foreground">You must link to a requested vehicle before selecting a car.</p>
+                  )}
                 </div>
               )}
               {loadingCars ? (
                 <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading...</div>
+              ) : !selectedRequestedVehicleId ? (
+                <p className="text-sm text-muted-foreground">Select a requested vehicle above to see available cars.</p>
               ) : availableForSelection.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {availableForSelection.map(car => (
                     <div key={car.car_id} className="flex items-center justify-between p-2 border rounded bg-background hover:bg-muted/50 cursor-pointer" onClick={() => {
-                      const requestedVehicleId = (window as any).__selectedRequestedVehicleId;
-                      handleAddVehicle(car, requestedVehicleId && requestedVehicleId !== 'none' ? requestedVehicleId : undefined);
-                      (window as any).__selectedRequestedVehicleId = undefined;
+                      handleAddVehicle(car, selectedRequestedVehicleId);
                     }}>
                       <div className="flex items-center gap-2">
                         <Check className="h-4 w-4 text-success" />
@@ -738,7 +839,8 @@ export default function BookingEdit() {
         </Card>
       )}
 
-      {/* Advance Payment Section */}
+      {/* Advance Payment Section - hidden for supervisor */}
+      {!isSupervisorMode && (
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Advance Payment</CardTitle>
@@ -866,43 +968,46 @@ export default function BookingEdit() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Actions */}
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Select value={status} onValueChange={v => handleStatusChange(v as BookingStatus)}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="inquiry">Inquiry</SelectItem>
-                  <SelectItem value="tentative">Tentative</SelectItem>
-                  <SelectItem value="confirmed">Confirmed</SelectItem>
-                  <SelectItem value="ongoing">Ongoing</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              {/* Cancel Booking Button - Show if confirmed/ongoing */}
-              {booking && (booking.status === 'confirmed' || booking.status === 'ongoing') && (
-                <Button 
-                  variant="destructive" 
-                  onClick={() => handleStatusChange('cancelled')}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Cancel Booking
-                </Button>
+              {!isSupervisorMode && (
+                <>
+                  <Select value={status} onValueChange={v => handleStatusChange(v as BookingStatus)}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inquiry">Inquiry</SelectItem>
+                      <SelectItem value="tentative">Tentative</SelectItem>
+                      <SelectItem value="confirmed">Confirmed</SelectItem>
+                      <SelectItem value="ongoing">Ongoing</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {booking && (booking.status === 'confirmed' || booking.status === 'ongoing') && (
+                    <Button 
+                      variant="destructive" 
+                      onClick={() => handleStatusChange('cancelled')}
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Cancel Booking
+                    </Button>
+                  )}
+                </>
               )}
             </div>
 
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => navigate(-1)}>Back</Button>
+              <Button variant="outline" onClick={() => navigate(isSupervisorMode ? '/app/bookings' : -1)}>Back</Button>
               <Button onClick={handleSubmit} disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Save Changes
+                {isSupervisorMode ? 'Save vehicle assignments' : 'Save Changes'}
               </Button>
             </div>
           </div>

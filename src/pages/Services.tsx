@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useServiceRecords } from '@/hooks/use-services';
 import { useCars } from '@/hooks/use-cars';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,9 +26,17 @@ export default function Services() {
 
   const { data: serviceRecords, isLoading } = useServiceRecords();
   const { data: cars } = useCars();
+  const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
 
-  const filteredRecords = serviceRecords?.filter((record) => {
-    const car = cars?.find((c) => c.id === record.car_id);
+  const scopedCars = assignedCarIds
+    ? (cars ?? []).filter((c) => assignedCarIds.includes(c.id))
+    : (cars ?? []);
+  const scopedRecords = assignedCarIds
+    ? (serviceRecords ?? []).filter((r) => assignedCarIds.includes(r.car_id))
+    : (serviceRecords ?? []);
+
+  const filteredRecords = scopedRecords.filter((record) => {
+    const car = scopedCars.find((c) => c.id === record.car_id);
     const matchesSearch =
       record.service_name.toLowerCase().includes(search.toLowerCase()) ||
       record.vendor_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -40,7 +49,7 @@ export default function Services() {
 
   const carOptions = [
     { value: 'all', label: 'All Vehicles' },
-    ...(cars?.map((car) => ({
+    ...(scopedCars.map((car) => ({
       value: car.id,
       label: formatCarLabel(car),
     })) || []),
@@ -49,7 +58,7 @@ export default function Services() {
   const handleExportAll = () => {
     const headers = ['Date', 'Vehicle', 'Service', 'Vendor', 'Location', 'Cost (INR)', 'Odometer (km)'];
     const rows = filteredRecords.map((record) => {
-      const car = cars?.find((c) => c.id === record.car_id);
+      const car = scopedCars.find((c) => c.id === record.car_id);
       return [
         formatDateDMY(record.serviced_at),
         car ? formatCarLabel(car) : '',
@@ -143,7 +152,7 @@ export default function Services() {
                 </TableHeader>
                 <TableBody>
                   {filteredRecords.map((record) => {
-                    const car = cars?.find((c) => c.id === record.car_id);
+                    const car = scopedCars.find((c) => c.id === record.car_id);
                     return (
                       <TableRow key={record.id}>
                         <TableCell>

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { useCar } from '@/hooks/use-cars';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useOdometerEntries, useLatestOdometer } from '@/hooks/use-odometer';
 import { useServiceRecords } from '@/hooks/use-services';
 import { useServiceBillsByRecordIds, ServiceBillFile } from '@/hooks/use-service-bills';
@@ -39,10 +40,15 @@ import { supabase } from '@/integrations/supabase/client';
 
 export default function VehicleReport() {
   const { id } = useParams<{ id: string }>();
+  const { assignedCarIds, isRestricted } = useAssignedCarIdsForCurrentUser();
   const { data: car, isLoading: carLoading } = useCar(id!);
   const { data: latestOdo } = useLatestOdometer(id!);
   const { data: odometerEntries, isLoading: odoLoading } = useOdometerEntries(id);
   const { data: serviceRecords, isLoading: servicesLoading } = useServiceRecords(id);
+
+  if (isRestricted && id && assignedCarIds && !assignedCarIds.includes(id)) {
+    return <Navigate to="/app" replace />;
+  }
 
   const recordIds = useMemo(() => serviceRecords?.map((r) => r.id) || [], [serviceRecords]);
   const { data: billsByRecord } = useServiceBillsByRecordIds(recordIds);

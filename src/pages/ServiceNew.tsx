@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useCars } from '@/hooks/use-cars';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useLatestOdometer } from '@/hooks/use-odometer';
 import { useServiceRules, useServiceRecords, useCreateServiceRecord } from '@/hooks/use-services';
 import { useUploadServiceBills } from '@/hooks/use-service-bills';
@@ -76,6 +77,10 @@ export default function ServiceNew() {
   const { toast } = useToast();
 
   const { data: cars, isLoading: carsLoading } = useCars();
+  const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
+  const scopedCars = assignedCarIds
+    ? (cars ?? []).filter((c) => assignedCarIds.includes(c.id))
+    : (cars ?? []);
   const { data: serviceRules } = useServiceRules();
   const createRecord = useCreateServiceRecord();
   const uploadBills = useUploadServiceBills();
@@ -561,7 +566,7 @@ export default function ServiceNew() {
     );
   }
 
-  const carOptions = (cars?.filter((c) => c.status === 'active') || []).map((car) => ({
+  const carOptions = (scopedCars.filter((c) => c.status === 'active') || []).map((car) => ({
     value: car.id,
     label: `${car.vehicle_number} - ${car.model} ${car.fuel_type ? `(${car.fuel_type})` : ''} ${car.seats ? `• ${car.seats} seats` : ''}`,
   }));

@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatDateTimeFull, formatDateOnly, formatDateDMY, formatTime12hr } from '@/lib/date';
+import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 import { QRCodeSVG } from 'qrcode.react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -66,7 +67,7 @@ export default function BillingManagement() {
   const uploadCompanyPDF = useUploadCompanyBillPDF();
   const markReminderSent = useMarkReminderSent();
   const companyName = organization?.company_name || organization?.name || 'Company';
-  const logoUrl = organization?.logo_url || '/HERO.png';
+  const logoUrl = organization?.logo_url || DEFAULT_ORG_LOGO_URL;
   const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
   const [billTypeTab, setBillTypeTab] = useState<'customer' | 'company'>('customer');
@@ -692,7 +693,7 @@ export default function BillingManagement() {
             <CardContent className="p-4 sm:p-6 md:p-8">
               {/* Bill Header */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6 md:mb-8">
-                <img src={logoUrl} alt={companyName} className="h-10 sm:h-12 md:h-14 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }} />
+                <img src={logoUrl} alt={companyName} className="h-10 sm:h-12 md:h-14 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }} />
                 <div className="text-left sm:text-right min-w-0">
                   <h3 className="text-lg sm:text-xl font-semibold">FINAL BILL</h3>
                   <p className="text-base sm:text-lg font-mono mt-1 break-all">{selectedBill.bill_number}</p>
@@ -1224,7 +1225,7 @@ export default function BillingManagement() {
               {/* Company Bill Header */}
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 md:mb-8 pb-4 md:pb-6 border-b">
                 <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                  <img src={logoUrl} alt={companyName} className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 object-contain shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }} />
+                  <img src={logoUrl} alt={companyName} className="h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 object-contain shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }} />
                   <div className="min-w-0">
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-red-600 break-words">{companyName}</h2>
                     <p className="text-xs sm:text-sm text-muted-foreground mt-1">Internal Company Bill</p>

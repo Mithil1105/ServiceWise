@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { useCar, useUpdateCar } from '@/hooks/use-cars';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useOdometerEntries, useLatestOdometer } from '@/hooks/use-odometer';
 import { useServiceRecords } from '@/hooks/use-services';
 import { useActiveDowntime, useStartDowntime, useEndDowntime, useDowntimeLogs } from '@/hooks/use-downtime';
@@ -75,6 +76,7 @@ import type { TimelineItem, DowntimeLog } from '@/types';
 export default function FleetDetail() {
   const { id } = useParams<{ id: string }>();
   const { isAdmin, isManager } = useAuth();
+  const { assignedCarIds, isRestricted } = useAssignedCarIdsForCurrentUser();
   const { data: car, isLoading: carLoading } = useCar(id!);
   const updateCar = useUpdateCar();
   const { data: latestOdo } = useLatestOdometer(id!);
@@ -91,6 +93,10 @@ export default function FleetDetail() {
   const createNote = useCreateCarNote();
   const deleteNote = useDeleteCarNote();
   const togglePin = useTogglePinNote();
+
+  if (isRestricted && id && assignedCarIds && !assignedCarIds.includes(id)) {
+    return <Navigate to="/app" replace />;
+  }
 
   const [downtimeOpen, setDowntimeOpen] = useState(false);
   const [downtimeReason, setDowntimeReason] = useState<string>('service');

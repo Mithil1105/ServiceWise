@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { useDowntimeLogs, useCarsInDowntime, useStartDowntime } from '@/hooks/use-downtime';
 import { useCars } from '@/hooks/use-cars';
 import { useIncidents } from '@/hooks/use-incidents';
+import { useTrafficChallans } from '@/hooks/use-traffic-challans';
+import { useServiceRecords } from '@/hooks/use-services';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 import {
   type DowntimeFormBuiltInFieldKey,
@@ -53,6 +56,8 @@ import {
   User,
   AlertTriangle,
   Plus,
+  Receipt,
+  DollarSign,
 } from 'lucide-react';
 import type { DowntimeLog } from '@/types';
 import { formatDateDMY, formatDateTimeDMY } from '@/lib/date';
@@ -90,8 +95,47 @@ export default function DowntimeReport() {
   const { data: carsInDowntime } = useCarsInDowntime();
   const { data: cars } = useCars();
   const { data: incidents, isLoading: incidentsLoading } = useIncidents();
+  const { data: serviceRecords = [] } = useServiceRecords();
+  const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
+
+  // Period bounds for challans and spending (match downtime period filter)
+  const periodBounds = useMemo(() => {
+    if (dateRange === 'all') return { start: null, end: null };
+    const days = parseInt(dateRange, 10) || 90;
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    return {
+      start: start.toISOString().slice(0, 10) + 'T00:00:00.000Z',
+      end: end.toISOString().slice(0, 10) + 'T23:59:59.999Z',
+    };
+  }, [dateRange]);
+  const { data: trafficChallans = [] } = useTrafficChallans(
+    periodBounds.start && periodBounds.end
+      ? { startDate: periodBounds.start, endDate: periodBounds.end }
+      : undefined
+  );
+  const scopedServiceRecords = assignedCarIds
+    ? (serviceRecords ?? []).filter((r) => assignedCarIds.includes(r.car_id))
+    : (serviceRecords ?? []);
+  const scopedChallans = assignedCarIds
+    ? (trafficChallans ?? []).filter((c: { car_id: string }) => assignedCarIds.includes(c.car_id))
+    : (trafficChallans ?? []);
   const { data: orgSettings } = useOrganizationSettings();
   const startDowntime = useStartDowntime();
+
+  const scopedCars = assignedCarIds
+    ? (cars ?? []).filter((c) => assignedCarIds.includes(c.id))
+    : (cars ?? []);
+  const scopedDowntimeLogs = assignedCarIds
+    ? (allDowntimeLogs ?? []).filter((log) => assignedCarIds.includes(log.car_id))
+    : (allDowntimeLogs ?? []);
+  const scopedCarsInDowntime = assignedCarIds
+    ? (carsInDowntime ?? []).filter((d: { car_id: string }) => assignedCarIds.includes(d.car_id))
+    : (carsInDowntime ?? []);
+  const scopedIncidents = assignedCarIds
+    ? (incidents ?? []).filter((i) => assignedCarIds.includes(i.car_id))
+    : (incidents ?? []);
 
   const downtimeFormConfig = orgSettings?.downtime_form_config ?? {};
   const downtimeFieldOverrides = downtimeFormConfig.fieldOverrides ?? {};
@@ -113,11 +157,11 @@ export default function DowntimeReport() {
 
   const isLoading = downtimeLoading || incidentsLoading;
 
-  // Filter logs by date range
+  // Filter logs by date range (already scoped to assigned cars for supervisors)
   const filteredLogs = useMemo(() => {
-    if (!allDowntimeLogs) return [];
-    
-    let logs = allDowntimeLogs;
+    if (!scopedDowntimeLogs.length) return [];
+
+    let logs = scopedDowntimeLogs;
     
     // Date filter
     if (dateRange !== 'all') {
@@ -138,7 +182,7 @@ export default function DowntimeReport() {
     }
     
     return logs;
-  }, [allDowntimeLogs, dateRange, vehicleFilter, reasonFilter]);
+  }, [scopedDowntimeLogs, dateRange, vehicleFilter, reasonFilter]);
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -169,7 +213,7 @@ export default function DowntimeReport() {
     }
 
     // Track driver incidents
-    for (const incident of incidents || []) {
+    for (const incident of scopedIncidents) {
       if (incident.driver_name) {
         driverIncidents[incident.driver_name] = (driverIncidents[incident.driver_name] || 0) + 1;
       }
@@ -185,7 +229,7 @@ export default function DowntimeReport() {
     // Prepare vehicle ranking
     const vehicleRanking = Object.entries(vehicleDowntime)
       .map(([carId, data]) => {
-        const car = cars?.find(c => c.id === carId);
+        const car = scopedCars.find(c => c.id === carId);
         return {
           carId,
           vehicleNumber: car ? formatCarLabel(car) : 'Unknown',
@@ -208,13 +252,13 @@ export default function DowntimeReport() {
       totalDowntimeHours,
       totalDowntimeDays: Math.round(totalDowntimeHours / 24 * 10) / 10,
       totalIncidents: filteredLogs.length,
-      activeDowntime: carsInDowntime?.length || 0,
+      activeDowntime: scopedCarsInDowntime?.length || 0,
       reasonData,
       vehicleRanking,
       driverRanking,
       avgDowntimePerIncident: Math.round(totalDowntimeHours / filteredLogs.length * 10) / 10,
     };
-  }, [filteredLogs, cars, carsInDowntime, incidents, downtimeReasonOptions]);
+  }, [filteredLogs, scopedCars, scopedCarsInDowntime, scopedIncidents, downtimeReasonOptions]);
 
   // Monthly trend data
   const trendData = useMemo(() => {
@@ -246,6 +290,35 @@ export default function DowntimeReport() {
       }));
   }, [filteredLogs]);
 
+  // Spending summary (services + incidents + challans) in selected period
+  const spendingSummary = useMemo(() => {
+    const start = periodBounds.start ? new Date(periodBounds.start) : null;
+    const end = periodBounds.end ? new Date(periodBounds.end) : null;
+    const inRange = (dateStr: string) => {
+      if (!start || !end) return true;
+      const d = new Date(dateStr);
+      return d >= start && d <= end;
+    };
+    let servicesTotal = 0;
+    let incidentsTotal = 0;
+    let challansTotal = 0;
+    for (const r of scopedServiceRecords) {
+      if (inRange(r.serviced_at)) servicesTotal += Number(r.cost) || 0;
+    }
+    for (const i of scopedIncidents) {
+      if (inRange(i.incident_at)) incidentsTotal += Number(i.cost) || 0;
+    }
+    for (const c of scopedChallans) {
+      if (inRange((c as { incident_at: string }).incident_at)) challansTotal += Number((c as { amount?: number }).amount) || 0;
+    }
+    return {
+      services: servicesTotal,
+      incidents: incidentsTotal,
+      challans: challansTotal,
+      total: servicesTotal + incidentsTotal + challansTotal,
+    };
+  }, [periodBounds.start, periodBounds.end, scopedServiceRecords, scopedIncidents, scopedChallans]);
+
   const handleExportCSV = () => {
     if (!filteredLogs.length) return;
 
@@ -253,7 +326,7 @@ export default function DowntimeReport() {
     const now = new Date();
     
     const rows = filteredLogs.map(log => {
-      const car = cars?.find(c => c.id === log.car_id);
+      const car = scopedCars.find(c => c.id === log.car_id);
       const start = new Date(log.started_at);
       const end = log.ended_at ? new Date(log.ended_at) : now;
       const hours = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60) * 10) / 10;
@@ -278,7 +351,7 @@ export default function DowntimeReport() {
     URL.revokeObjectURL(url);
   };
 
-  const carOptions = (cars || []).filter(c => c.status === 'active').map(car => ({
+  const carOptions = (scopedCars || []).filter(c => c.status === 'active').map(car => ({
     value: car.id,
     label: `${car.vehicle_number} - ${car.model}`,
   }));
@@ -771,6 +844,174 @@ export default function DowntimeReport() {
         </Card>
       )}
 
+      {/* Spending summary (same period as filters) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5" />
+            Amount spent (selected period)
+          </CardTitle>
+          <CardDescription>
+            Total spend from services, incidents, and traffic challans for the selected period
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="rounded-lg border p-4">
+              <p className="text-sm text-muted-foreground">Services</p>
+              <p className="text-2xl font-semibold">₹{spendingSummary.services.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-sm text-muted-foreground">Incidents</p>
+              <p className="text-2xl font-semibold">₹{spendingSummary.incidents.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-sm text-muted-foreground">Traffic challans</p>
+              <p className="text-2xl font-semibold">₹{spendingSummary.challans.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="rounded-lg border p-4 bg-muted/50">
+              <p className="text-sm text-muted-foreground">Total</p>
+              <p className="text-2xl font-bold">₹{spendingSummary.total.toLocaleString('en-IN')}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Traffic challan reports (same period as filters) */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <Receipt className="h-5 w-5" />
+          Traffic challan reports
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Based on the same period as above. Log traffic challans from the Incidents page to see data here.
+        </p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Troublesome drivers (challans)
+              </CardTitle>
+              <CardDescription>
+                Drivers with traffic challans in the selected period (count and total fines)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const byDriver = new Map<string, { name: string; phone: string; count: number; total: number }>();
+                for (const c of scopedChallans) {
+                  const ch = c as { driver_name?: string | null; driver_phone?: string | null; amount?: number };
+                  const key = (ch.driver_phone || ch.driver_name || 'Unknown').trim() || 'Unknown';
+                  const cur = byDriver.get(key);
+                  const amount = Number(ch.amount) || 0;
+                  if (cur) {
+                    cur.count += 1;
+                    cur.total += amount;
+                  } else {
+                    byDriver.set(key, {
+                      name: (ch.driver_name || '—').trim() || '—',
+                      phone: (ch.driver_phone || '—').trim() || '—',
+                      count: 1,
+                      total: amount,
+                    });
+                  }
+                }
+                const rows = Array.from(byDriver.entries())
+                  .map(([, v]) => v)
+                  .sort((a, b) => b.count - a.count);
+                if (rows.length === 0) {
+                  return <p className="text-sm text-muted-foreground">No challans in this period.</p>;
+                }
+                return (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Driver</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead className="text-right">Challans</TableHead>
+                        <TableHead className="text-right">Total fines (₹)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((r, i) => (
+                        <TableRow key={i}>
+                          <TableCell>{r.name}</TableCell>
+                          <TableCell>{r.phone}</TableCell>
+                          <TableCell className="text-right">{r.count}</TableCell>
+                          <TableCell className="text-right">{r.total.toLocaleString('en-IN')}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                );
+              })()}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="h-5 w-5" />
+                Total fines in challans
+              </CardTitle>
+              <CardDescription>
+                Summary by challan type and overall total for the period
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const byType = new Map<string, { name: string; count: number; total: number }>();
+                let grandTotal = 0;
+                for (const c of scopedChallans) {
+                  const ch = c as { challan_types?: { name: string } | null; amount?: number };
+                  const typeName = ch.challan_types?.name ?? 'Other';
+                  const cur = byType.get(typeName);
+                  const amount = Number(ch.amount) || 0;
+                  grandTotal += amount;
+                  if (cur) {
+                    cur.count += 1;
+                    cur.total += amount;
+                  } else {
+                    byType.set(typeName, { name: typeName, count: 1, total: amount });
+                  }
+                }
+                const rows = Array.from(byType.entries())
+                  .map(([, v]) => v)
+                  .sort((a, b) => b.total - a.total);
+                if (rows.length === 0) {
+                  return <p className="text-sm text-muted-foreground">No challans in this period.</p>;
+                }
+                return (
+                  <div className="space-y-4">
+                    <p className="text-sm font-medium">
+                      Total fines (period): ₹{grandTotal.toLocaleString('en-IN')}
+                    </p>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Challan type</TableHead>
+                          <TableHead className="text-right">Count</TableHead>
+                          <TableHead className="text-right">Total (₹)</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {rows.map((r, i) => (
+                          <TableRow key={i}>
+                            <TableCell>{r.name}</TableCell>
+                            <TableCell className="text-right">{r.count}</TableCell>
+                            <TableCell className="text-right">{r.total.toLocaleString('en-IN')}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
       {/* Recent Downtime Logs */}
       <Card>
         <CardHeader>
@@ -795,7 +1036,7 @@ export default function DowntimeReport() {
               </TableHeader>
               <TableBody>
                 {filteredLogs.slice(0, 50).map(log => {
-                  const car = cars?.find(c => c.id === log.car_id);
+                  const car = scopedCars.find(c => c.id === log.car_id);
                   const now = new Date();
                   const start = new Date(log.started_at);
                   const end = log.ended_at ? new Date(log.ended_at) : now;

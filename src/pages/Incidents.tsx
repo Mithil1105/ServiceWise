@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useIncidents, useCreateIncident, useResolveIncident } from '@/hooks/use-incidents';
 import { useCars } from '@/hooks/use-cars';
+import { useChallanTypes } from '@/hooks/use-challan-types';
+import { useDriverForCarAtTime, useCreateTrafficChallan } from '@/hooks/use-traffic-challans';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 import { type IncidentFormBuiltInFieldKey, INCIDENT_FORM_FIELD_LABELS, type FleetNewCarCustomField } from '@/types/form-config';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,6 +64,7 @@ const INCIDENT_TYPES = [
   { value: 'puncture', label: 'Puncture' },
   { value: 'towing', label: 'Towing' },
   { value: 'accident', label: 'Accident' },
+  { value: 'traffic_challan', label: 'Traffic Challan' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -88,12 +92,31 @@ export default function Incidents() {
   const [location, setLocation] = useState('');
   const [cost, setCost] = useState('');
   const [driverName, setDriverName] = useState('');
+  const [driverPhone, setDriverPhone] = useState('');
+  const [selectedChallanTypeId, setSelectedChallanTypeId] = useState<string>('');
   const [incidentDate, setIncidentDate] = useState(() => toLocalDateTimeInputValue());
   const [estimatedReturn, setEstimatedReturn] = useState('');
   const [incidentCustomValues, setIncidentCustomValues] = useState<Record<string, string | number | boolean | null>>({});
   const [addFormErrors, setAddFormErrors] = useState<Record<string, string>>({});
 
   const { data: orgSettings } = useOrganizationSettings();
+  const { data: challanTypes = [] } = useChallanTypes();
+  const { data: driverAtTime } = useDriverForCarAtTime(
+    selectedCarId || null,
+    incidentDate || null
+  );
+  const createTrafficChallan = useCreateTrafficChallan();
+
+  useEffect(() => {
+    if (!driverAtTime) return;
+    // Only auto-fill when fields are empty so manual edits are preserved
+    if (!driverName && driverAtTime.driver_name) {
+      setDriverName(driverAtTime.driver_name);
+    }
+    if (!driverPhone && driverAtTime.driver_phone) {
+      setDriverPhone(driverAtTime.driver_phone);
+    }
+  }, [driverAtTime?.driver_name, driverAtTime?.driver_phone]);
   const incidentFormConfig = orgSettings?.incident_form_config ?? {};
   const incidentFieldOverrides = incidentFormConfig.fieldOverrides ?? {};
   const incidentCustomFields = (incidentFormConfig.customFields ?? []).sort((a, b) => a.order - b.order);
@@ -108,11 +131,19 @@ export default function Incidents() {
   const [resolvingIncident, setResolvingIncident] = useState<string | null>(null);
 
   const { data: cars } = useCars();
+  const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
   const { data: incidents, isLoading } = useIncidents({
     unresolvedOnly,
     severity: severityFilter === 'all' ? undefined : severityFilter,
     carId: carFilter || undefined,
   });
+
+  const scopedCars = assignedCarIds
+    ? (cars ?? []).filter((c) => assignedCarIds.includes(c.id))
+    : (cars ?? []);
+  const scopedIncidents = assignedCarIds
+    ? (incidents ?? []).filter((i) => assignedCarIds.includes(i.car_id))
+    : (incidents ?? []);
 
   const createMutation = useCreateIncident();
   const resolveMutation = useResolveIncident();
@@ -127,7 +158,7 @@ export default function Incidents() {
     }
   }, [resolveId]);
 
-  const carOptions = (cars || []).map((car) => ({
+  const carOptions = (scopedCars || []).map((car) => ({
     value: car.id,
     label: `${car.vehicle_number} - ${car.model}`,
   }));
@@ -160,26 +191,50 @@ export default function Incidents() {
       if (v !== undefined && v !== null && v !== '') customAttrs[f.key] = v;
     }
 
-    createMutation.mutate(
-      {
-        car_id: selectedCarId,
-        incident_at: new Date(incidentDate).toISOString(),
-        estimated_return_at: estimatedReturn ? new Date(estimatedReturn).toISOString() : undefined,
-        type: incidentType,
-        severity,
-        description: description || undefined,
-        location: location || undefined,
-        cost: cost ? parseFloat(cost) : undefined,
-        driver_name: driverName || undefined,
-        custom_attributes: Object.keys(customAttrs).length ? customAttrs : undefined,
-      },
-      {
-        onSuccess: () => {
-          setAddOpen(false);
-          resetAddForm();
+    const incidentPayload = {
+      car_id: selectedCarId,
+      incident_at: new Date(incidentDate).toISOString(),
+      estimated_return_at: estimatedReturn ? new Date(estimatedReturn).toISOString() : undefined,
+      type: incidentType,
+      severity,
+      description: description || undefined,
+      location: location || undefined,
+      cost: cost ? parseFloat(cost) : undefined,
+      driver_name: driverName || undefined,
+      custom_attributes: Object.keys(customAttrs).length ? customAttrs : undefined,
+    };
+
+    const done = () => {
+      setAddOpen(false);
+      resetAddForm();
+    };
+
+    if (incidentType === 'traffic_challan') {
+      createMutation.mutate(incidentPayload, {
+        onSuccess: (created) => {
+          if (created?.id) {
+            createTrafficChallan.mutate(
+              {
+                incident_id: created.id,
+                car_id: selectedCarId,
+                driver_name: driverName?.trim() || null,
+                driver_phone: driverPhone?.trim() || null,
+                challan_type_id: selectedChallanTypeId?.trim() || null,
+                amount: cost ? parseFloat(cost) : 0,
+                incident_at: new Date(incidentDate).toISOString(),
+                location: location?.trim() || null,
+                description: description?.trim() || null,
+              },
+              { onSuccess: done, onError: () => {} }
+            );
+          } else {
+            done();
+          }
         },
-      }
-    );
+      });
+    } else {
+      createMutation.mutate(incidentPayload, { onSuccess: done });
+    }
   };
 
   const handleResolve = () => {
@@ -210,6 +265,8 @@ export default function Incidents() {
     setLocation('');
     setCost('');
     setDriverName('');
+    setDriverPhone('');
+    setSelectedChallanTypeId('');
     setIncidentDate(toLocalDateTimeInputValue());
     setEstimatedReturn('');
     setIncidentCustomValues({});
@@ -344,6 +401,26 @@ export default function Incidents() {
                     {addFormErrors.type && <p className="text-sm text-destructive">{addFormErrors.type}</p>}
                   </div>
                 )}
+                {incidentType === 'traffic_challan' && (
+                  <div className="space-y-2">
+                    <Label>Challan type</Label>
+                    <Select value={selectedChallanTypeId} onValueChange={setSelectedChallanTypeId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select challan type (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {challanTypes.map((ct) => (
+                          <SelectItem key={ct.id} value={ct.id}>
+                            {ct.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {challanTypes.length === 0 && (
+                      <p className="text-xs text-muted-foreground">Add challan types in Settings to categorize fines.</p>
+                    )}
+                  </div>
+                )}
 
                 {!isIncidentFieldHidden('severity') && (
                   <div className="space-y-2">
@@ -398,16 +475,29 @@ export default function Incidents() {
                     <Input
                       value={driverName}
                       onChange={(e) => setDriverName(e.target.value)}
-                      placeholder="Driver at the time"
+                      placeholder={incidentType === 'traffic_challan' ? 'Auto-filled from booking or enter manually' : 'Driver at the time'}
                     />
                     {addFormErrors.driver_name && <p className="text-sm text-destructive">{addFormErrors.driver_name}</p>}
+                  </div>
+                )}
+                {incidentType === 'traffic_challan' && (
+                  <div className="space-y-2">
+                    <Label>Driver phone</Label>
+                    <Input
+                      value={driverPhone}
+                      onChange={(e) => setDriverPhone(e.target.value)}
+                      placeholder="Auto-filled from booking or enter manually"
+                    />
                   </div>
                 )}
               </div>
 
               {!isIncidentFieldHidden('cost') && (
                 <div className="space-y-2">
-                  <Label>{getIncidentFieldLabel('cost')}{isIncidentFieldRequired('cost') ? ' *' : ''}</Label>
+                  <Label>
+                    {incidentType === 'traffic_challan' ? 'Fine (₹)' : getIncidentFieldLabel('cost')}
+                    {isIncidentFieldRequired('cost') ? ' *' : ''}
+                  </Label>
                   <Input
                     type="number"
                     value={cost}
@@ -526,7 +616,7 @@ export default function Incidents() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : incidents && incidents.length > 0 ? (
+          ) : scopedIncidents && scopedIncidents.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -542,7 +632,7 @@ export default function Incidents() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {incidents.map((incident) => (
+                {scopedIncidents.map((incident) => (
                   <TableRow key={incident.id}>
                     <TableCell className="whitespace-nowrap">
                       {formatDateTimeDMY(incident.incident_at)}

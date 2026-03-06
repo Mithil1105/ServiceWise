@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useCars } from '@/hooks/use-cars';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useLatestOdometer, useOdometerEntries } from '@/hooks/use-odometer';
 import { useCreateOdometerEntry } from '@/hooks/use-odometer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,10 +36,19 @@ export default function Odometer() {
   const preselectedCarId = searchParams.get('car');
 
   const { data: cars, isLoading: carsLoading } = useCars();
+  const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
   const [selectedCarId, setSelectedCarId] = useState<string>(preselectedCarId || '');
   const { data: latestOdo, isLoading: latestLoading } = useLatestOdometer(selectedCarId);
   const { data: allEntries, isLoading: entriesLoading } = useOdometerEntries();
   const createEntry = useCreateOdometerEntry();
+
+  // For supervisors: only show assigned cars
+  const scopedCars = assignedCarIds
+    ? (cars ?? []).filter((c) => assignedCarIds.includes(c.id))
+    : (cars ?? []);
+  const scopedEntries = assignedCarIds
+    ? (allEntries ?? []).filter((e) => assignedCarIds.includes(e.car_id))
+    : (allEntries ?? []);
 
   const [odometerValue, setOdometerValue] = useState('');
   const [readingDate, setReadingDate] = useState(() => toLocalDateTimeInputValue());
@@ -53,7 +63,7 @@ export default function Odometer() {
     }
   }, [preselectedCarId]);
 
-  const selectedCar = cars?.find((c) => c.id === selectedCarId);
+  const selectedCar = scopedCars.find((c) => c.id === selectedCarId);
   const lastKm = latestOdo?.odometer_km || 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,27 +118,25 @@ export default function Odometer() {
     setPendingSubmit(null);
   };
 
-  const carOptions = (cars?.filter((c) => c.status === 'active') || []).map((car) => ({
+  const carOptions = (scopedCars.filter((c) => c.status === 'active') || []).map((car) => ({
     value: car.id,
     label: `${car.vehicle_number} - ${car.model}`,
   }));
 
-  // Group entries by vehicle and get only the latest for each
+  // Group entries by vehicle and get only the latest for each (already scoped to assigned cars for supervisors)
   const latestEntriesPerVehicle = (() => {
-    if (!allEntries || !cars) return [];
-    
-    const latestByCarId = new Map<string, typeof allEntries[0]>();
-    
-    // Since entries are ordered by reading_at desc, the first entry for each car is the latest
-    for (const entry of allEntries) {
+    if (!scopedEntries.length || !scopedCars.length) return [];
+
+    const latestByCarId = new Map<string, typeof scopedEntries[0]>();
+
+    for (const entry of scopedEntries) {
       if (!latestByCarId.has(entry.car_id)) {
         latestByCarId.set(entry.car_id, entry);
       }
     }
-    
-    // Filter by search
+
     return Array.from(latestByCarId.values()).filter((entry) => {
-      const car = cars.find((c) => c.id === entry.car_id);
+      const car = scopedCars.find((c) => c.id === entry.car_id);
       if (!car) return false;
       return car.vehicle_number.toLowerCase().includes(historySearch.toLowerCase()) ||
              car.model.toLowerCase().includes(historySearch.toLowerCase());
@@ -282,7 +290,7 @@ export default function Odometer() {
                   </TableHeader>
                   <TableBody>
                     {latestEntriesPerVehicle.map((entry) => {
-                      const car = cars?.find((c) => c.id === entry.car_id);
+                      const car = scopedCars.find((c) => c.id === entry.car_id);
                       return (
                         <TableRow key={entry.id}>
                           <TableCell>

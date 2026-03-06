@@ -22,9 +22,11 @@ import {
   ShieldCheck,
   PanelLeftClose,
   PanelLeft,
+  Upload,
 } from 'lucide-react';
 import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import { cn } from '@/lib/utils';
+import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -47,7 +49,8 @@ const adminItems = [
   { title: 'Financials', href: '/app/financials', icon: DollarSign },
   { title: 'Supervisors', href: '/app/supervisors', icon: ClipboardList },
   { title: 'Settings', href: '/app/settings', icon: Settings },
-  { title: 'Users', href: '/app/users', icon: Users },
+  { title: 'Import', href: '/app/import', icon: Upload },
+  { title: 'Users', href: '/app/users', icon: Users, adminOnly: true },
 ];
 
 interface AppSidebarProps {
@@ -72,10 +75,11 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
   const visuallyNarrow = collapsed && !hoverExpanded;
   const showFullContent = !visuallyNarrow;
 
-  // Filter nav items based on role - supervisors can't see bookings
+  // Filter nav items: supervisors see Bookings (assign-only), but not Billing; other adminOnly only for admin/manager
   const filteredNavItems = navItems.filter((item) => {
     if (item.adminOnly && isSupervisor && !isAdmin && !isManager) {
-      return false;
+      if (item.href === '/app/bookings') return true; // Supervisors see Bookings to assign vehicles
+      return false; // Billing and other admin-only stay hidden
     }
     return true;
   });
@@ -91,7 +95,7 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
     }
   };
 
-  const logoUrl = organization?.logo_url || '/HERO.png';
+  const logoUrl = organization?.logo_url || DEFAULT_ORG_LOGO_URL;
   const orgName = organization?.company_name || organization?.name || 'ServiceWise';
 
   return (
@@ -122,7 +126,7 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
               src={logoUrl}
               alt={orgName}
               className="h-10 w-auto object-contain flex-shrink-0"
-              onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }}
+              onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }}
             />
             <span className="text-lg font-semibold text-sidebar-foreground truncate">{orgName}</span>
           </>
@@ -201,7 +205,7 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
                 </p>
               </div>
             )}
-            {adminItems.map((item) => {
+            {adminItems.filter((item) => !('adminOnly' in item && item.adminOnly) || isAdmin).map((item) => {
               const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + '/');
               
               return (

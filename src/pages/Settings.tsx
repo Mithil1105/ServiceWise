@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 import { useSettingsLeave } from '@/lib/settings-leave-context';
 import { useServiceRules, useCreateServiceRule, useBrandsWithRules, useCopyServiceRules, useApplyRulesToBrands } from '@/hooks/use-services';
 import { useBrands, useCreateBrand } from '@/hooks/use-brands';
@@ -46,6 +47,7 @@ import { BillingLayoutConfigCard } from '@/components/settings/BillingLayoutConf
 import { ServiceRecordFormConfigCard } from '@/components/settings/ServiceRecordFormConfigCard';
 import { DowntimeFormConfigCard } from '@/components/settings/DowntimeFormConfigCard';
 import { IncidentFormConfigCard } from '@/components/settings/IncidentFormConfigCard';
+import { ChallanTypesCard } from '@/components/settings/ChallanTypesCard';
 
 const LOGO_BUCKET = 'organization-logos';
 
@@ -507,7 +509,7 @@ export default function Settings() {
                       src={org?.logo_url ?? organization?.logo_url ?? ''}
                       alt="Logo"
                       className="h-14 w-20 object-contain"
-                      onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }}
+                      onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }}
                     />
                   ) : (
                     <span className="text-xs text-muted-foreground">No logo</span>
@@ -1141,6 +1143,7 @@ export default function Settings() {
             <>
               <DowntimeFormConfigCard onDirtyChange={(dirty) => registerCardDirty('downtime', dirty)} />
               <IncidentFormConfigCard onDirtyChange={(dirty) => registerCardDirty('incident', dirty)} />
+              <ChallanTypesCard />
             </>
           )}
         </TabsContent>

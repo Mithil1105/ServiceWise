@@ -89,34 +89,32 @@ Deno.serve(async (req) => {
             auth: { autoRefreshToken: false, persistSession: false },
         });
 
-        const authHeader = req.headers.get("Authorization");
-        if (!authHeader?.startsWith("Bearer ")) {
-            return new Response(JSON.stringify({ error: "Missing or invalid authorization header" }), {
-                status: 401,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-
-        const token = authHeader.replace("Bearer ", "").trim();
-        const authResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
-            headers: { Authorization: `Bearer ${token}`, apikey: serviceRoleKey },
-        });
-        if (!authResponse.ok) {
-            return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
-                status: 401,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-
-        const callerData = await authResponse.json();
-        if (!callerData?.id) {
-            return new Response(JSON.stringify({ error: "User data not found" }), {
-                status: 401,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-
         const body = await req.json().catch(() => ({}));
+        const authHeader = req.headers.get("Authorization");
+        const tokenFromBody = (body?.access_token as string)?.trim();
+        const tokenFromHeader = authHeader?.startsWith("Bearer ") ? authHeader.replace("Bearer ", "").trim() : "";
+        const token = tokenFromBody || tokenFromHeader;
+        if (!token) {
+            return new Response(JSON.stringify({ error: "Missing token: send access_token in body or Authorization header" }), {
+                status: 401,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+
+        const apiKey = req.headers.get("apikey") || serviceRoleKey;
+        const authClient = createClient(supabaseUrl, apiKey, { auth: { autoRefreshToken: false, persistSession: false } });
+        const { data: claims, error: claimsError } = await authClient.auth.getClaims(token);
+        if (claimsError || !claims?.claims?.sub) {
+            return new Response(JSON.stringify({
+                error: "Invalid or expired token",
+                details: claimsError?.message?.slice(0, 120),
+            }), {
+                status: 401,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+        const callerData = { id: claims.claims.sub as string, email: claims.claims.email as string | undefined };
+
         const targetUserId = (body.targetUserId as string)?.trim();
         const newPasswordParam = (body.newPassword as string)?.trim();
 

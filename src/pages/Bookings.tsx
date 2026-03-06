@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Calendar, Search, Phone, MapPin, Car, Eye, Edit, FileText, Loader2 } from 'lucide-react';
 import { useBookings } from '@/hooks/use-bookings';
+import { useAuth } from '@/lib/auth-context';
 import { BookingStatusBadge } from '@/components/bookings/BookingStatusBadge';
 import { BookingDetailsDrawer } from '@/components/bookings/BookingDetailsDrawer';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -17,6 +18,8 @@ import { useSystemConfig } from '@/hooks/use-dashboard';
 
 export default function Bookings() {
   const navigate = useNavigate();
+  const { isSupervisor, isAdmin, isManager } = useAuth();
+  const isSupervisorOnly = isSupervisor && !isAdmin && !isManager;
   const { data: bookings, isLoading } = useBookings();
   const { data: minKmPerKm } = useSystemConfig('minimum_km_per_km');
   const { data: minKmHybridPerDay } = useSystemConfig('minimum_km_hybrid_per_day');
@@ -26,11 +29,26 @@ export default function Bookings() {
   const [selectedBooking, setSelectedBooking] = useState<BookingWithDetails | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const filteredBookings = useMemo(() => {
+  // Supervisors only see bookings that need vehicle assignment: confirmed/ongoing, have requested vehicles, not fully assigned
+  const baseBookings = useMemo(() => {
     if (!bookings) return [];
-    return bookings.filter(b => {
-      // Status filter
-      if (statusFilter !== 'all' && b.status !== statusFilter) return false;
+    if (isSupervisorOnly) {
+      return bookings.filter(b => {
+        if (b.status !== 'confirmed' && b.status !== 'ongoing') return false;
+        const requestedCount = b.booking_requested_vehicles?.length ?? 0;
+        if (requestedCount === 0) return false;
+        const assignedCount = b.booking_vehicles?.length ?? 0;
+        return assignedCount < requestedCount;
+      });
+    }
+    return bookings;
+  }, [bookings, isSupervisorOnly]);
+
+  const filteredBookings = useMemo(() => {
+    if (!baseBookings.length) return [];
+    return baseBookings.filter(b => {
+      // Status filter (for admin; supervisor list is already filtered)
+      if (!isSupervisorOnly && statusFilter !== 'all' && b.status !== statusFilter) return false;
       
       // Search filter
       if (search) {
@@ -46,7 +64,7 @@ export default function Bookings() {
       
       return true;
     });
-  }, [bookings, search, statusFilter]);
+  }, [baseBookings, search, statusFilter, isSupervisorOnly]);
 
   const formatDateTime = (date: string) => {
     return formatDateTimeFull(date);
@@ -108,14 +126,20 @@ export default function Bookings() {
     setDrawerOpen(true);
   };
 
-  // Stats
+  // Stats (for supervisor: only "need assignment" count; for admin: full stats)
   const stats = useMemo(() => {
-    if (!bookings) return { total: 0, confirmed: 0, ongoing: 0, pending: 0 };
+    if (!bookings) return { total: 0, confirmed: 0, ongoing: 0, pending: 0, needAssignment: 0 };
+    const needAssignment = bookings.filter(b => 
+      (b.status === 'confirmed' || b.status === 'ongoing') &&
+      (b.booking_requested_vehicles?.length ?? 0) > 0 &&
+      (b.booking_vehicles?.length ?? 0) < (b.booking_requested_vehicles?.length ?? 0)
+    ).length;
     return {
       total: bookings.length,
       confirmed: bookings.filter(b => b.status === 'confirmed').length,
       ongoing: bookings.filter(b => b.status === 'ongoing').length,
       pending: bookings.filter(b => b.status === 'inquiry' || b.status === 'tentative').length,
+      needAssignment,
     };
   }, [bookings]);
 
@@ -126,7 +150,7 @@ export default function Bookings() {
         <div>
           <h1 className="page-title">Bookings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage all customer bookings
+            {isSupervisorOnly ? 'Assign vehicles to bookings' : 'Manage all customer bookings'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -134,42 +158,55 @@ export default function Bookings() {
             <Calendar className="h-4 w-4 mr-2" />
             Calendar View
           </Button>
-          <Button onClick={() => navigate('/app/bookings/new')}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Booking
-          </Button>
+          {!isSupervisorOnly && (
+            <Button onClick={() => navigate('/app/bookings/new')}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Booking
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-sm text-muted-foreground">Total Bookings</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold text-blue-600">{stats.confirmed}</p>
-            <p className="text-sm text-muted-foreground">Confirmed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold text-purple-600">{stats.ongoing}</p>
-            <p className="text-sm text-muted-foreground">Ongoing</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-2xl font-bold text-warning">{stats.pending}</p>
-            <p className="text-sm text-muted-foreground">Pending</p>
-          </CardContent>
-        </Card>
+        {isSupervisorOnly ? (
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold">{stats.needAssignment}</p>
+              <p className="text-sm text-muted-foreground">Need vehicle assignment</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-sm text-muted-foreground">Total Bookings</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-2xl font-bold text-blue-600">{stats.confirmed}</p>
+                <p className="text-sm text-muted-foreground">Confirmed</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-2xl font-bold text-purple-600">{stats.ongoing}</p>
+                <p className="text-sm text-muted-foreground">Ongoing</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-2xl font-bold text-warning">{stats.pending}</p>
+                <p className="text-sm text-muted-foreground">Pending</p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
-      {/* Filters */}
+      {/* Filters - hide status filter for supervisor (list is pre-filtered) */}
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-4">
@@ -184,20 +221,22 @@ export default function Bookings() {
                 />
               </div>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="inquiry">Inquiry</SelectItem>
-                <SelectItem value="tentative">Tentative</SelectItem>
-                <SelectItem value="confirmed">Confirmed</SelectItem>
-                <SelectItem value="ongoing">Ongoing</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+            {!isSupervisorOnly && (
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="inquiry">Inquiry</SelectItem>
+                  <SelectItem value="tentative">Tentative</SelectItem>
+                  <SelectItem value="confirmed">Confirmed</SelectItem>
+                  <SelectItem value="ongoing">Ongoing</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -295,18 +334,22 @@ export default function Bookings() {
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" onClick={() => navigate(`/app/bookings/${booking.id}/edit`)}>
+                                <Button
+                                  variant={isSupervisorOnly ? 'default' : 'ghost'}
+                                  size="icon"
+                                  onClick={() => navigate(`/app/bookings/${booking.id}/edit`)}
+                                >
                                   <Edit className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p>Edit Booking</p>
+                                <p>{isSupervisorOnly ? 'Assign vehicles' : 'Edit Booking'}</p>
                               </TooltipContent>
                             </Tooltip>
-                            {(booking.status === 'confirmed' || booking.status === 'ongoing' || booking.status === 'completed') && (
+                            {!isSupervisorOnly && (booking.status === 'confirmed' || booking.status === 'ongoing' || booking.status === 'completed') && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" onClick={() => navigate(`/bookings/${booking.id}/bills`)}>
+                                  <Button variant="ghost" size="icon" onClick={() => navigate(`/app/bookings/${booking.id}/bills`)}>
                                     <FileText className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
@@ -325,11 +368,15 @@ export default function Bookings() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-64 gap-4">
-              <p className="text-muted-foreground">No bookings found</p>
-              <Button onClick={() => navigate('/app/bookings/new')}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create First Booking
-              </Button>
+              <p className="text-muted-foreground">
+                {isSupervisorOnly ? 'No bookings need vehicle assignment right now.' : 'No bookings found'}
+              </p>
+              {!isSupervisorOnly && (
+                <Button onClick={() => navigate('/app/bookings/new')}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create First Booking
+                </Button>
+              )}
             </div>
           )}
         </CardContent>

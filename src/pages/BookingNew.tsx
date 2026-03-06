@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { format, addHours } from 'date-fns';
+import { format, addHours, parseISO } from 'date-fns';
 import { formatDateDMY } from '@/lib/date';
+import { getEstimatedKmFromDistance } from '@/lib/estimated-km';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,9 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Car, Check, X, Plus, Trash2, Loader2, Search, Users, ArrowUpDown, Lock, MapPin, Share2, Copy, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Car, Check, X, Plus, Trash2, Loader2, Search, Users, ArrowUpDown, Lock, MapPin, Share2, Copy, MessageCircle, CalendarIcon } from 'lucide-react';
 import { useCreateBooking, useAvailableCars, useAssignVehicle, useCreateRequestedVehicle, useDeleteRequestedVehicle } from '@/hooks/use-bookings';
 import { useCar } from '@/hooks/use-cars';
 import { useUpsertCustomer } from '@/hooks/use-customers';
@@ -118,6 +121,7 @@ export default function BookingNew() {
   const [pickup, setPickup] = useState('');
   const [dropoff, setDropoff] = useState('');
   const [estimatedKm, setEstimatedKm] = useState<string>(''); // Booking-level estimated KM
+  const [estimatedKmFormula, setEstimatedKmFormula] = useState<string | null>(null); // Shown when calculated from distance
   const [notes, setNotes] = useState('');
   const [status, setStatus] = useState<BookingStatus | ''>('');
   const [advanceAmount, setAdvanceAmount] = useState('');
@@ -772,11 +776,28 @@ export default function BookingNew() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label>Start Date *</Label>
-                  <Input 
-                    type="date" 
-                    value={startDate} 
-                    onChange={e => setStartDate(e.target.value)}
-                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'w-full justify-start text-left font-normal',
+                          !startDate && 'text-muted-foreground'
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {startDate ? formatDateDMY(startDate) : 'Select start date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={startDate ? parseISO(startDate) : undefined}
+                        onSelect={(d) => d && setStartDate(format(d, 'yyyy-MM-dd'))}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="space-y-2">
                   <Label>Start Time *</Label>
@@ -788,12 +809,29 @@ export default function BookingNew() {
                 </div>
                 <div className="space-y-2">
                   <Label>End Date *</Label>
-                  <Input 
-                    type="date" 
-                    value={endDate} 
-                    onChange={e => setEndDate(e.target.value)} 
-                    min={startDate}
-                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'w-full justify-start text-left font-normal',
+                          !endDate && 'text-muted-foreground'
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {endDate ? formatDateDMY(endDate) : 'Select end date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={endDate ? parseISO(endDate) : undefined}
+                        onSelect={(d) => d && setEndDate(format(d, 'yyyy-MM-dd'))}
+                        disabled={(date) => startDate ? date < parseISO(startDate) : false}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="space-y-2">
                   <Label>End Time *</Label>
@@ -859,9 +897,10 @@ export default function BookingNew() {
                   if (result.error) {
                     toast.error(result.error);
                   } else {
-                    const calculatedKm = Math.round(result.distance);
-                    setEstimatedKm(calculatedKm.toString());
-                    toast.success(`Distance calculated: ${calculatedKm} km`);
+                    const { estimatedKm: computed, formulaLabel } = getEstimatedKmFromDistance(result.distance, tripType);
+                    setEstimatedKm(computed.toString());
+                    setEstimatedKmFormula(formulaLabel);
+                    toast.success(formulaLabel);
                   }
                 }}
               >
@@ -878,9 +917,17 @@ export default function BookingNew() {
                 id="estimated-km"
                 type="number"
                 value={estimatedKm}
-                onChange={e => setEstimatedKm(e.target.value)}
+                onChange={e => {
+                  setEstimatedKm(e.target.value);
+                  setEstimatedKmFormula(null);
+                }}
                 placeholder="Enter estimated kilometers"
               />
+              {estimatedKmFormula && (
+                <p className="text-xs text-muted-foreground font-medium" role="status">
+                  {estimatedKmFormula}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 This will be used for all vehicles with per_km or hybrid rate types
               </p>

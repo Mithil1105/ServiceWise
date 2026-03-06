@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { AlertCircle, Loader2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { z } from 'zod';
+import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 
 const PASSWORD_MIN_LENGTH = 7;
 
@@ -185,10 +186,10 @@ export default function Auth() {
         </div>
         <div className="text-center mb-8">
           <img
-            src={authOrg?.logo_url || '/HERO.png'}
+            src={authOrg?.logo_url || DEFAULT_ORG_LOGO_URL}
             alt={authOrg?.company_name || authOrg?.name || 'Logo'}
             className="h-16 w-auto mx-auto mb-4 object-contain"
-            onError={(e) => { (e.target as HTMLImageElement).src = '/HERO.png'; }}
+            onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }}
           />
           <h1 className="text-3xl font-bold text-foreground">
             {authOrg?.company_name || authOrg?.name || 'ServiceWise'}
