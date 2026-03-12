@@ -188,6 +188,32 @@ function setLinkRel(rel: string, href: string) {
   el.setAttribute('href', href);
 }
 
+/** Options for the reusable SEO head helper (noindex pages, utility pages). */
+export interface SEOHeadOptions {
+  title: string;
+  description?: string;
+  canonical?: string;
+  robots: 'index,follow' | 'noindex,nofollow';
+}
+
+/**
+ * Reusable helper to set document title, meta description, canonical, and robots.
+ * Use for auth, app, admin, and utility pages that must not be indexed.
+ */
+export function SEOHead(options: SEOHeadOptions) {
+  document.title = options.title;
+  if (options.description !== undefined) {
+    setMetaTag('description', options.description);
+  }
+  if (options.canonical) {
+    setLinkRel('canonical', options.canonical);
+  }
+  const robots = options.robots;
+  setMetaTag('robots', robots);
+  setMetaTag('googlebot', robots);
+  setMetaTag('bingbot', robots);
+}
+
 /**
  * Apply full SEO and GEO meta for public marketing pages only.
  * For non-public paths (e.g. /product, /roles), sets noindex and minimal title.
@@ -262,10 +288,11 @@ function removeWebPageJsonLd() {
 
 /**
  * Call from app layout, auth, admin, etc. so those pages are not indexed.
+ * Thin wrapper around SEOHead for backward compatibility.
  */
 export function setNoIndexMeta(titleSuffix?: string) {
-  document.title = titleSuffix ? `ServiceWise – ${titleSuffix}` : 'ServiceWise';
-  setMetaTag('robots', 'noindex, nofollow');
-  setMetaTag('googlebot', 'noindex, nofollow');
-  setMetaTag('bingbot', 'noindex, nofollow');
+  SEOHead({
+    title: titleSuffix ? `ServiceWise – ${titleSuffix}` : 'ServiceWise',
+    robots: 'noindex,nofollow',
+  });
 }

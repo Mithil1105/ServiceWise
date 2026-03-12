@@ -200,7 +200,7 @@ export function useAssignCarToSupervisor() {
         { data: supervisorProfile },
         { data: car },
       ] = await Promise.all([
-        supabase.from('profiles').select('name').eq('id', supervisorId).single(),
+        supabase.from('profiles').select('name').eq('id', supervisorId).maybeSingle(),
         supabase.from('cars').select('vehicle_number, model, brand').eq('id', carId).single(),
       ]);
       await supabase.from('supervisor_activity_log').insert({
@@ -256,7 +256,7 @@ export function useUnassignCarFromSupervisor() {
         { data: supervisorProfile },
         { data: car },
       ] = await Promise.all([
-        supabase.from('profiles').select('name').eq('id', prevSupervisorId).single(),
+        supabase.from('profiles').select('name').eq('id', prevSupervisorId).maybeSingle(),
         supabase.from('cars').select('vehicle_number, model, brand').eq('id', carId).single(),
       ]);
 

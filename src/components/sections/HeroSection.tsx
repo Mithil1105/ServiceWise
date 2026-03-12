@@ -24,6 +24,17 @@ export function HeroSection() {
               <Link to="/features">Explore Features</Link>
             </Button>
           </div>
+          <nav className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm text-muted-foreground" aria-label="Key pages">
+            <Link to="/features" className="hover:text-foreground transition-colors">Features</Link>
+            <span aria-hidden>·</span>
+            <Link to="/how-it-works" className="hover:text-foreground transition-colors">How it works</Link>
+            <span aria-hidden>·</span>
+            <Link to="/pricing" className="hover:text-foreground transition-colors">Pricing</Link>
+            <span aria-hidden>·</span>
+            <Link to="/security" className="hover:text-foreground transition-colors">Security</Link>
+            <span aria-hidden>·</span>
+            <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
+          </nav>
         </div>
       </div>
     </section>

@@ -304,18 +304,17 @@ function DriverFormDialog({
                   <Input id="license_expiry" type="date" value={formData.license_expiry} onChange={(e) => setFormData({ ...formData, license_expiry: e.target.value })} />
                 </div>
               )}
-              {!isFieldHidden('driver_type') && (
-                <div className="space-y-2 sm:col-span-2 max-w-[240px]">
-                  <Label htmlFor="driver_type">{getFieldLabel('driver_type')}{isFieldRequired('driver_type') ? ' *' : ''}</Label>
-                  <Select value={formData.driver_type} onValueChange={(v: DriverType) => setFormData({ ...formData, driver_type: v })} required={isFieldRequired('driver_type')}>
-                    <SelectTrigger id="driver_type"><SelectValue placeholder="Permanent or Temporary" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="permanent">Permanent</SelectItem>
-                      <SelectItem value="temporary">Temporary</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              {/* Driver type always shown so user can change temporary ↔ permanent regardless of form config */}
+              <div className="space-y-2 sm:col-span-2 max-w-[240px]">
+                <Label htmlFor="driver_type">{getFieldLabel('driver_type')}{isFieldRequired('driver_type') ? ' *' : ''}</Label>
+                <Select value={formData.driver_type} onValueChange={(v: DriverType) => setFormData({ ...formData, driver_type: v })} required={isFieldRequired('driver_type')}>
+                  <SelectTrigger id="driver_type"><SelectValue placeholder="Permanent or Temporary" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="permanent">Permanent</SelectItem>
+                    <SelectItem value="temporary">Temporary</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
