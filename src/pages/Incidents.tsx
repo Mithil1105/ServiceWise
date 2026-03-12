@@ -129,6 +129,7 @@ export default function Incidents() {
   const [resolveNotes, setResolveNotes] = useState('');
   const [resolveDate, setResolveDate] = useState(() => toLocalDateTimeInputValue());
   const [resolvingIncident, setResolvingIncident] = useState<string | null>(null);
+  const [resolvingIncidentType, setResolvingIncidentType] = useState<Incident['type'] | null>(null);
 
   const { data: cars } = useCars();
   const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
@@ -150,13 +151,15 @@ export default function Incidents() {
 
   // Handle resolve from URL param
   useEffect(() => {
-    if (resolveId) {
+    if (resolveId && incidents && incidents.length > 0) {
+      const incident = incidents.find((i) => i.id === resolveId) || null;
       setResolvingIncident(resolveId);
+      setResolvingIncidentType(incident?.type ?? null);
       setResolveOpen(true);
       // Clear the param
       setSearchParams({});
     }
-  }, [resolveId]);
+  }, [resolveId, incidents, setSearchParams]);
 
   const carOptions = (scopedCars || []).map((car) => ({
     value: car.id,
@@ -475,7 +478,7 @@ export default function Incidents() {
                     <Input
                       value={driverName}
                       onChange={(e) => setDriverName(e.target.value)}
-                      placeholder={incidentType === 'traffic_challan' ? 'Auto-filled from booking or enter manually' : 'Driver at the time'}
+                      placeholder="Auto-filled from recent booking or enter manually"
                     />
                     {addFormErrors.driver_name && <p className="text-sm text-destructive">{addFormErrors.driver_name}</p>}
                   </div>
@@ -681,6 +684,7 @@ export default function Incidents() {
                           size="sm"
                           onClick={() => {
                             setResolvingIncident(incident.id);
+                            setResolvingIncidentType(incident.type);
                             setResolveDate(toLocalDateTimeInputValue());
                             setResolveOpen(true);
                           }}
@@ -707,15 +711,21 @@ export default function Incidents() {
       <Dialog open={resolveOpen} onOpenChange={setResolveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Resolve Incident</DialogTitle>
-            <DialogDescription>Mark this incident as resolved. The vehicle will be marked as back on the road.</DialogDescription>
+              <DialogTitle>Resolve Incident</DialogTitle>
+              <DialogDescription>
+                {resolvingIncidentType === 'traffic_challan'
+                  ? 'Mark this challan as paid. The payment date will be stored with the incident.'
+                  : 'Mark this incident as resolved. The vehicle will be marked as back on the road.'}
+              </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                Return to Road Date & Time *
+                {resolvingIncidentType === 'traffic_challan'
+                  ? 'Challan Paid Date & Time *'
+                  : 'Return to Road Date & Time *'}
               </Label>
               <Input
                 type="datetime-local"
@@ -723,7 +733,9 @@ export default function Incidents() {
                 onChange={(e) => setResolveDate(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                When did the vehicle return to service?
+                {resolvingIncidentType === 'traffic_challan'
+                  ? 'When was the challan paid?'
+                  : 'When did the vehicle return to service?'}
               </p>
             </div>
 
