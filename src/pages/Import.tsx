@@ -19,8 +19,11 @@ import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { parseCSV, getCell } from '@/lib/csv-parse';
 
-const DRIVERS_HEADERS = 'name,phone,location,region,license_type,license_expiry,notes,status,driver_type';
-const DRIVERS_TEMPLATE = `${DRIVERS_HEADERS}\n"John Doe","9876543210","Mumbai","West",lmv,2025-12-31,Notes here,active,permanent`;
+// Drivers CSV: license expiry captured as separate day/month/year columns
+// so users can work in DD/MM/YY style while we store YYYY-MM-DD.
+const DRIVERS_HEADERS =
+  'name,phone,location,region,license_type,license_expiry_dd,license_expiry_mm,license_expiry_yyyy,notes,status,driver_type';
+const DRIVERS_TEMPLATE = `${DRIVERS_HEADERS}\n"John Doe","9876543210","Mumbai","West",lmv,31,12,2025,Notes here,active,permanent`;
 
 const CUSTOMERS_HEADERS = 'name,phone';
 const CUSTOMERS_TEMPLATE = `${CUSTOMERS_HEADERS}\n"Acme Corp","9123456789"`;
@@ -52,8 +55,46 @@ function validateDriverRow(row: string[], headers: string[], rowIndex: number): 
   if (driverType && !['permanent', 'temporary'].includes(driverType.toLowerCase())) return { row: rowIndex, message: 'driver_type must be permanent or temporary' };
   const status = getCell(row, headers, 'status');
   if (status && !['active', 'inactive'].includes(status.toLowerCase())) return { row: rowIndex, message: 'status must be active or inactive' };
-  const expiry = getCell(row, headers, 'license_expiry');
-  if (expiry && !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) return { row: rowIndex, message: 'license_expiry must be YYYY-MM-DD' };
+
+  // New format: separate DD / MM / YYYY columns for license expiry.
+  const dd = getCell(row, headers, 'license_expiry_dd');
+  const mm = getCell(row, headers, 'license_expiry_mm');
+  const yyyy = getCell(row, headers, 'license_expiry_yyyy');
+
+  if (dd || mm || yyyy) {
+    // If any part is present, require all three and validate ranges.
+    if (!dd || !mm || !yyyy) {
+      return {
+        row: rowIndex,
+        message: 'license_expiry_dd, license_expiry_mm, and license_expiry_yyyy must all be provided',
+      };
+    }
+    const dayNum = Number(dd);
+    const monthNum = Number(mm);
+    const yearNum = Number(yyyy.length === 2 ? `20${yyyy}` : yyyy);
+    if (
+      !Number.isInteger(dayNum) ||
+      !Number.isInteger(monthNum) ||
+      !Number.isInteger(yearNum) ||
+      dayNum < 1 ||
+      dayNum > 31 ||
+      monthNum < 1 ||
+      monthNum > 12 ||
+      yearNum < 1900 ||
+      yearNum > 2100
+    ) {
+      return {
+        row: rowIndex,
+        message: 'license_expiry_dd/mm/yyyy must be a valid date (day 1-31, month 1-12, year 1900-2100)',
+      };
+    }
+  } else {
+    // Backwards compatibility: allow legacy single license_expiry column (YYYY-MM-DD)
+    const legacyExpiry = getCell(row, headers, 'license_expiry');
+    if (legacyExpiry && !/^\d{4}-\d{2}-\d{2}$/.test(legacyExpiry)) {
+      return { row: rowIndex, message: 'license_expiry must be YYYY-MM-DD' };
+    }
+  }
   return null;
 }
 
@@ -158,7 +199,21 @@ export default function Import() {
         const location = getCell(row, headers, 'location') || null;
         const region = getCell(row, headers, 'region') || null;
         const licenseType = (getCell(row, headers, 'license_type') || 'lmv').toLowerCase() as 'lmv' | 'hmv';
-        const licenseExpiry = getCell(row, headers, 'license_expiry') || null;
+      // Build license_expiry from separate DD/MM/YYYY columns (preferred),
+      // falling back to legacy single license_expiry (YYYY-MM-DD) if needed.
+      const dd = getCell(row, headers, 'license_expiry_dd');
+      const mm = getCell(row, headers, 'license_expiry_mm');
+      const yyyy = getCell(row, headers, 'license_expiry_yyyy');
+      let licenseExpiry: string | null = null;
+      if (dd || mm || yyyy) {
+        const day = (dd || '').padStart(2, '0');
+        const month = (mm || '').padStart(2, '0');
+        const yearRaw = yyyy || '';
+        const year = yearRaw.length === 2 ? `20${yearRaw}` : yearRaw;
+        licenseExpiry = year && month && day ? `${year}-${month}-${day}` : null;
+      } else {
+        licenseExpiry = getCell(row, headers, 'license_expiry') || null;
+      }
         const notes = getCell(row, headers, 'notes') || null;
         const status = (getCell(row, headers, 'status') || 'active').toLowerCase();
         const driverType = (getCell(row, headers, 'driver_type') || 'temporary').toLowerCase() as 'permanent' | 'temporary';
@@ -339,7 +394,11 @@ export default function Import() {
           <Card>
             <CardHeader>
               <CardTitle>Import drivers</CardTitle>
-              <CardDescription>CSV columns: name (required), phone (required), location, region, license_type (lmv/hmv), license_expiry (YYYY-MM-DD), notes, status (active/inactive), driver_type (permanent/temporary).</CardDescription>
+              <CardDescription>
+                CSV columns: name (required), phone (required), location, region, license_type (lmv/hmv),
+                license_expiry_dd (day, 1-31), license_expiry_mm (month, 1-12), license_expiry_yyyy (year, e.g. 2027),
+                notes, status (active/inactive), driver_type (permanent/temporary).
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">

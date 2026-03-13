@@ -27,6 +27,7 @@ import { FileText, Upload, Download, Trash2, Loader2, AlertTriangle, Plus, Eye }
 import { DocumentFileInput } from '@/components/ui/document-file-input';
 import { formatDateDMY } from '@/lib/date';
 import { differenceInDays, parseISO } from 'date-fns';
+import { DocumentViewerDialog } from '@/components/ui/document-viewer-dialog';
 
 interface DocumentsSectionProps {
   carId: string;
@@ -164,7 +165,14 @@ export default function DocumentsSection({ carId, isAdmin }: DocumentsSectionPro
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
-                              onClick={() => handleView(doc.file_path!, doc.file_name || 'Document')}
+                              onClick={() =>
+                                handleView(
+                                  doc.file_path!,
+                                  doc.file_name
+                                    ? `${DOCUMENT_LABELS[docType]} – ${doc.file_name}`
+                                    : DOCUMENT_LABELS[docType]
+                                )
+                              }
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -262,31 +270,17 @@ export default function DocumentsSection({ carId, isAdmin }: DocumentsSectionPro
         )}
 
         {/* View Document Dialog */}
-        <Dialog open={!!viewingUrl} onOpenChange={(open) => !open && setViewingUrl(null)}>
-          <DialogContent className="max-w-4xl max-h-[90vh]">
-            <DialogHeader>
-              <DialogTitle>{viewingName}</DialogTitle>
-            </DialogHeader>
-            <div className="flex-1 overflow-auto">
-              {viewingUrl && (
-                viewingUrl.includes('.pdf') ? (
-                  <iframe src={viewingUrl} className="w-full h-[70vh]" />
-                ) : (
-                  <img src={viewingUrl} alt={viewingName} className="max-w-full h-auto" />
-                )
-              )}
-            </div>
-            <DialogFooter>
-              <Button onClick={() => window.open(viewingUrl!, '_blank')}>
-                <Download className="h-4 w-4 mr-2" />
-                Download
-              </Button>
-              <Button variant="outline" onClick={() => setViewingUrl(null)}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <DocumentViewerDialog
+          open={!!viewingUrl}
+          onOpenChange={(open) => {
+            if (!open) {
+              setViewingUrl(null);
+              setViewingName('');
+            }
+          }}
+          url={viewingUrl}
+          fileName={viewingName}
+        />
       </CardContent>
     </Card>
   );

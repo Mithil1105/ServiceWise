@@ -43,8 +43,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.get_driver_for_car_at_time(uuid, timestamptz) IS
-  'Returns driver_name and driver_phone for the booking that had the given car at the given time, ' ||
-  'falling back to the most recent booking for that car when no exact-time match exists.';
+  'Returns driver_name and driver_phone for the booking that had the given car at the given time, falling back to the most recent booking for that car when no exact-time match exists.';
 
 NOTIFY pgrst, 'reload schema';
 

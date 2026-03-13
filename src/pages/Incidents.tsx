@@ -82,6 +82,7 @@ export default function Incidents() {
   const [unresolvedOnly, setUnresolvedOnly] = useState(true);
   const [severityFilter, setSeverityFilter] = useState<Incident['severity'] | 'all'>('all');
   const [carFilter, setCarFilter] = useState<string>('');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   // Add incident form
   const [addOpen, setAddOpen] = useState(false);
@@ -145,6 +146,12 @@ export default function Incidents() {
   const scopedIncidents = assignedCarIds
     ? (incidents ?? []).filter((i) => assignedCarIds.includes(i.car_id))
     : (incidents ?? []);
+
+  const sortedIncidents = [...(scopedIncidents ?? [])].sort((a, b) => {
+    const aTime = new Date(a.incident_at).getTime();
+    const bTime = new Date(b.incident_at).getTime();
+    return sortOrder === 'newest' ? bTime - aTime : aTime - bTime;
+  });
 
   const createMutation = useCreateIncident();
   const resolveMutation = useResolveIncident();
@@ -602,6 +609,16 @@ export default function Incidents() {
                 placeholder="Filter by vehicle..."
               />
             </div>
+
+            <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as 'newest' | 'oldest')}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest first</SelectItem>
+                <SelectItem value="oldest">Oldest first</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -619,7 +636,7 @@ export default function Incidents() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : scopedIncidents && scopedIncidents.length > 0 ? (
+          ) : sortedIncidents && sortedIncidents.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -635,7 +652,7 @@ export default function Incidents() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {scopedIncidents.map((incident) => (
+                {sortedIncidents.map((incident) => (
                   <TableRow key={incident.id}>
                     <TableCell className="whitespace-nowrap">
                       {formatDateTimeDMY(incident.incident_at)}

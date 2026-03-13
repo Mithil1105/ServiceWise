@@ -15,12 +15,38 @@ export function useDriverForCarAtTime(carId: string | null, incidentAt: string |
     queryKey: ['driver-for-car-at-time', carId, incidentAt],
     queryFn: async (): Promise<DriverAtTime> => {
       if (!carId || !incidentAt) return { driver_name: null, driver_phone: null };
-      const { data, error } = await supabase.rpc('get_driver_for_car_at_time', {
-        p_car_id: carId,
-        p_at: new Date(incidentAt).toISOString(),
+
+      // Frontend fallback instead of RPC (avoid 400 errors and still use bookings data):
+      // 1) Get the most recent booking_vehicles row for this car, joined with bookings.
+      // 2) Prefer bookings that ended at/after the incident time; otherwise fall back to latest overall.
+      const incidentIso = new Date(incidentAt).toISOString();
+
+      const { data, error } = await supabase
+        .from('booking_vehicles')
+        .select('driver_name, driver_phone, bookings!inner(start_at, end_at, status)')
+        .eq('car_id', carId)
+        .order('end_at', { foreignTable: 'bookings', ascending: false });
+
+      if (error) {
+        console.error('get_driver_for_car_at_time fallback error', error);
+        return { driver_name: null, driver_phone: null };
+      }
+
+      const rows = (data as any[]) || [];
+      if (rows.length === 0) {
+        return { driver_name: null, driver_phone: null };
+      }
+
+      // Prefer booking active around the incident time
+      const primary = rows.find((row) => {
+        const b = row.bookings as { start_at: string; end_at: string; status: string } | undefined;
+        if (!b) return false;
+        const start = new Date(b.start_at).toISOString();
+        const end = new Date(b.end_at).toISOString();
+        return start <= incidentIso && end >= incidentIso && ['confirmed', 'ongoing'].includes(b.status);
       });
-      if (error) throw error;
-      const row = Array.isArray(data) ? data[0] : data;
+
+      const row = primary ?? rows[0];
       return {
         driver_name: row?.driver_name ?? null,
         driver_phone: row?.driver_phone ?? null,

@@ -189,16 +189,37 @@ export default function Settings() {
     per_km: '100',
     hybrid_per_day: '100',
   });
+
+  // Snapshot of last-saved values so dirty state resets correctly after saving
+  const [minKmSavedSnapshot, setMinKmSavedSnapshot] = useState({
+    per_km: '100',
+    hybrid_per_day: '100',
+  });
   
-  // Update local state when config loads
+  // Update local state and snapshot when config loads/refetches
   useEffect(() => {
-    if (minKmPerKm !== undefined && minKmPerKm !== null) {
-      const value = typeof minKmPerKm === 'string' ? minKmPerKm : String(minKmPerKm);
-      setMinKmSettings(prev => ({ ...prev, per_km: value }));
-    }
-    if (minKmHybridPerDay !== undefined && minKmHybridPerDay !== null) {
-      const value = typeof minKmHybridPerDay === 'string' ? minKmHybridPerDay : String(minKmHybridPerDay);
-      setMinKmSettings(prev => ({ ...prev, hybrid_per_day: value }));
+    const perValue =
+      minKmPerKm !== undefined && minKmPerKm !== null
+        ? typeof minKmPerKm === 'string'
+          ? minKmPerKm
+          : String(minKmPerKm)
+        : null;
+    const hybridValue =
+      minKmHybridPerDay !== undefined && minKmHybridPerDay !== null
+        ? typeof minKmHybridPerDay === 'string'
+          ? minKmHybridPerDay
+          : String(minKmHybridPerDay)
+        : null;
+
+    if (perValue !== null || hybridValue !== null) {
+      setMinKmSettings((prev) => ({
+        per_km: perValue ?? prev.per_km,
+        hybrid_per_day: hybridValue ?? prev.hybrid_per_day,
+      }));
+      setMinKmSavedSnapshot((prev) => ({
+        per_km: perValue ?? prev.per_km,
+        hybrid_per_day: hybridValue ?? prev.hybrid_per_day,
+      }));
     }
   }, [minKmPerKm, minKmHybridPerDay]);
 
@@ -212,11 +233,12 @@ export default function Settings() {
     () => billPrefix !== (orgSettings?.bill_number_prefix ?? 'PT'),
     [billPrefix, orgSettings?.bill_number_prefix]
   );
-  const minKmDirty = useMemo(() => {
-    const perKm = minKmPerKm != null ? String(minKmPerKm) : '';
-    const hybrid = minKmHybridPerDay != null ? String(minKmHybridPerDay) : '';
-    return minKmSettings.per_km !== perKm || minKmSettings.hybrid_per_day !== hybrid;
-  }, [minKmSettings.per_km, minKmSettings.hybrid_per_day, minKmPerKm, minKmHybridPerDay]);
+  const minKmDirty = useMemo(
+    () =>
+      minKmSettings.per_km !== minKmSavedSnapshot.per_km ||
+      minKmSettings.hybrid_per_day !== minKmSavedSnapshot.hybrid_per_day,
+    [minKmSettings.per_km, minKmSettings.hybrid_per_day, minKmSavedSnapshot.per_km, minKmSavedSnapshot.hybrid_per_day]
+  );
   const [dirtyCardIds, setDirtyCardIds] = useState<Set<string>>(new Set());
   const registerCardDirty = useCallback((cardId: string, dirty: boolean) => {
     setDirtyCardIds((prev) => {
@@ -433,6 +455,12 @@ export default function Settings() {
       await updateSystemConfig.mutateAsync({
         key: 'minimum_km_hybrid_per_day',
         value: minKmSettings.hybrid_per_day,
+      });
+      // Mark current values as the new "saved" baseline so the leave prompt
+      // stops showing until the user makes further edits.
+      setMinKmSavedSnapshot({
+        per_km: minKmSettings.per_km,
+        hybrid_per_day: minKmSettings.hybrid_per_day,
       });
       toast({
         title: 'Success',

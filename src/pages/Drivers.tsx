@@ -481,6 +481,37 @@ export default function Drivers() {
   const [addOpen, setAddOpen] = useState(false);
   const [editDriver, setEditDriver] = useState<Driver | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [viewDocUrl, setViewDocUrl] = useState<string | null>(null);
+  const [viewDocName, setViewDocName] = useState<string>('');
+
+  const openViewForPath = async (
+    path: string | null,
+    label: string,
+    driverName: string,
+    originalFileName?: string | null
+  ) => {
+    if (!path) return;
+
+    const { data, error } = await supabase.storage
+      .from('driver-licenses')
+      .createSignedUrl(path, 3600);
+
+    if (!error && data?.signedUrl) {
+      const baseTitleParts = [label, driverName].filter(Boolean);
+      const baseTitle = baseTitleParts.join(' – ');
+      const fullTitle = originalFileName
+        ? `${baseTitle || label} (${originalFileName})`
+        : baseTitle || originalFileName || 'Document';
+
+      setViewDocUrl(data.signedUrl);
+      setViewDocName(fullTitle || 'Document');
+    }
+  };
+
+  const closeViewer = () => {
+    setViewDocUrl(null);
+    setViewDocName('');
+  };
 
   const filteredDrivers = drivers?.filter((driver) => {
     const matchesSearch =
@@ -599,12 +630,44 @@ export default function Drivers() {
                       </TableCell>
                       <TableCell>
                         {driver.license_file_path ? (
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-muted-foreground" />
-                            <DownloadLicenseButton
-                              filePath={driver.license_file_path}
-                              fileName={driver.license_file_name}
-                            />
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-muted-foreground" />
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() =>
+                                      openViewForPath(
+                                        driver.license_file_path,
+                                        'License',
+                                        driver.name,
+                                        driver.license_file_name
+                                      )
+                                    }
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>View license</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span>
+                                    <DownloadLicenseButton
+                                      filePath={driver.license_file_path}
+                                      fileName={driver.license_file_name}
+                                    />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>Download license</TooltipContent>
+                              </Tooltip>
+                            </div>
+                            <p className="text-[11px] leading-tight text-muted-foreground truncate max-w-[160px]">
+                              {driver.license_file_name || 'License document'}
+                            </p>
                           </div>
                         ) : (
                           <span className="text-muted-foreground">-</span>
@@ -615,7 +678,24 @@ export default function Drivers() {
                           {driver.aadhaar_file_path && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span><DownloadLicenseButton filePath={driver.aadhaar_file_path} fileName={driver.aadhaar_file_name} /></span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-[11px] flex items-center gap-1"
+                                  onClick={() =>
+                                    openViewForPath(
+                                      driver.aadhaar_file_path,
+                                      'Aadhaar card',
+                                      driver.name,
+                                      driver.aadhaar_file_name
+                                    )
+                                  }
+                                >
+                                  <Eye className="h-3 w-3" />
+                                  <span className="truncate max-w-[90px]">
+                                    {driver.aadhaar_file_name || 'Aadhaar'}
+                                  </span>
+                                </Button>
                               </TooltipTrigger>
                               <TooltipContent>Aadhaar card</TooltipContent>
                             </Tooltip>
@@ -623,7 +703,24 @@ export default function Drivers() {
                           {driver.police_verification_file_path && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span><DownloadLicenseButton filePath={driver.police_verification_file_path} fileName={driver.police_verification_file_name} /></span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-[11px] flex items-center gap-1"
+                                  onClick={() =>
+                                    openViewForPath(
+                                      driver.police_verification_file_path,
+                                      'Police verification',
+                                      driver.name,
+                                      driver.police_verification_file_name
+                                    )
+                                  }
+                                >
+                                  <Eye className="h-3 w-3" />
+                                  <span className="truncate max-w-[110px]">
+                                    {driver.police_verification_file_name || 'Police verification'}
+                                  </span>
+                                </Button>
                               </TooltipTrigger>
                               <TooltipContent>Police verification</TooltipContent>
                             </Tooltip>
@@ -631,7 +728,24 @@ export default function Drivers() {
                           {driver.health_certificate_file_path && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span><DownloadLicenseButton filePath={driver.health_certificate_file_path} fileName={driver.health_certificate_file_name} /></span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-[11px] flex items-center gap-1"
+                                  onClick={() =>
+                                    openViewForPath(
+                                      driver.health_certificate_file_path,
+                                      'Health certificate',
+                                      driver.name,
+                                      driver.health_certificate_file_name
+                                    )
+                                  }
+                                >
+                                  <Eye className="h-3 w-3" />
+                                  <span className="truncate max-w-[110px]">
+                                    {driver.health_certificate_file_name || 'Health certificate'}
+                                  </span>
+                                </Button>
                               </TooltipTrigger>
                               <TooltipContent>Health certificate</TooltipContent>
                             </Tooltip>
@@ -687,6 +801,15 @@ export default function Drivers() {
           driver={editDriver}
         />
       )}
+
+      <DocumentViewerDialog
+        open={!!viewDocUrl}
+        onOpenChange={(open) => {
+          if (!open) closeViewer();
+        }}
+        url={viewDocUrl}
+        fileName={viewDocName}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
