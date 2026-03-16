@@ -39,12 +39,13 @@ export function SettingsLeaveProvider({ children, onConfirmLeave, renderLeaveDia
   }, []);
 
   const handleLeave = useCallback(() => {
-    if (pendingPath) {
-      onConfirmLeave(pendingPath);
-      setHasUnsavedChanges(false);
-      setPendingPath(null);
-      setDialogOpen(false);
-    }
+    const path = pendingPath;
+    if (!path) return;
+    setHasUnsavedChanges(false);
+    setPendingPath(null);
+    setDialogOpen(false);
+    // Navigate after closing the dialog so the dialog doesn't block the new page
+    setTimeout(() => onConfirmLeave(path), 0);
   }, [pendingPath, onConfirmLeave]);
 
   const handleCancel = useCallback(() => {

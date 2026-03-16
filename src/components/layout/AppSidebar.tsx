@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { useSettingsLeave } from '@/lib/settings-leave-context';
@@ -70,6 +70,13 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
 
   const isOnSettings = location.pathname === SETTINGS_PATH || location.pathname.startsWith(SETTINGS_PATH + '/');
   const shouldPromptLeave = isOnSettings && leaveContext?.hasUnsavedChanges;
+
+  // When we're not on Settings, clear unsaved flag so it never blocks navigation
+  useEffect(() => {
+    if (!isOnSettings && leaveContext?.hasUnsavedChanges) {
+      leaveContext.setHasUnsavedChanges(false);
+    }
+  }, [isOnSettings, leaveContext]);
 
   // When collapsed, hover temporarily shows full sidebar; leave collapses it again
   const visuallyNarrow = collapsed && !hoverExpanded;

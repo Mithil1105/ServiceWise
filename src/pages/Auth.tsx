@@ -3,6 +3,7 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { setNoIndexMeta } from '@/lib/marketing-seo';
 import { getCachedOrg, getMostRecentOrg } from '@/lib/organizationCache';
+import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,6 +49,7 @@ export default function Auth() {
   const [searchParams] = useSearchParams();
   const orgCode = searchParams.get('orgCode');
   const { signIn, signUp, user, profile, loading } = useAuth();
+  const { isMasterAdmin, loading: adminLoading } = useIsMasterAdmin();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -61,10 +63,14 @@ export default function Auth() {
   }, [loginEmail]);
 
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && !adminLoading && user) {
       const emailConfirmed = !!(user as { email_confirmed_at?: string | null }).email_confirmed_at;
       if (!emailConfirmed) {
         navigate('/verify-email');
+        return;
+      }
+      if (isMasterAdmin) {
+        navigate('/admin');
         return;
       }
       if (profile?.organization_id) {
@@ -73,7 +79,7 @@ export default function Auth() {
         navigate(orgCode ? `/onboarding?orgCode=${orgCode}` : '/onboarding');
       }
     }
-  }, [user, profile, loading, navigate, orgCode]);
+  }, [user, profile, loading, adminLoading, isMasterAdmin, navigate, orgCode]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,11 +114,7 @@ export default function Auth() {
         title: 'Welcome back!',
         description: 'You have successfully logged in.',
       });
-      if (orgCode) {
-        navigate(`/onboarding?orgCode=${orgCode}`);
-      } else {
-        navigate('/app');
-      }
+      // Navigation after login is handled by the auth state effect above
     }
   };
 

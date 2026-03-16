@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { setNoIndexMeta } from '@/lib/marketing-seo';
 import { joinOrganization } from '@/hooks/use-join-organization';
+import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +22,7 @@ export default function Onboarding() {
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const { user, profile, signOut } = useAuth();
+  const { isMasterAdmin, loading: adminLoading } = useIsMasterAdmin();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -59,6 +61,9 @@ export default function Onboarding() {
 
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+  if (!adminLoading && isMasterAdmin) {
+    return <Navigate to="/admin" replace />;
   }
   if (profile?.organization_id) {
     return <Navigate to="/app" replace />;

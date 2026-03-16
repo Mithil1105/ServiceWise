@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { Outlet, Navigate, NavLink, Link } from 'react-router-dom';
+import { Outlet, Navigate, NavLink } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import { setNoIndexMeta } from '@/lib/marketing-seo';
-import { Loader2, LayoutDashboard, Building2, ArrowLeft, LogOut } from 'lucide-react';
+import { Loader2, LayoutDashboard, Building2, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -43,12 +43,6 @@ export default function AdminLayout() {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 w-full border-b bg-background/95">
         <div className="flex h-14 items-center px-4 gap-4 flex-wrap">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/app">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to app
-            </Link>
-          </Button>
           <span className="font-semibold">Admin</span>
           <nav className="flex gap-2 ml-4 flex-1">
             {adminNav.map((item) => (

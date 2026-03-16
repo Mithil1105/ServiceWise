@@ -89,10 +89,12 @@ export default function AppLayout() {
     );
   }
 
+  // Master admin: only see admin panel, never tenant app (no org affiliation)
+  if (isMasterAdmin) {
+    return <Navigate to="/admin" replace />;
+  }
+
   if (profile?.organization_id == null) {
-    if (isMasterAdmin) {
-      return <Navigate to="/admin" replace />;
-    }
     return <Navigate to="/onboarding" replace />;
   }
 
