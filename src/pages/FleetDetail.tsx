@@ -117,11 +117,31 @@ export default function FleetDetail() {
   const [pinNewNote, setPinNewNote] = useState(false);
   const [assignmentNote, setAssignmentNote] = useState('');
   const [assignmentNoteTouched, setAssignmentNoteTouched] = useState(false);
+  const [ownerName, setOwnerName] = useState('');
+  const [brand, setBrand] = useState('');
+  const [model, setModel] = useState('');
+  const [year, setYear] = useState<string>('');
+  const [fuelType, setFuelType] = useState<string>('');
+  const [vehicleType, setVehicleType] = useState<string>('');
+  const [status, setStatus] = useState<string>('');
+  const [notesValue, setNotesValue] = useState('');
 
   useEffect(() => {
     if (car?.permanent_assignment_note != null) setAssignmentNote(car.permanent_assignment_note);
     else if (!assignmentNoteTouched) setAssignmentNote('');
   }, [car?.permanent_assignment_note]);
+
+  useEffect(() => {
+    if (!car) return;
+    setOwnerName(car.owner_name ?? '');
+    setBrand(car.brand ?? '');
+    setModel(car.model ?? '');
+    setYear(car.year ? String(car.year) : '');
+    setFuelType(car.fuel_type ?? '');
+    setVehicleType(car.vehicle_type ?? '');
+    setStatus(car.status ?? 'active');
+    setNotesValue(car.notes ?? '');
+  }, [car]);
 
   const currentKm = latestOdo?.odometer_km || 0;
 
@@ -450,19 +470,137 @@ export default function FleetDetail() {
             </Dialog>
           )}
           <Button variant="outline" asChild>
-            <Link to={`/odometer?car=${car.id}`}>
+            <Link to={`/app/odometer?car=${car.id}`}>
               <Gauge className="h-4 w-4 mr-2" />
               Update Odometer
             </Link>
           </Button>
           <Button asChild>
-            <Link to={`/services/new?car=${car.id}`}>
+            <Link to={`/app/services/new?car=${car.id}`}>
               <Wrench className="h-4 w-4 mr-2" />
               Add Service
             </Link>
           </Button>
         </div>
       </div>
+
+      {/* Editable Vehicle Details */}
+      {(isAdmin || isManager) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Car className="h-5 w-5" />
+              Vehicle details
+            </CardTitle>
+            <CardDescription>Edit basic information about this vehicle</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="owner-name">Owner name</Label>
+              <Input
+                id="owner-name"
+                value={ownerName}
+                onChange={(e) => setOwnerName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="brand">Brand</Label>
+              <Input
+                id="brand"
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="model">Model</Label>
+              <Input
+                id="model"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="year">Year</Label>
+              <Input
+                id="year"
+                type="number"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Fuel type</Label>
+              <Select value={fuelType} onValueChange={setFuelType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select fuel type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="petrol">Petrol</SelectItem>
+                  <SelectItem value="diesel">Diesel</SelectItem>
+                  <SelectItem value="cng">CNG</SelectItem>
+                  <SelectItem value="electric">Electric</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Vehicle type</Label>
+              <Select value={vehicleType} onValueChange={setVehicleType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select vehicle type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="car">Car</SelectItem>
+                  <SelectItem value="bus">Bus</SelectItem>
+                  <SelectItem value="tempo-traveller">Tempo Traveller</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-2 space-y-2">
+              <Label htmlFor="vehicle-notes">Internal notes</Label>
+              <Textarea
+                id="vehicle-notes"
+                value={notesValue}
+                onChange={(e) => setNotesValue(e.target.value)}
+                placeholder="Notes about this vehicle"
+              />
+            </div>
+            <div className="md:col-span-2 flex justify-end">
+              <Button
+                onClick={() =>
+                  updateCar.mutate({
+                    id: id!,
+                    owner_name: ownerName || null,
+                    brand: brand || null,
+                    model: model || null,
+                    year: year ? Number(year) : null,
+                    fuel_type: fuelType || null,
+                    vehicle_type: vehicleType || null,
+                    status: status || 'active',
+                    notes: notesValue || null,
+                  })
+                }
+                disabled={updateCar.isPending}
+              >
+                {updateCar.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Save vehicle details
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Active Downtime Banner */}
       {activeDowntime && (

@@ -410,12 +410,12 @@ export default function Fleet() {
                             </Link>
                           </Button>
                           <Button variant="ghost" size="icon" asChild>
-                            <Link to={`/odometer?car=${car.id}`}>
+                            <Link to={`/app/odometer?car=${car.id}`}>
                               <Gauge className="h-4 w-4" />
                             </Link>
                           </Button>
                           <Button variant="ghost" size="icon" asChild>
-                            <Link to={`/services/new?car=${car.id}`}>
+                            <Link to={`/app/services/new?car=${car.id}`}>
                               <Wrench className="h-4 w-4" />
                             </Link>
                           </Button>
