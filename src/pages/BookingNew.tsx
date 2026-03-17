@@ -26,6 +26,7 @@ import { DriverAutocomplete } from '@/components/bookings/DriverAutocomplete';
 import { useAuth } from '@/lib/auth-context';
 import { toast } from 'sonner';
 import { cn, formatCarLabel } from '@/lib/utils';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { RATE_TYPE_LABELS, type TripType, type RateType, type BookingStatus } from '@/types/booking';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 import { type BookingFormBuiltInFieldKey, BOOKING_FORM_FIELD_LABELS, DEFAULT_TRIP_TYPE_OPTIONS } from '@/types/form-config';
@@ -259,6 +260,18 @@ export default function BookingNew() {
     setVehicleSearch('');
     setMinSeats('');
     setShowVehicleSelect(false);
+  };
+
+  const handleAddSingleVehicle = (car: typeof availableForSelection[0]) => {
+    setSelectedVehicles(prev => [...prev, {
+      car_id: car.car_id,
+      vehicle_number: car.vehicle_number,
+      model: car.model,
+      seats: (car as any).seats ?? 5,
+      vehicle_class: car.vehicle_class ?? 'lmv',
+      driver_name: '',
+      driver_phone: '',
+    }]);
   };
 
   const toggleSortBy = (field: SortOption) => {
@@ -1284,12 +1297,31 @@ export default function BookingNew() {
                 </div>
               </div>
 
-              {/* Search bar and filters */}
+              {/* Searchable dropdown - primary way to add a vehicle */}
+              <div className="space-y-2">
+                <Label className="text-xs">Search and select vehicle to add</Label>
+                <SearchableSelect
+                  options={availableForSelection.map(car => ({
+                    value: car.car_id,
+                    label: `${car.vehicle_number} (${car.model})${(car as any).seats ? ` · ${(car as any).seats} seats` : ''}`,
+                  }))}
+                  value=""
+                  onValueChange={(carId) => {
+                    const car = availableForSelection.find(c => c.car_id === carId);
+                    if (car) handleAddSingleVehicle(car);
+                  }}
+                  placeholder="Search by vehicle number or model..."
+                  searchPlaceholder="Search by vehicle number or model..."
+                  emptyText="No vehicles match your search."
+                />
+              </div>
+
+              {/* Search bar and filters for grid view */}
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search by vehicle number or model..."
+                    placeholder="Filter list by vehicle number or model..."
                     value={vehicleSearch}
                     onChange={e => setVehicleSearch(e.target.value)}
                     className="pl-9"

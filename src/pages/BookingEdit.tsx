@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useParams, Link, Navigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +24,7 @@ import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 import { DEFAULT_TRIP_TYPE_OPTIONS } from '@/types/form-config';
 import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import { getEstimatedKmFromDistance } from '@/lib/estimated-km';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface VehicleAssignment {
   id?: string;
@@ -91,8 +92,13 @@ export default function BookingEdit() {
   const [selectedRequestedVehicleId, setSelectedRequestedVehicleId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Reset form when navigating to a different booking
+  useEffect(() => {
+    setInitialized(false);
+  }, [id]);
+
   // Initialize form from booking data
-  if (booking && !initialized) {
+  if (booking && booking.id === id && !initialized) {
     setCustomerName(booking.customer_name);
     setCustomerPhone(booking.customer_phone);
     setTripType(booking.trip_type ?? 'local');
@@ -719,18 +725,22 @@ export default function BookingEdit() {
               ) : !selectedRequestedVehicleId ? (
                 <p className="text-sm text-muted-foreground">Select a requested vehicle above to see available cars.</p>
               ) : availableForSelection.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {availableForSelection.map(car => (
-                    <div key={car.car_id} className="flex items-center justify-between p-2 border rounded bg-background hover:bg-muted/50 cursor-pointer" onClick={() => {
-                      handleAddVehicle(car, selectedRequestedVehicleId);
-                    }}>
-                      <div className="flex items-center gap-2">
-                        <Check className="h-4 w-4 text-success" />
-                        <span className="font-medium">{car.vehicle_number}</span>
-                        <span className="text-sm text-muted-foreground">({car.model})</span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="space-y-2">
+                  <Label className="text-xs">Search and select vehicle</Label>
+                  <SearchableSelect
+                    options={availableForSelection.map(car => ({
+                      value: car.car_id,
+                      label: `${car.vehicle_number} (${car.model})`,
+                    }))}
+                    value=""
+                    onValueChange={(carId) => {
+                      const car = availableForSelection.find(c => c.car_id === carId);
+                      if (car) handleAddVehicle(car, selectedRequestedVehicleId);
+                    }}
+                    placeholder="Search by vehicle number or model..."
+                    searchPlaceholder="Search by vehicle number or model..."
+                    emptyText="No vehicles match your search."
+                  />
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No available vehicles for selected dates</p>

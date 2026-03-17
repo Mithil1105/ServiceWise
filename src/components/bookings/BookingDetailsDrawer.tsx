@@ -24,7 +24,8 @@ import {
   Gauge,
   AlertTriangle,
   Receipt,
-  Calculator
+  Calculator,
+  Copy
 } from 'lucide-react';
 import { BookingStatusBadge } from './BookingStatusBadge';
 import { GenerateBillDialog } from './GenerateBillDialog';
@@ -38,6 +39,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useState, useMemo } from 'react';
 import { useBillsByBooking } from '@/hooks/use-bills';
 import { useSystemConfig } from '@/hooks/use-dashboard';
+import { useAuth } from '@/lib/auth-context';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
+import { formatDateDMY } from '@/lib/date';
+import { toast } from 'sonner';
 
 interface BookingDetailsDrawerProps {
   booking: BookingWithDetails | null;
@@ -60,6 +65,8 @@ export function BookingDetailsDrawer({
   const { data: bills } = useBillsByBooking(booking?.id);
   const { data: minKmPerKm } = useSystemConfig('minimum_km_per_km');
   const { data: minKmHybridPerDay } = useSystemConfig('minimum_km_hybrid_per_day');
+  const { organization } = useAuth();
+  const { data: orgSettings } = useOrganizationSettings();
   
   // Fetch incidents for cars in this booking during the trip period
   const { data: incidents } = useQuery({
@@ -174,6 +181,56 @@ export function BookingDetailsDrawer({
 
   const formatDateTime = (date: string) => {
     return formatDateTimeFull(date);
+  };
+
+  /** Build quote text from booking (requested vehicles or assigned vehicles) for copy/share. */
+  const getQuoteText = (): string => {
+    const companyName = organization?.company_name || organization?.name || 'Company';
+    const tripDates = booking.start_at && booking.end_at
+      ? `${formatDateDMY(booking.start_at)} – ${formatDateDMY(booking.end_at)}`
+      : '—';
+    const effectiveTerms = orgSettings?.terms_and_conditions?.trim() || 'Standard terms apply.';
+    let t = `*${companyName}*\n*Trip Quote*\n${'─'.repeat(28)}\n\n`;
+    t += `*Customer:* ${booking.customer_name}\n`;
+    t += `*Phone:* ${booking.customer_phone}\n`;
+    t += `*Trip dates:* ${tripDates}\n`;
+    if (booking.pickup) t += `*Pickup:* ${booking.pickup}\n`;
+    if (booking.dropoff) t += `*Drop:* ${booking.dropoff}\n`;
+    if (booking.estimated_km) t += `*Estimated KM:* ${booking.estimated_km.toLocaleString()}\n`;
+    t += `\n*Total:* ${formatCurrency(totalAmount)}\n`;
+    t += `*Advance:* ${formatCurrency(totalAdvance)}  |  *Due:* ${formatCurrency(totalAmount - totalAdvance)}\n\n`;
+
+    if (booking.booking_requested_vehicles && booking.booking_requested_vehicles.length > 0) {
+      t += `*Vehicle-wise quote:*\n\n`;
+      booking.booking_requested_vehicles.forEach((rv, i) => {
+        const label = `${rv.brand || ''} ${rv.model || ''}`.trim() || `Vehicle ${i + 1}`;
+        t += `• *${label}:* ${RATE_TYPE_LABELS[rv.rate_type]}`;
+        if (rv.rate_type === 'total' && rv.rate_total != null) t += ` - ${formatCurrency(rv.rate_total)}`;
+        if (rv.rate_type === 'per_day' && rv.rate_per_day != null) t += ` - ${formatCurrency(rv.rate_per_day)}/day`;
+        if (rv.rate_type === 'per_km' && rv.rate_per_km != null) t += ` - ${formatCurrency(rv.rate_per_km)}/km`;
+        if (rv.rate_type === 'hybrid') {
+          if (rv.rate_per_day != null) t += ` - ${formatCurrency(rv.rate_per_day)}/day`;
+          if (rv.rate_per_km != null) t += ` + ${formatCurrency(rv.rate_per_km)}/km`;
+        }
+        if (rv.driver_allowance_per_day && Number(rv.driver_allowance_per_day) > 0) {
+          t += ` (Driver allowance: ${formatCurrency(Number(rv.driver_allowance_per_day))}/day)`;
+        }
+        t += '\n';
+      });
+    } else if (booking.booking_vehicles && booking.booking_vehicles.length > 0) {
+      t += `*Assigned vehicles:*\n\n`;
+      booking.booking_vehicles.forEach((v) => {
+        const label = v.car ? formatCarLabel(v.car) : 'Vehicle';
+        t += `• *${label}:* ${formatCurrency(v.computed_total || v.rate_total)} (${RATE_TYPE_LABELS[v.rate_type]})\n`;
+      });
+    }
+    t += `\n*Terms & conditions:*\n${effectiveTerms}\n`;
+    return t;
+  };
+
+  const handleCopyQuote = () => {
+    void navigator.clipboard.writeText(getQuoteText());
+    toast.success('Quote copied to clipboard');
   };
 
   return (
@@ -388,11 +445,17 @@ export function BookingDetailsDrawer({
           )}
 
           {/* Actions */}
-          <div className="flex gap-2 pt-4">
+          <div className="flex flex-wrap gap-2 pt-4">
             {onEdit && (
-              <Button onClick={onEdit} className="flex-1">
+              <Button onClick={onEdit} className="flex-1 min-w-[120px]">
                 <Edit className="h-4 w-4 mr-2" />
                 Edit Booking
+              </Button>
+            )}
+            {(booking.booking_requested_vehicles?.length || booking.booking_vehicles?.length || totalAmount > 0) && (
+              <Button variant="outline" onClick={handleCopyQuote} title="Copy quote to send to customer">
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Quote
               </Button>
             )}
             {['ongoing', 'completed'].includes(booking.status) && (

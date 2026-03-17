@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 export interface ServiceBillFile {
   id: string;
   service_record_id: string;
+  organization_id: string;
   file_path: string;
   file_name: string;
   file_size: number;
