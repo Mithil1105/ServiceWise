@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrg } from '@/hooks/use-org';
+import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
 
 export type DocumentType = 'rc' | 'puc' | 'insurance' | 'warranty' | 'permits' | 'fitness';
 
@@ -105,8 +106,7 @@ export function useUpsertCarDocument() {
 
       // Upload file if provided
       if (file) {
-        const MAX_SIZE = 2 * 1024 * 1024; // 2 MB
-        if (file.size > MAX_SIZE) {
+        if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
           throw new Error(`File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
         }
         const fileExt = file.name.split('.').pop();

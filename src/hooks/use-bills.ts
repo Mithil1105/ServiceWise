@@ -5,6 +5,7 @@ import type { Bill, VehicleBillDetail, BookingWithDetails, BookingRequestedVehic
 import { useSystemConfig } from './use-dashboard';
 import { isoAtNoonUtcFromDateInput } from '@/lib/date';
 import { useAuth } from '@/lib/auth-context';
+import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
 
 /**
  * Get all bills (for billing management page)
@@ -657,6 +658,9 @@ export function useUploadBillPDF() {
       billId: string;
       pdfFile: File;
     }) => {
+      if (pdfFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+        throw new Error(`File must be 2 MB or smaller (${(pdfFile.size / 1024 / 1024).toFixed(2)} MB).`);
+      }
       const fileName = `${billId}/${Date.now()}-bill.pdf`;
 
       const { error: uploadError } = await supabase.storage

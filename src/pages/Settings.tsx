@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
+import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
 import { useSettingsLeave } from '@/lib/settings-leave-context';
 import { useServiceRules, useCreateServiceRule, useBrandsWithRules, useCopyServiceRules, useApplyRulesToBrands } from '@/hooks/use-services';
 import { useBrands, useCreateBrand } from '@/hooks/use-brands';
@@ -88,6 +89,11 @@ export default function Settings() {
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !orgId) return;
+    if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+      toast({ title: 'File too large', description: 'Logo must be 2 MB or smaller.', variant: 'destructive' });
+      e.target.value = '';
+      return;
+    }
     setLogoUploading(true);
     try {
       const ext = file.name.split('.').pop() || 'png';

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
+import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
 
 export type DriverType = 'permanent' | 'temporary';
 
@@ -120,8 +121,6 @@ export function useUpsertDriver() {
     },
   });
 }
-
-const MAX_DOCUMENT_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 
 const uploadDriverFile = async (file: File, prefix: string): Promise<{ path: string; name: string }> => {
   if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {

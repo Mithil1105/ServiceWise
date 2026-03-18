@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CompanyBill } from '@/types/booking';
 import { useOrg } from '@/hooks/use-org';
+import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
 
 export function useCompanyBills(filters?: {
   bookingId?: string;
@@ -124,6 +125,9 @@ export function useUploadCompanyBillPDF() {
 
   return useMutation({
     mutationFn: async ({ billId, pdfFile }: { billId: string; pdfFile: File }) => {
+      if (pdfFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+        throw new Error(`File must be 2 MB or smaller (${(pdfFile.size / 1024 / 1024).toFixed(2)} MB).`);
+      }
       const filePath = `company-bills/${billId}/${pdfFile.name}`;
 
       const { error: uploadError } = await supabase.storage

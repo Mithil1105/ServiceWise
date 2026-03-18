@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { MAX_DOCUMENT_FILE_SIZE_BYTES, MAX_COMBINED_UPLOAD_BYTES } from '@/lib/document-upload';
 
 export interface ServiceBillFile {
   id: string;
@@ -70,9 +71,16 @@ export function useUploadServiceBills() {
       carId: string;
       files: File[];
     }) => {
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      if (totalSize > MAX_COMBINED_UPLOAD_BYTES) {
+        throw new Error(`Combined file size must be 2 MB or smaller (${(totalSize / 1024 / 1024).toFixed(2)} MB).`);
+      }
       const uploadedFiles: Omit<ServiceBillFile, 'id' | 'created_at'>[] = [];
 
       for (const file of files) {
+        if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+          throw new Error(`${file.name}: File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
+        }
         const ext = file.name.split('.').pop();
         const fileName = `${carId}/${serviceRecordId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 

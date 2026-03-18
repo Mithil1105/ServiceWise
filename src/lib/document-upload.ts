@@ -1,5 +1,7 @@
-/** Max file size for document uploads (PDF/images): 2 MB */
-export const MAX_DOCUMENT_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+/** Max file size for all uploads: 2 MB per file, 2 MB combined where multiple files are allowed */
+export const MAX_UPLOAD_MB = 2;
+export const MAX_DOCUMENT_FILE_SIZE_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+export const MAX_COMBINED_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 export const DOCUMENT_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp';
 

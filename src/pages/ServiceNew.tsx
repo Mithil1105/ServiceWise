@@ -40,6 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { toLocalDateInputValue } from '@/lib/date';
+import { MAX_UPLOAD_MB } from '@/lib/document-upload';
 
 interface WarrantyItem {
   itemName: string;
@@ -47,10 +48,10 @@ interface WarrantyItem {
   expiryDate: string;
 }
 
-// File size limits
-const MAX_TOTAL_SIZE_MB = 10;
-const MAX_IMAGE_SIZE_MB = 2;
-const MAX_PDF_SIZE_MB = 2;
+// File size limits: 2 MB max per file, 2 MB combined total (from shared constant)
+const MAX_TOTAL_SIZE_MB = MAX_UPLOAD_MB;
+const MAX_IMAGE_SIZE_MB = MAX_UPLOAD_MB;
+const MAX_PDF_SIZE_MB = MAX_UPLOAD_MB;
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
 
 const serviceSchema = z.object({
@@ -977,7 +978,7 @@ export default function ServiceNew() {
                     or click to browse • paste from clipboard (Ctrl+V)
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    PDF, JPG, PNG accepted
+                    PDF, JPG, PNG accepted • Max 2 MB per file, 2 MB combined
                   </p>
                 </label>
               </div>
