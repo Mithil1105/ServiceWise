@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES, MAX_COMBINED_UPLOAD_BYTES } from '@/lib/document-upload';
 import { storageUpload, storageRemove } from '@/lib/storage';
 import { serviceBillKey, toFullKey } from '@/lib/storage-keys';
+import { compressImageIfWithinLimit } from '@/lib/compress-image';
 
 export interface ServiceBillFile {
   id: string;
@@ -73,26 +74,48 @@ export function useUploadServiceBills() {
       carId: string;
       files: File[];
     }) => {
-      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      const prepared: Array<{
+        uploadFile: File;
+        key: string;
+        originalFileName: string;
+        originalFileType: string;
+        uploadSize: number;
+      }> = [];
+      let totalSize = 0;
+
+      // Prepare/compress all files first so combined size validation can use the final upload sizes.
+      for (const file of files) {
+        const uploadFile = await compressImageIfWithinLimit(file, MAX_DOCUMENT_FILE_SIZE_BYTES);
+        if (uploadFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+          throw new Error(`${file.name}: File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
+        }
+
+        const ext = file.name.split('.').pop() || 'bin';
+        const key = serviceBillKey(carId, serviceRecordId, ext);
+
+        prepared.push({
+          uploadFile,
+          key,
+          originalFileName: file.name,
+          originalFileType: file.type,
+          uploadSize: uploadFile.size,
+        });
+        totalSize += uploadFile.size;
+      }
+
       if (totalSize > MAX_COMBINED_UPLOAD_BYTES) {
         throw new Error(`Combined file size must be 2 MB or smaller (${(totalSize / 1024 / 1024).toFixed(2)} MB).`);
       }
+
       const uploadedFiles: Omit<ServiceBillFile, 'id' | 'created_at'>[] = [];
-
-      for (const file of files) {
-        if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
-          throw new Error(`${file.name}: File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
-        }
-        const ext = file.name.split('.').pop() || 'bin';
-        const key = serviceBillKey(carId, serviceRecordId, ext);
-        await storageUpload(key, file);
-
+      for (const p of prepared) {
+        await storageUpload(p.key, p.uploadFile);
         uploadedFiles.push({
           service_record_id: serviceRecordId,
-          file_path: key,
-          file_name: file.name,
-          file_size: file.size,
-          file_type: file.type,
+          file_path: p.key,
+          file_name: p.originalFileName,
+          file_size: p.uploadSize,
+          file_type: p.uploadFile.type,
         });
       }
 

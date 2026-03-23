@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
 import { storageUpload, storageRemove, storageGetSignedUrl } from '@/lib/storage';
 import { driverLicenseKey, toFullKey } from '@/lib/storage-keys';
+import { compressImageIfWithinLimit } from '@/lib/compress-image';
 
 export type DriverType = 'permanent' | 'temporary';
 
@@ -125,12 +126,13 @@ export function useUpsertDriver() {
 }
 
 const uploadDriverFile = async (file: File, prefix: string): Promise<{ path: string; name: string }> => {
-  if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
-    throw new Error(`File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
-  }
   const fileExt = file.name.split('.').pop() || 'bin';
   const key = driverLicenseKey(prefix, fileExt);
-  await storageUpload(key, file);
+  const uploadFile = await compressImageIfWithinLimit(file, MAX_DOCUMENT_FILE_SIZE_BYTES);
+  if (uploadFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+    throw new Error(`File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
+  }
+  await storageUpload(key, uploadFile);
   return { path: key, name: file.name };
 };
 

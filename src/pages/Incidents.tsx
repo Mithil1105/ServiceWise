@@ -7,6 +7,7 @@ import { useDriverForCarAtTime, useCreateTrafficChallan } from '@/hooks/use-traf
 import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 import { type IncidentFormBuiltInFieldKey, INCIDENT_FORM_FIELD_LABELS, type FleetNewCarCustomField } from '@/types/form-config';
+import { DocumentFileInput } from '@/components/ui/document-file-input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +58,11 @@ import {
 import { formatDateTimeDMY, toLocalDateTimeInputValue } from '@/lib/date';
 import { formatCarLabel } from '@/lib/utils';
 import type { Incident } from '@/types';
+import { storageUpload } from '@/lib/storage';
+import { incidentAttachmentKey } from '@/lib/storage-keys';
+import { compressImageIfWithinLimit } from '@/lib/compress-image';
+import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
+import { useToast } from '@/hooks/use-toast';
 
 const INCIDENT_TYPES = [
   { value: 'breakdown', label: 'Breakdown' },
@@ -98,6 +104,8 @@ export default function Incidents() {
   const [incidentDate, setIncidentDate] = useState(() => toLocalDateTimeInputValue());
   const [estimatedReturn, setEstimatedReturn] = useState('');
   const [incidentCustomValues, setIncidentCustomValues] = useState<Record<string, string | number | boolean | null>>({});
+  const [incidentAttachmentFile, setIncidentAttachmentFile] = useState<File | null>(null);
+  const [attachmentLoading, setAttachmentLoading] = useState(false);
   const [addFormErrors, setAddFormErrors] = useState<Record<string, string>>({});
 
   const { data: orgSettings } = useOrganizationSettings();
@@ -155,6 +163,7 @@ export default function Incidents() {
 
   const createMutation = useCreateIncident();
   const resolveMutation = useResolveIncident();
+  const { toast } = useToast();
 
   // Handle resolve from URL param
   useEffect(() => {
@@ -173,7 +182,7 @@ export default function Incidents() {
     label: `${car.vehicle_number} - ${car.model}`,
   }));
 
-  const handleAddIncident = () => {
+  const handleAddIncident = async () => {
     setAddFormErrors({});
     const err: Record<string, string> = {};
     if (isIncidentFieldRequired('car_id') && !selectedCarId) err.car_id = 'Please select a vehicle';
@@ -185,6 +194,7 @@ export default function Incidents() {
     if (isIncidentFieldRequired('location') && !location?.trim()) err.location = 'Location is required';
     if (isIncidentFieldRequired('cost') && (cost === '' || cost == null)) err.cost = 'Cost is required';
     if (isIncidentFieldRequired('driver_name') && !driverName?.trim()) err.driver_name = 'Driver name is required';
+    if (isIncidentFieldRequired('attachment') && !incidentAttachmentFile) err.attachment = 'Attachment is required';
     for (const f of incidentCustomFields) {
       if (!f.required) continue;
       const v = incidentCustomValues[f.key];
@@ -199,6 +209,40 @@ export default function Incidents() {
     for (const f of incidentCustomFields) {
       const v = incidentCustomValues[f.key];
       if (v !== undefined && v !== null && v !== '') customAttrs[f.key] = v;
+    }
+
+    if (incidentAttachmentFile) {
+      if (!selectedCarId) {
+        setAddFormErrors({ attachment: 'Select vehicle before uploading attachment' });
+        return;
+      }
+
+      const ext = incidentAttachmentFile.name.split('.').pop() || 'bin';
+      const key = incidentAttachmentKey(selectedCarId, ext);
+      const uploadFile = incidentAttachmentFile.type.startsWith('image/')
+        ? await compressImageIfWithinLimit(incidentAttachmentFile, MAX_DOCUMENT_FILE_SIZE_BYTES)
+        : incidentAttachmentFile;
+
+      if (uploadFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+        const msg = `Attachment must be 2 MB or smaller (${(uploadFile.size / 1024 / 1024).toFixed(2)} MB).`;
+        setAddFormErrors({ attachment: msg });
+        return;
+      }
+
+      try {
+        setAttachmentLoading(true);
+        const res = await storageUpload(key, uploadFile);
+        customAttrs.incident_attachment_path = res.key;
+        customAttrs.incident_attachment_name = incidentAttachmentFile.name;
+        customAttrs.incident_attachment_type = incidentAttachmentFile.type;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        toast.error(message);
+        setAddFormErrors({ attachment: message });
+        return;
+      } finally {
+        setAttachmentLoading(false);
+      }
     }
 
     const incidentPayload = {
@@ -280,6 +324,8 @@ export default function Incidents() {
     setIncidentDate(toLocalDateTimeInputValue());
     setEstimatedReturn('');
     setIncidentCustomValues({});
+    setIncidentAttachmentFile(null);
+    setAttachmentLoading(false);
     setAddFormErrors({});
   };
 
@@ -502,6 +548,25 @@ export default function Incidents() {
                 )}
               </div>
 
+              {!isIncidentFieldHidden('attachment') && (
+                <div className="space-y-2">
+                  <Label>
+                    {getIncidentFieldLabel('attachment')}
+                    {isIncidentFieldRequired('attachment') ? ' *' : ''}
+                  </Label>
+                  <DocumentFileInput
+                    id="incident-attachment"
+                    value={incidentAttachmentFile}
+                    onChange={setIncidentAttachmentFile}
+                    maxSizeBytes={MAX_DOCUMENT_FILE_SIZE_BYTES}
+                    disabled={attachmentLoading}
+                  />
+                  {addFormErrors.attachment && (
+                    <p className="text-sm text-destructive">{addFormErrors.attachment}</p>
+                  )}
+                </div>
+              )}
+
               {!isIncidentFieldHidden('cost') && (
                 <div className="space-y-2">
                   <Label>
@@ -556,7 +621,10 @@ export default function Incidents() {
               <Button variant="outline" onClick={() => setAddOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleAddIncident} disabled={!selectedCarId || createMutation.isPending}>
+              <Button
+                onClick={handleAddIncident}
+                disabled={!selectedCarId || createMutation.isPending || attachmentLoading}
+              >
                 {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Log Incident
               </Button>

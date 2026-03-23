@@ -734,7 +734,7 @@ export default function FleetNew() {
                             onChange={(e) => {
                               const file = e.target.files?.[0] || null;
                               e.target.value = '';
-                              if (file && file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+                              if (file && file.size > MAX_DOCUMENT_FILE_SIZE_BYTES && !file.type.startsWith('image/')) {
                                 toast({ title: 'File too large', description: `File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`, variant: 'destructive' });
                                 return;
                               }

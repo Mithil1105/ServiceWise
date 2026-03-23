@@ -6,6 +6,7 @@ import { useOrg } from '@/hooks/use-org';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
 import { storageUpload, storageGetSignedUrl } from '@/lib/storage';
 import { companyBillKey, toFullKey } from '@/lib/storage-keys';
+import { compressImageIfWithinLimit } from '@/lib/compress-image';
 
 export function useCompanyBills(filters?: {
   bookingId?: string;
@@ -127,11 +128,12 @@ export function useUploadCompanyBillPDF() {
 
   return useMutation({
     mutationFn: async ({ billId, pdfFile }: { billId: string; pdfFile: File }) => {
-      if (pdfFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+      const filePath = companyBillKey(billId, pdfFile.name);
+      const uploadFile = await compressImageIfWithinLimit(pdfFile, MAX_DOCUMENT_FILE_SIZE_BYTES);
+      if (uploadFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
         throw new Error(`File must be 2 MB or smaller (${(pdfFile.size / 1024 / 1024).toFixed(2)} MB).`);
       }
-      const filePath = companyBillKey(billId, pdfFile.name);
-      await storageUpload(filePath, pdfFile);
+      await storageUpload(filePath, uploadFile);
 
       const { error: updateError } = await supabase
         .from('company_bills')

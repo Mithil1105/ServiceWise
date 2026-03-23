@@ -44,6 +44,7 @@ import { useUpdateOrganization } from '@/hooks/use-organization';
 import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
 import { storageUpload } from '@/lib/storage';
 import { organizationLogoKey } from '@/lib/storage-keys';
+import { compressImageIfWithinLimit } from '@/lib/compress-image';
 import { FleetFormConfigCard } from '@/components/settings/FleetFormConfigCard';
 import { DriverFormConfigCard } from '@/components/settings/DriverFormConfigCard';
 import { BookingFormConfigCard } from '@/components/settings/BookingFormConfigCard';
@@ -91,16 +92,16 @@ export default function Settings() {
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !orgId) return;
-    if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
-      toast({ title: 'File too large', description: 'Logo must be 2 MB or smaller.', variant: 'destructive' });
-      e.target.value = '';
-      return;
-    }
     setLogoUploading(true);
     try {
       const ext = file.name.split('.').pop() || 'png';
       const key = organizationLogoKey(orgId, `${Date.now()}.${ext}`);
-      await storageUpload(key, file);
+      const uploadFile = await compressImageIfWithinLimit(file, MAX_DOCUMENT_FILE_SIZE_BYTES);
+      if (uploadFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+        toast({ title: 'File too large', description: `Logo must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`, variant: 'destructive' });
+        return;
+      }
+      await storageUpload(key, uploadFile);
       const { data: updated, error: updateError } = await supabase
         .from('organizations')
         .update({ logo_url: key })

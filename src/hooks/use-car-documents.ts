@@ -5,6 +5,7 @@ import { useOrg } from '@/hooks/use-org';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
 import { storageUpload, storageRemove, storageGetSignedUrl } from '@/lib/storage';
 import { carDocumentKey, toFullKey } from '@/lib/storage-keys';
+import { compressImageIfWithinLimit } from '@/lib/compress-image';
 
 export type DocumentType = 'rc' | 'puc' | 'insurance' | 'warranty' | 'permits' | 'fitness';
 
@@ -108,12 +109,13 @@ export function useUpsertCarDocument() {
 
       // Upload file if provided
       if (file) {
-        if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
-          throw new Error(`File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
-        }
         const fileExt = file.name.split('.').pop() || 'bin';
         const key = carDocumentKey(carId, documentType, fileExt);
-        await storageUpload(key, file);
+        const uploadFile = await compressImageIfWithinLimit(file, MAX_DOCUMENT_FILE_SIZE_BYTES);
+        if (uploadFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+          throw new Error(`File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
+        }
+        await storageUpload(key, uploadFile);
         file_path = key;
         file_name = file.name;
       }

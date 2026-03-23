@@ -9,6 +9,7 @@ export const STORAGE_PREFIX = {
   DRIVER_LICENSES: 'driver-licenses/',
   CAR_DOCUMENTS: 'car-documents/',
   SERVICE_BILLS: 'service-bills/',
+  INCIDENT_ATTACHMENTS: 'incident-attachments/',
 } as const;
 
 export type StorageDomain = keyof typeof STORAGE_PREFIX;
@@ -20,6 +21,9 @@ const DOMAIN_TO_BUCKET: Record<StorageDomain, StorageBucket> = {
   DRIVER_LICENSES: 'driver-licenses',
   CAR_DOCUMENTS: 'car-documents',
   SERVICE_BILLS: 'service-bills',
+  // There is currently no dedicated Supabase storage bucket for incidents.
+  // This only matters if the code falls back to Supabase Storage, which should not happen for R2-prefixed keys.
+  INCIDENT_ATTACHMENTS: 'car-documents',
 };
 
 export const KNOWN_R2_PREFIXES = Object.values(STORAGE_PREFIX);
@@ -48,6 +52,12 @@ export function carDocumentKey(carId: string, documentType: string, ext: string)
 export function serviceBillKey(carId: string, serviceRecordId: string, ext: string): string {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   return `${STORAGE_PREFIX.SERVICE_BILLS}${carId}/${serviceRecordId}/${suffix}`;
+}
+
+export function incidentAttachmentKey(carId: string, ext: string): string {
+  const safeExt = (ext || 'bin').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}.${safeExt}`;
+  return `${STORAGE_PREFIX.INCIDENT_ATTACHMENTS}${carId}/${suffix}`;
 }
 
 export function isFullUrl(value: string | null | undefined): boolean {

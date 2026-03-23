@@ -317,6 +317,7 @@ export type IncidentFormBuiltInFieldKey =
   | 'car_id'
   | 'incident_at'
   | 'estimated_return_at'
+  | 'attachment'
   | 'type'
   | 'severity'
   | 'description'
@@ -333,6 +334,7 @@ export const INCIDENT_FORM_FIELD_LABELS: Record<IncidentFormBuiltInFieldKey, str
   car_id: 'Vehicle',
   incident_at: 'Incident Date & Time',
   estimated_return_at: 'Est. Return to Road',
+  attachment: 'Attachment',
   type: 'Type',
   severity: 'Severity',
   description: 'Description',

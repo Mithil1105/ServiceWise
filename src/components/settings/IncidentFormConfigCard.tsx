@@ -26,6 +26,7 @@ const BUILT_IN_FIELDS: IncidentFormBuiltInFieldKey[] = [
   'car_id',
   'incident_at',
   'estimated_return_at',
+  'attachment',
   'type',
   'severity',
   'description',

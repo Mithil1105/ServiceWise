@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth-context';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
 import { storageUpload, storageGetSignedUrl } from '@/lib/storage';
 import { billKey, toFullKey } from '@/lib/storage-keys';
+import { compressImageIfWithinLimit } from '@/lib/compress-image';
 
 /**
  * Get all bills (for billing management page)
@@ -679,13 +680,14 @@ export function useUploadBillPDF() {
       billId: string;
       pdfFile: File;
     }) => {
-      if (pdfFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
-        throw new Error(`File must be 2 MB or smaller (${(pdfFile.size / 1024 / 1024).toFixed(2)} MB).`);
-      }
       const fileName = `${Date.now()}-bill.pdf`;
       const key = billKey(billId, fileName);
 
-      await storageUpload(key, pdfFile);
+      const uploadFile = await compressImageIfWithinLimit(pdfFile, MAX_DOCUMENT_FILE_SIZE_BYTES);
+      if (uploadFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
+        throw new Error(`File must be 2 MB or smaller (${(pdfFile.size / 1024 / 1024).toFixed(2)} MB).`);
+      }
+      await storageUpload(key, uploadFile);
 
       const { data, error } = await supabase
         .from('bills')

@@ -37,6 +37,11 @@ export function DocumentFileInput({
     }
     const { valid, error } = isDocumentFileValid(file, maxSizeBytes);
     if (!valid) {
+      // Images can be compressed later during upload.
+      if (file.type.startsWith('image/')) {
+        onChange(file);
+        return;
+      }
       toast.error(error);
       onChange(null);
       return;
