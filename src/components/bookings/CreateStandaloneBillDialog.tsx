@@ -17,6 +17,7 @@ import { toLocalDateInputValue, isoAtNoonUtcFromDateInput } from '@/lib/date';
 import { formatCarLabel } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CustomerAutocomplete } from '@/components/bookings/CustomerAutocomplete';
+import { DriverAutocomplete } from '@/components/bookings/DriverAutocomplete';
 import { useCars } from '@/hooks/use-cars';
 import { useUpsertCustomer } from '@/hooks/use-customers';
 import { useSystemConfig } from '@/hooks/use-dashboard';
@@ -449,71 +450,81 @@ export function CreateStandaloneBillDialog({
         .maybeSingle();
       const prefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
       
-      // Generate bill number (per-org prefix)
+      // Generate bill number (per-org prefix) and retry on unique conflicts.
       const year = new Date().getFullYear();
       const billPrefix = `${prefix}-BILL`;
-      const { data: lastBill } = await supabase
-        .from('bills')
-        .select('bill_number')
-        .eq('organization_id', orgId)
-        .like('bill_number', `${billPrefix}-${year}-%`)
-        .order('bill_number', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      let billNumber = '';
-      if (lastBill?.bill_number) {
-        const lastNum = parseInt(lastBill.bill_number.split('-').pop() || '0');
-        billNumber = `${billPrefix}-${year}-${String(lastNum + 1).padStart(6, '0')}`;
-      } else {
-        billNumber = `${billPrefix}-${year}-000001`;
+      const buildBillPayload = (billNumber: string) => ({
+        organization_id: orgId,
+        booking_id: null, // Standalone bill
+        bill_number: billNumber,
+        status: 'draft', // Create as draft, but PDF won't show draft badge
+        customer_name: customerName.trim(),
+        customer_phone: customerPhone.trim(),
+        start_at: start.toISOString(),
+        end_at: end.toISOString(),
+        pickup: pickup.trim() || null,
+        dropoff: dropoff.trim() || null,
+        start_odometer_reading: kmMethod === 'odometer' ? parseFloat(startOdometer) : null,
+        end_odometer_reading: kmMethod === 'odometer' ? parseFloat(endOdometer) : null,
+        total_km_driven: totalKm,
+        km_calculation_method: kmMethod,
+        vehicle_details: vehicleDetails,
+        total_amount: totalAmount,
+        total_driver_allowance: 0, // Standalone bills don't have driver allowance
+        advance_amount: advance,
+        balance_amount: balance,
+        toll_charges: tollAmount,
+        parking_charges: parkingAmount,
+        threshold_note: finalThresholdNote,
+        custom_attributes: (() => {
+          const attrs: Record<string, string | number | boolean | null> = {};
+          perBillBlocks.forEach((block) => {
+            const raw = customAttributes[block.key];
+            if (raw !== undefined && raw !== '') {
+              if (block.type === 'number') attrs[block.key] = typeof raw === 'number' ? raw : Number(raw);
+              else if (block.type === 'checkbox') attrs[block.key] = !!raw;
+              else attrs[block.key] = String(raw);
+            }
+          });
+          return Object.keys(attrs).length ? attrs : null;
+        })(),
+        created_by: user?.id,
+      });
+
+      let lastError: any = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { data: lastBill } = await supabase
+          .from('bills')
+          .select('bill_number')
+          .eq('organization_id', orgId)
+          .like('bill_number', `${billPrefix}-${year}-%`)
+          .order('bill_number', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const nextNum = lastBill?.bill_number
+          ? parseInt(lastBill.bill_number.split('-').pop() || '0', 10) + 1 + attempt
+          : 1 + attempt;
+        const billNumber = `${billPrefix}-${year}-${String(nextNum).padStart(6, '0')}`;
+
+        const { data: bill, error: billError } = await supabase
+          .from('bills')
+          .insert(buildBillPayload(billNumber))
+          .select()
+          .single();
+
+        if (!billError) return bill;
+
+        // Postgres unique_violation (23505) for race on bill_number; retry with next number.
+        if (billError.code === '23505' || String(billError.message || '').includes('bills_bill_number_key')) {
+          lastError = billError;
+          continue;
+        }
+
+        throw billError;
       }
-      // Create bill
-      const { data: bill, error: billError } = await supabase
-        .from('bills')
-        .insert({
-          organization_id: orgId,
-          booking_id: null, // Standalone bill
-          bill_number: billNumber,
-          status: 'draft', // Create as draft, but PDF won't show draft badge
-          customer_name: customerName.trim(),
-          customer_phone: customerPhone.trim(),
-          start_at: start.toISOString(),
-          end_at: end.toISOString(),
-          pickup: pickup.trim() || null,
-          dropoff: dropoff.trim() || null,
-          start_odometer_reading: kmMethod === 'odometer' ? parseFloat(startOdometer) : null,
-          end_odometer_reading: kmMethod === 'odometer' ? parseFloat(endOdometer) : null,
-          total_km_driven: totalKm,
-          km_calculation_method: kmMethod,
-          vehicle_details: vehicleDetails,
-          total_amount: totalAmount,
-          total_driver_allowance: 0, // Standalone bills don't have driver allowance
-          advance_amount: advance,
-          balance_amount: balance,
-          toll_charges: tollAmount,
-          parking_charges: parkingAmount,
-          threshold_note: finalThresholdNote,
-          custom_attributes: (() => {
-            const attrs: Record<string, string | number | boolean | null> = {};
-            perBillBlocks.forEach((block) => {
-              const raw = customAttributes[block.key];
-              if (raw !== undefined && raw !== '') {
-                if (block.type === 'number') attrs[block.key] = typeof raw === 'number' ? raw : Number(raw);
-                else if (block.type === 'checkbox') attrs[block.key] = !!raw;
-                else attrs[block.key] = String(raw);
-              }
-            });
-            return Object.keys(attrs).length ? attrs : null;
-          })(),
-          created_by: user?.id,
-        })
-        .select()
-        .single();
-      
-      if (billError) throw billError;
-      
-      return bill;
+
+      throw lastError ?? new Error('Failed to generate a unique bill number');
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['bills'] });
@@ -792,24 +803,12 @@ export function CreateStandaloneBillDialog({
                     </p>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Driver Name</Label>
-                    <Input
-                      value={vehicle.driver_name}
-                      onChange={(e) => updateVehicle(index, { driver_name: e.target.value })}
-                      placeholder="Enter driver name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Driver Phone</Label>
-                    <Input
-                      value={vehicle.driver_phone}
-                      onChange={(e) => updateVehicle(index, { driver_phone: e.target.value })}
-                      placeholder="Enter driver phone"
-                    />
-                  </div>
-                </div>
+                <DriverAutocomplete
+                  driverName={vehicle.driver_name}
+                  driverPhone={vehicle.driver_phone}
+                  onNameChange={(name) => updateVehicle(index, { driver_name: name })}
+                  onPhoneChange={(phone) => updateVehicle(index, { driver_phone: phone })}
+                />
                 <div className="space-y-2">
                   <Label>Rate Type *</Label>
                   <Select
@@ -1115,10 +1114,19 @@ export function CreateStandaloneBillDialog({
                   ? parseFloat(endOdometer) - parseFloat(startOdometer)
                   : parseFloat(manualKm) || 0;
                 const { breakdown } = calculateVehicleAmount(vehicle, totalKm, totalDays);
+                const vehicleCar = vehicle.car_id ? cars.find((c) => c.id === vehicle.car_id) : null;
                 
                 return (
                   <div key={index} className="border-l-2 border-primary pl-3 space-y-1">
-                    <p className="font-medium text-sm">{vehicle.vehicle_number ? formatCarLabel({ vehicle_number: vehicle.vehicle_number, model: selectedCar?.model, brand: selectedCar?.brand }) : `Vehicle ${index + 1}`}</p>
+                    <p className="font-medium text-sm">
+                      {vehicle.vehicle_number
+                        ? formatCarLabel({
+                            vehicle_number: vehicle.vehicle_number,
+                            model: vehicleCar?.model,
+                            brand: vehicleCar?.brand,
+                          })
+                        : `Vehicle ${index + 1}`}
+                    </p>
                     {vehicle.rate_type === 'total' && (
                       <div className="text-xs text-muted-foreground space-y-0.5">
                         <p>Rate Type: Total Amount</p>

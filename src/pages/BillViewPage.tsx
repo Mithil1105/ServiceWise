@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { formatDateTimeFull, formatDateOnly } from '@/lib/date';
+import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
 import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 import { QRCodeSVG } from 'qrcode.react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -31,7 +32,8 @@ export default function BillViewPage() {
   const { data: orgSettings } = useOrganizationSettings();
 
   const companyName = organization?.company_name || organization?.name || 'Company';
-  const logoUrl = organization?.logo_url || DEFAULT_ORG_LOGO_URL;
+  const logoDisplayUrl = useLogoDisplayUrl(organization?.logo_url);
+  const logoUrl = logoDisplayUrl || DEFAULT_ORG_LOGO_URL;
   const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
   useEffect(() => {

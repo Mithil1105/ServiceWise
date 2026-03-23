@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrg } from '@/hooks/use-org';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
+import { storageUpload, storageRemove, storageGetSignedUrl } from '@/lib/storage';
+import { carDocumentKey, toFullKey } from '@/lib/storage-keys';
 
 export type DocumentType = 'rc' | 'puc' | 'insurance' | 'warranty' | 'permits' | 'fitness';
 
@@ -29,7 +31,7 @@ export function useCarDocuments(carId: string) {
         .select('*')
         .eq('car_id', carId)
         .order('document_type');
-      
+
       if (error) throw error;
       return data as CarDocument[];
     },
@@ -43,7 +45,7 @@ export function useExpiringDocuments(daysAhead: number = 30) {
     queryFn: async () => {
       const futureDate = new Date();
       futureDate.setDate(futureDate.getDate() + daysAhead);
-      
+
       const { data, error } = await supabase
         .from('car_documents')
         .select(`
@@ -53,7 +55,7 @@ export function useExpiringDocuments(daysAhead: number = 30) {
         .not('expiry_date', 'is', null)
         .lte('expiry_date', futureDate.toISOString().split('T')[0])
         .order('expiry_date');
-      
+
       if (error) throw error;
       return data as (CarDocument & { cars: { id: string; vehicle_number: string; model: string } })[];
     },
@@ -66,7 +68,7 @@ export function useExpiringDriverLicenses(daysAhead: number = 30) {
     queryFn: async () => {
       const futureDate = new Date();
       futureDate.setDate(futureDate.getDate() + daysAhead);
-      
+
       const { data, error } = await supabase
         .from('drivers')
         .select('*')
@@ -74,7 +76,7 @@ export function useExpiringDriverLicenses(daysAhead: number = 30) {
         .lte('license_expiry', futureDate.toISOString().split('T')[0])
         .eq('status', 'active')
         .order('license_expiry');
-      
+
       if (error) throw error;
       return data;
     },
@@ -109,16 +111,10 @@ export function useUpsertCarDocument() {
         if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
           throw new Error(`File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
         }
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${carId}/${documentType}-${Date.now()}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('car-documents')
-          .upload(fileName, file, { upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        file_path = fileName;
+        const fileExt = file.name.split('.').pop() || 'bin';
+        const key = carDocumentKey(carId, documentType, fileExt);
+        await storageUpload(key, file);
+        file_path = key;
         file_name = file.name;
       }
 
@@ -159,6 +155,11 @@ export function useDeleteCarDocument() {
 
   return useMutation({
     mutationFn: async ({ id, carId }: { id: string; carId: string }) => {
+      const { data: doc } = await supabase.from('car_documents').select('file_path').eq('id', id).single();
+      if (doc?.file_path) {
+        const key = toFullKey('CAR_DOCUMENTS', doc.file_path);
+        if (key) await storageRemove([key]);
+      }
       const { error } = await supabase.from('car_documents').delete().eq('id', id);
       if (error) throw error;
       return carId;
@@ -179,13 +180,9 @@ export function useDocumentDownloadUrl(filePath: string | null) {
     queryKey: ['car-document-url', filePath],
     queryFn: async () => {
       if (!filePath) return null;
-      
-      const { data, error } = await supabase.storage
-        .from('car-documents')
-        .createSignedUrl(filePath, 3600);
-
-      if (error) throw error;
-      return data.signedUrl;
+      const key = toFullKey('CAR_DOCUMENTS', filePath);
+      if (!key) return null;
+      return storageGetSignedUrl(key, 3600, undefined, 'car-documents');
     },
     enabled: !!filePath,
   });

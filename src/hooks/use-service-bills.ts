@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES, MAX_COMBINED_UPLOAD_BYTES } from '@/lib/document-upload';
+import { storageUpload, storageRemove } from '@/lib/storage';
+import { serviceBillKey, toFullKey } from '@/lib/storage-keys';
 
 export interface ServiceBillFile {
   id: string;
@@ -42,7 +44,7 @@ export function useServiceBillsByRecordIds(recordIds: string[]) {
         .in('service_record_id', recordIds)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      
+
       // Group by service_record_id
       const grouped: Record<string, ServiceBillFile[]> = {};
       (data as ServiceBillFile[]).forEach((file) => {
@@ -81,18 +83,13 @@ export function useUploadServiceBills() {
         if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
           throw new Error(`${file.name}: File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
         }
-        const ext = file.name.split('.').pop();
-        const fileName = `${carId}/${serviceRecordId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('service-bills')
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
+        const ext = file.name.split('.').pop() || 'bin';
+        const key = serviceBillKey(carId, serviceRecordId, ext);
+        await storageUpload(key, file);
 
         uploadedFiles.push({
           service_record_id: serviceRecordId,
-          file_path: fileName,
+          file_path: key,
           file_name: file.name,
           file_size: file.size,
           file_type: file.type,
@@ -128,12 +125,8 @@ export function useDeleteServiceBill() {
 
   return useMutation({
     mutationFn: async (bill: ServiceBillFile) => {
-      // Delete from storage
-      const { error: storageError } = await supabase.storage
-        .from('service-bills')
-        .remove([bill.file_path]);
-
-      if (storageError) throw storageError;
+      const key = toFullKey('SERVICE_BILLS', bill.file_path);
+      if (key) await storageRemove([key]);
 
       // Delete from database
       const { error: dbError } = await supabase

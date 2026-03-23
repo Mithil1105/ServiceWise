@@ -25,6 +25,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
+import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
 import { cn } from '@/lib/utils';
 import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
@@ -102,7 +103,8 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
     }
   };
 
-  const logoUrl = organization?.logo_url || DEFAULT_ORG_LOGO_URL;
+  const logoDisplayUrl = useLogoDisplayUrl(organization?.logo_url);
+  const logoUrl = logoDisplayUrl || DEFAULT_ORG_LOGO_URL;
   const orgName = organization?.company_name || organization?.name || 'ServiceWise';
 
   return (

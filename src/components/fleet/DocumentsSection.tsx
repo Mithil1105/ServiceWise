@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useCarDocuments, useUpsertCarDocument, useDeleteCarDocument, type DocumentType } from '@/hooks/use-car-documents';
-import { supabase } from '@/integrations/supabase/client';
+import { storageGetSignedUrl } from '@/lib/storage';
+import { toFullKey } from '@/lib/storage-keys';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,23 +69,25 @@ export default function DocumentsSection({ carId, isAdmin }: DocumentsSectionPro
   };
 
   const handleView = async (filePath: string, fileName: string) => {
-    const { data, error } = await supabase.storage
-      .from('car-documents')
-      .createSignedUrl(filePath, 3600);
-
-    if (!error && data) {
-      setViewingUrl(data.signedUrl);
+    const key = toFullKey('CAR_DOCUMENTS', filePath);
+    if (!key) return;
+    try {
+      const url = await storageGetSignedUrl(key, 3600, undefined, 'car-documents');
+      setViewingUrl(url);
       setViewingName(fileName);
+    } catch {
+      // ignore
     }
   };
 
   const handleDownload = async (filePath: string, fileName: string) => {
-    const { data, error } = await supabase.storage
-      .from('car-documents')
-      .createSignedUrl(filePath, 3600);
-
-    if (!error && data) {
-      window.open(data.signedUrl, '_blank');
+    const key = toFullKey('CAR_DOCUMENTS', filePath);
+    if (!key) return;
+    try {
+      const url = await storageGetSignedUrl(key, 3600, undefined, 'car-documents');
+      window.open(url, '_blank');
+    } catch {
+      // ignore
     }
   };
 

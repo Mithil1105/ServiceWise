@@ -6,6 +6,8 @@ import { useSystemConfig } from './use-dashboard';
 import { isoAtNoonUtcFromDateInput } from '@/lib/date';
 import { useAuth } from '@/lib/auth-context';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
+import { storageUpload, storageGetSignedUrl } from '@/lib/storage';
+import { billKey, toFullKey } from '@/lib/storage-keys';
 
 /**
  * Get all bills (for billing management page)
@@ -401,57 +403,69 @@ export function useGenerateBill() {
       // Balance = total - driver allowance (paid to driver by customer) - advance
       const balanceAmount = totalWithExtra - totalDriverAllowance - bookingAdvance;
 
-      // Generate bill number (per-org prefix from organization_settings)
+      // Generate bill number (per-org prefix) with retry for unique race conditions.
       const year = new Date().getFullYear();
       const billPrefix = `${prefix}-BILL`;
-      const { data: lastBill } = await supabase
-        .from('bills')
-        .select('bill_number')
-        .eq('organization_id', orgId)
-        .like('bill_number', `${billPrefix}-${year}-%`)
-        .order('bill_number', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const buildBillPayload = (billNumber: string) => ({
+        organization_id: orgId,
+        booking_id: booking.id,
+        bill_number: billNumber,
+        status: 'draft',
+        customer_name: booking.customer_name,
+        customer_phone: booking.customer_phone,
+        start_at: billStartDate.toISOString(),
+        end_at: billEndDate.toISOString(),
+        pickup: booking.pickup,
+        dropoff: booking.dropoff,
+        start_odometer_reading: (rateType === 'per_km' || rateType === 'hybrid') && kmMethod === 'odometer' ? startOdometer : null,
+        end_odometer_reading: (rateType === 'per_km' || rateType === 'hybrid') && kmMethod === 'odometer' ? endOdometer : null,
+        total_km_driven: totalKm,
+        km_calculation_method: (rateType === 'per_km' || rateType === 'hybrid') ? kmMethod : 'manual',
+        vehicle_details: vehicleDetails,
+        total_amount: totalWithExtra,
+        total_driver_allowance: totalDriverAllowance,
+        advance_amount: bookingAdvance,
+        balance_amount: balanceAmount,
+        toll_charges: tollAmount,
+        parking_charges: parkingAmount,
+        threshold_note: combinedThresholdNote,
+        custom_attributes: custom_attributes && Object.keys(custom_attributes).length > 0 ? custom_attributes : null,
+        created_by: user?.id,
+      });
 
-      let billNumber = '';
-      if (lastBill?.bill_number) {
-        const lastNum = parseInt(lastBill.bill_number.split('-').pop() || '0');
-        billNumber = `${billPrefix}-${year}-${String(lastNum + 1).padStart(6, '0')}`;
-      } else {
-        billNumber = `${billPrefix}-${year}-000001`;
+      let bill: any = null;
+      let billError: any = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { data: lastBill } = await supabase
+          .from('bills')
+          .select('bill_number')
+          .eq('organization_id', orgId)
+          .like('bill_number', `${billPrefix}-${year}-%`)
+          .order('bill_number', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const nextNum = lastBill?.bill_number
+          ? parseInt(lastBill.bill_number.split('-').pop() || '0', 10) + 1 + attempt
+          : 1 + attempt;
+        const billNumber = `${billPrefix}-${year}-${String(nextNum).padStart(6, '0')}`;
+
+        const result = await supabase
+          .from('bills')
+          .insert(buildBillPayload(billNumber))
+          .select()
+          .single();
+
+        bill = result.data;
+        billError = result.error;
+        if (!billError) break;
+
+        if (billError.code === '23505' || String(billError.message || '').includes('bills_bill_number_key')) {
+          continue;
+        }
+
+        throw billError;
       }
-
-      // Create bill record (as 'draft', but PDF won't show draft badge)
-      const { data: bill, error: billError } = await supabase
-        .from('bills')
-        .insert({
-          organization_id: orgId,
-          booking_id: booking.id,
-          bill_number: billNumber,
-          status: 'draft',
-          customer_name: booking.customer_name,
-          customer_phone: booking.customer_phone,
-          start_at: billStartDate.toISOString(),
-          end_at: billEndDate.toISOString(),
-          pickup: booking.pickup,
-          dropoff: booking.dropoff,
-          start_odometer_reading: (rateType === 'per_km' || rateType === 'hybrid') && kmMethod === 'odometer' ? startOdometer : null,
-          end_odometer_reading: (rateType === 'per_km' || rateType === 'hybrid') && kmMethod === 'odometer' ? endOdometer : null,
-          total_km_driven: totalKm,
-          km_calculation_method: (rateType === 'per_km' || rateType === 'hybrid') ? kmMethod : 'manual',
-          vehicle_details: vehicleDetails,
-          total_amount: totalWithExtra,
-          total_driver_allowance: totalDriverAllowance,
-          advance_amount: bookingAdvance,
-          balance_amount: balanceAmount,
-          toll_charges: tollAmount,
-          parking_charges: parkingAmount,
-          threshold_note: combinedThresholdNote,
-          custom_attributes: custom_attributes && Object.keys(custom_attributes).length > 0 ? custom_attributes : null,
-          created_by: user?.id,
-        })
-        .select()
-        .single();
 
       if (billError) throw billError;
 
@@ -493,25 +507,9 @@ export function useGenerateBill() {
 
       // Automatically create company bill
       try {
-        // Generate company bill number (same prefix + -CB-)
+        // Generate company bill number (same prefix + -CB-) with retry for unique races.
         const year = new Date().getFullYear();
         const cbPrefix = `${prefix}-CB`;
-        const { data: lastCompanyBill } = await supabase
-          .from('company_bills')
-          .select('bill_number')
-          .eq('organization_id', orgId)
-          .like('bill_number', `${cbPrefix}-${year}-%`)
-          .order('bill_number', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        let companyBillNumber = '';
-        if (lastCompanyBill?.bill_number) {
-          const lastNum = parseInt(lastCompanyBill.bill_number.split('-').pop() || '0');
-          companyBillNumber = `${cbPrefix}-${year}-${String(lastNum + 1).padStart(6, '0')}`;
-        } else {
-          companyBillNumber = `${cbPrefix}-${year}-000001`;
-        }
 
         // Determine transfer requirements
         const transferRequirements: any[] = [];
@@ -528,40 +526,63 @@ export function useGenerateBill() {
           });
         }
 
-        // Create company bill
-        const { data: companyBill, error: companyBillError } = await supabase
-          .from('company_bills')
-          .insert({
-            organization_id: orgId,
-            booking_id: booking.id,
-            customer_bill_id: bill.id,
-            bill_number: companyBillNumber,
-            customer_name: booking.customer_name,
-            customer_phone: booking.customer_phone,
-            start_at: billStartDate.toISOString(),
-            end_at: billEndDate.toISOString(),
-            pickup: booking.pickup,
-            dropoff: booking.dropoff,
-            start_odometer_reading: (rateType === 'per_km' || rateType === 'hybrid') && kmMethod === 'odometer' ? startOdometer : null,
-            end_odometer_reading: (rateType === 'per_km' || rateType === 'hybrid') && kmMethod === 'odometer' ? endOdometer : null,
-            total_km_driven: totalKm,
-            km_calculation_method: (rateType === 'per_km' || rateType === 'hybrid') ? kmMethod : 'manual',
-            vehicle_details: vehicleDetails,
-            total_amount: totalAmount,
-            total_driver_allowance: totalDriverAllowance,
-            advance_amount: bookingAdvance,
-            advance_payment_method: booking.advance_payment_method,
-            advance_account_type: booking.advance_account_type,
-            advance_account_id: booking.advance_account_id,
-            advance_collected_by: booking.advance_collected_by,
-            transfer_requirements: transferRequirements,
-            internal_notes: null,
-            threshold_note: combinedThresholdNote,
-            custom_attributes: custom_attributes && Object.keys(custom_attributes).length > 0 ? custom_attributes : null,
-            created_by: user?.id,
-          })
-          .select()
-          .single();
+        const buildCompanyBillPayload = (companyBillNumber: string) => ({
+          organization_id: orgId,
+          booking_id: booking.id,
+          customer_bill_id: bill.id,
+          bill_number: companyBillNumber,
+          customer_name: booking.customer_name,
+          customer_phone: booking.customer_phone,
+          start_at: billStartDate.toISOString(),
+          end_at: billEndDate.toISOString(),
+          pickup: booking.pickup,
+          dropoff: booking.dropoff,
+          start_odometer_reading: (rateType === 'per_km' || rateType === 'hybrid') && kmMethod === 'odometer' ? startOdometer : null,
+          end_odometer_reading: (rateType === 'per_km' || rateType === 'hybrid') && kmMethod === 'odometer' ? endOdometer : null,
+          total_km_driven: totalKm,
+          km_calculation_method: (rateType === 'per_km' || rateType === 'hybrid') ? kmMethod : 'manual',
+          vehicle_details: vehicleDetails,
+          total_amount: totalAmount,
+          total_driver_allowance: totalDriverAllowance,
+          advance_amount: bookingAdvance,
+          advance_payment_method: booking.advance_payment_method,
+          advance_account_type: booking.advance_account_type,
+          advance_account_id: booking.advance_account_id,
+          advance_collected_by: booking.advance_collected_by,
+          transfer_requirements: transferRequirements,
+          internal_notes: null,
+          threshold_note: combinedThresholdNote,
+          custom_attributes: custom_attributes && Object.keys(custom_attributes).length > 0 ? custom_attributes : null,
+          created_by: user?.id,
+        });
+
+        let companyBillError: any = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const { data: lastCompanyBill } = await supabase
+            .from('company_bills')
+            .select('bill_number')
+            .eq('organization_id', orgId)
+            .like('bill_number', `${cbPrefix}-${year}-%`)
+            .order('bill_number', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const nextNum = lastCompanyBill?.bill_number
+            ? parseInt(lastCompanyBill.bill_number.split('-').pop() || '0', 10) + 1 + attempt
+            : 1 + attempt;
+          const companyBillNumber = `${cbPrefix}-${year}-${String(nextNum).padStart(6, '0')}`;
+
+          const result = await supabase
+            .from('company_bills')
+            .insert(buildCompanyBillPayload(companyBillNumber))
+            .select()
+            .single();
+
+          companyBillError = result.error;
+          if (!companyBillError) break;
+          if (companyBillError.code === '23505') continue;
+          break;
+        }
 
         if (companyBillError) {
           console.error('Error creating company bill:', companyBillError);
@@ -661,18 +682,15 @@ export function useUploadBillPDF() {
       if (pdfFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
         throw new Error(`File must be 2 MB or smaller (${(pdfFile.size / 1024 / 1024).toFixed(2)} MB).`);
       }
-      const fileName = `${billId}/${Date.now()}-bill.pdf`;
+      const fileName = `${Date.now()}-bill.pdf`;
+      const key = billKey(billId, fileName);
 
-      const { error: uploadError } = await supabase.storage
-        .from('bills')
-        .upload(fileName, pdfFile, { upsert: true });
-
-      if (uploadError) throw uploadError;
+      await storageUpload(key, pdfFile);
 
       const { data, error } = await supabase
         .from('bills')
         .update({
-          pdf_file_path: fileName,
+          pdf_file_path: key,
           pdf_file_name: pdfFile.name,
         })
         .eq('id', billId)
@@ -701,13 +719,9 @@ export function useBillPDFUrl(billId: string | undefined, filePath: string | nul
     queryKey: ['bill-pdf-url', billId, filePath],
     queryFn: async () => {
       if (!billId || !filePath) return null;
-
-      const { data, error } = await supabase.storage
-        .from('bills')
-        .createSignedUrl(filePath, 3600);
-
-      if (error) throw error;
-      return data.signedUrl;
+      const key = toFullKey('BILLS', filePath);
+      if (!key) return null;
+      return storageGetSignedUrl(key, 3600, undefined, 'bills');
     },
     enabled: !!billId && !!filePath,
   });

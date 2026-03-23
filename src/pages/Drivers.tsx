@@ -60,7 +60,8 @@ import {
 } from '@/types/form-config';
 import { DocumentFileInput } from '@/components/ui/document-file-input';
 import { DocumentViewerDialog } from '@/components/ui/document-viewer-dialog';
-import { supabase } from '@/integrations/supabase/client';
+import { storageGetSignedUrl } from '@/lib/storage';
+import { toFullKey } from '@/lib/storage-keys';
 
 function LicenseExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
   if (!expiryDate) return <Badge variant="muted">No expiry set</Badge>;
@@ -172,10 +173,14 @@ function DriverFormDialog({
     setViewDocName(file.name);
   };
   const openViewForPath = async (path: string, name: string) => {
-    const { data, error } = await supabase.storage.from('driver-licenses').createSignedUrl(path, 3600);
-    if (!error && data?.signedUrl) {
-      setViewDocUrl(data.signedUrl);
+    const key = toFullKey('DRIVER_LICENSES', path);
+    if (!key) return;
+    try {
+      const url = await storageGetSignedUrl(key, 3600, undefined, 'driver-licenses');
+      setViewDocUrl(url);
       setViewDocName(name || 'Document');
+    } catch {
+      // ignore
     }
   };
   const closeViewer = () => {
@@ -280,23 +285,23 @@ function DriverFormDialog({
             <h4 className="text-sm font-semibold text-foreground">License & employment type</h4>
             <div className="grid grid-cols-2 gap-4">
               {!isFieldHidden('license_type') && (
-            <div className="space-y-2">
-              <Label htmlFor="license_type">{getFieldLabel('license_type')}{isFieldRequired('license_type') ? ' *' : ''}</Label>
-              <Select
-                value={formData.license_type}
-                onValueChange={(value: 'lmv' | 'hmv') => setFormData({ ...formData, license_type: value })}
-                required={isFieldRequired('license_type')}
-              >
-                <SelectTrigger id="license_type">
-                  <SelectValue placeholder="LMV or HMV" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lmv">LMV (Light Motor Vehicle)</SelectItem>
-                  <SelectItem value="hmv">HMV (Heavy Motor Vehicle)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            )}
+                <div className="space-y-2">
+                  <Label htmlFor="license_type">{getFieldLabel('license_type')}{isFieldRequired('license_type') ? ' *' : ''}</Label>
+                  <Select
+                    value={formData.license_type}
+                    onValueChange={(value: 'lmv' | 'hmv') => setFormData({ ...formData, license_type: value })}
+                    required={isFieldRequired('license_type')}
+                  >
+                    <SelectTrigger id="license_type">
+                      <SelectValue placeholder="LMV or HMV" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="lmv">LMV (Light Motor Vehicle)</SelectItem>
+                      <SelectItem value="hmv">HMV (Heavy Motor Vehicle)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {!isFieldHidden('license_expiry') && (
                 <div className="space-y-2">
@@ -399,40 +404,40 @@ function DriverFormDialog({
               <Separator />
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
-                {customFields.map((f) => (
-                  <div key={f.id} className="space-y-2">
-                    <Label htmlFor={`custom-${f.key}`}>{f.label}{f.required ? ' *' : ''}</Label>
-                    {f.type === 'text' && (
-                      <Input
-                        id={`custom-${f.key}`}
-                        value={String(customValues[f.key] ?? '')}
-                        onChange={(e) => setCustomValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                      />
-                    )}
-                    {f.type === 'number' && (
-                      <Input
-                        id={`custom-${f.key}`}
-                        type="number"
-                        value={customValues[f.key] !== undefined && customValues[f.key] !== '' ? Number(customValues[f.key]) : ''}
-                        onChange={(e) => setCustomValues((prev) => ({ ...prev, [f.key]: e.target.value === '' ? '' : Number(e.target.value) }))}
-                      />
-                    )}
-                    {f.type === 'date' && (
-                      <Input
-                        id={`custom-${f.key}`}
-                        type="date"
-                        value={typeof customValues[f.key] === 'string' ? customValues[f.key] : ''}
-                        onChange={(e) => setCustomValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                      />
-                    )}
-                    {f.type === 'select' && (
-                      <Select value={String(customValues[f.key] ?? '')} onValueChange={(v) => setCustomValues((prev) => ({ ...prev, [f.key]: v }))}>
-                        <SelectTrigger id={`custom-${f.key}`}><SelectValue placeholder="Select" /></SelectTrigger>
-                        <SelectContent>{(f.options ?? []).map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}</SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                ))}
+                  {customFields.map((f) => (
+                    <div key={f.id} className="space-y-2">
+                      <Label htmlFor={`custom-${f.key}`}>{f.label}{f.required ? ' *' : ''}</Label>
+                      {f.type === 'text' && (
+                        <Input
+                          id={`custom-${f.key}`}
+                          value={String(customValues[f.key] ?? '')}
+                          onChange={(e) => setCustomValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                        />
+                      )}
+                      {f.type === 'number' && (
+                        <Input
+                          id={`custom-${f.key}`}
+                          type="number"
+                          value={customValues[f.key] !== undefined && customValues[f.key] !== '' ? Number(customValues[f.key]) : ''}
+                          onChange={(e) => setCustomValues((prev) => ({ ...prev, [f.key]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                        />
+                      )}
+                      {f.type === 'date' && (
+                        <Input
+                          id={`custom-${f.key}`}
+                          type="date"
+                          value={typeof customValues[f.key] === 'string' ? customValues[f.key] : ''}
+                          onChange={(e) => setCustomValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                        />
+                      )}
+                      {f.type === 'select' && (
+                        <Select value={String(customValues[f.key] ?? '')} onValueChange={(v) => setCustomValues((prev) => ({ ...prev, [f.key]: v }))}>
+                          <SelectTrigger id={`custom-${f.key}`}><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent>{(f.options ?? []).map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}</SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             </>
@@ -491,20 +496,19 @@ export default function Drivers() {
     originalFileName?: string | null
   ) => {
     if (!path) return;
-
-    const { data, error } = await supabase.storage
-      .from('driver-licenses')
-      .createSignedUrl(path, 3600);
-
-    if (!error && data?.signedUrl) {
+    const key = toFullKey('DRIVER_LICENSES', path);
+    if (!key) return;
+    try {
+      const url = await storageGetSignedUrl(key, 3600, undefined, 'driver-licenses');
       const baseTitleParts = [label, driverName].filter(Boolean);
       const baseTitle = baseTitleParts.join(' – ');
       const fullTitle = originalFileName
         ? `${baseTitle || label} (${originalFileName})`
         : baseTitle || originalFileName || 'Document';
-
-      setViewDocUrl(data.signedUrl);
+      setViewDocUrl(url);
       setViewDocName(fullTitle || 'Document');
+    } catch {
+      // ignore
     }
   };
 

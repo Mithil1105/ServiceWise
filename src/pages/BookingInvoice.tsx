@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAuth } from '@/lib/auth-context';
+import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
 import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 import { formatCarLabel } from '@/lib/utils';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
@@ -32,7 +33,8 @@ export default function BookingInvoice() {
   const { data: invoice, isLoading: loadingInvoice, refetch: refetchInvoice } = useInvoice(id);
   const generateInvoice = useGenerateInvoice();
   const companyName = organization?.company_name || organization?.name || 'Company';
-  const logoUrl = organization?.logo_url || DEFAULT_ORG_LOGO_URL;
+  const logoDisplayUrl = useLogoDisplayUrl(organization?.logo_url);
+  const logoUrl = logoDisplayUrl || DEFAULT_ORG_LOGO_URL;
   const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
   const [finalKms, setFinalKms] = useState<Record<string, string>>({});

@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { CompanyBill } from '@/types/booking';
 import { useOrg } from '@/hooks/use-org';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
+import { storageUpload, storageGetSignedUrl } from '@/lib/storage';
+import { companyBillKey, toFullKey } from '@/lib/storage-keys';
 
 export function useCompanyBills(filters?: {
   bookingId?: string;
@@ -128,16 +130,8 @@ export function useUploadCompanyBillPDF() {
       if (pdfFile.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
         throw new Error(`File must be 2 MB or smaller (${(pdfFile.size / 1024 / 1024).toFixed(2)} MB).`);
       }
-      const filePath = `company-bills/${billId}/${pdfFile.name}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('bills')
-        .upload(filePath, pdfFile, {
-          cacheControl: '3600',
-          upsert: true,
-        });
-
-      if (uploadError) throw uploadError;
+      const filePath = companyBillKey(billId, pdfFile.name);
+      await storageUpload(filePath, pdfFile);
 
       const { error: updateError } = await supabase
         .from('company_bills')
@@ -166,13 +160,9 @@ export function useCompanyBillPDFUrl(billId: string | undefined, filePath: strin
     queryKey: ['company-bill-pdf-url', billId, filePath],
     queryFn: async () => {
       if (!billId || !filePath) return null;
-
-      const { data, error } = await supabase.storage
-        .from('bills')
-        .createSignedUrl(filePath, 3600);
-
-      if (error) throw error;
-      return data.signedUrl;
+      const key = toFullKey('BILLS', filePath);
+      if (!key) return null;
+      return storageGetSignedUrl(key, 3600, undefined, 'bills');
     },
     enabled: !!billId && !!filePath,
   });

@@ -36,7 +36,8 @@ import {
   Car,
 } from 'lucide-react';
 import { formatDateDMY, formatDateTimeDMY } from '@/lib/date';
-import { supabase } from '@/integrations/supabase/client';
+import { storageGetSignedUrl } from '@/lib/storage';
+import { toFullKey } from '@/lib/storage-keys';
 
 export default function VehicleReport() {
   const { id } = useParams<{ id: string }>();
@@ -68,12 +69,8 @@ export default function VehicleReport() {
     const urls: Record<string, string> = {};
     for (const bill of bills) {
       try {
-        const { data, error } = await supabase.storage
-          .from('service-bills')
-          .createSignedUrl(bill.file_path, 3600);
-        if (!error && data?.signedUrl) {
-          urls[bill.id] = data.signedUrl;
-        }
+        const key = toFullKey('SERVICE_BILLS', bill.file_path);
+        if (key) urls[bill.id] = await storageGetSignedUrl(key, 3600, undefined, 'service-bills');
       } catch (e) {
         console.error('Error loading bill:', e);
       }
@@ -97,15 +94,13 @@ export default function VehicleReport() {
       const bills = billsByRecord?.[record.id] || [];
       for (const bill of bills) {
         try {
-          const { data } = await supabase.storage
-            .from('service-bills')
-            .createSignedUrl(bill.file_path, 86400); // 24 hours
-          
-          if (data?.signedUrl) {
+          const key = toFullKey('SERVICE_BILLS', bill.file_path);
+          if (key) {
+            const url = await storageGetSignedUrl(key, 86400, undefined, 'service-bills');
             exportBillUrls.push({
               serviceName: record.service_name,
               date: formatDateDMY(record.serviced_at),
-              url: data.signedUrl,
+              url,
               fileName: bill.file_name,
               isPdf: bill.file_type === 'application/pdf',
             });

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { formatDateDMY, formatDateTimeFull } from '@/lib/date';
+import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
 import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 import { QRCodeSVG } from 'qrcode.react';
 import { useBankAccounts } from '@/hooks/use-bank-accounts';
@@ -76,7 +77,8 @@ export default function Bills() {
   const uploadPDF = useUploadBillPDF();
   const markReminderSent = useMarkReminderSent();
   const companyName = organization?.company_name || organization?.name || 'Company';
-  const logoUrl = organization?.logo_url || DEFAULT_ORG_LOGO_URL;
+  const logoDisplayUrl = useLogoDisplayUrl(organization?.logo_url);
+  const logoUrl = logoDisplayUrl || DEFAULT_ORG_LOGO_URL;
   const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
   const billingConfig: BillingLayoutConfig | undefined = orgSettings?.billing_layout_config ?? undefined;

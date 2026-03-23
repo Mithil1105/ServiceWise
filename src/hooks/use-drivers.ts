@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { MAX_DOCUMENT_FILE_SIZE_BYTES } from '@/lib/document-upload';
+import { storageUpload, storageRemove, storageGetSignedUrl } from '@/lib/storage';
+import { driverLicenseKey, toFullKey } from '@/lib/storage-keys';
 
 export type DriverType = 'permanent' | 'temporary';
 
@@ -126,11 +128,10 @@ const uploadDriverFile = async (file: File, prefix: string): Promise<{ path: str
   if (file.size > MAX_DOCUMENT_FILE_SIZE_BYTES) {
     throw new Error(`File must be 2 MB or smaller (${(file.size / 1024 / 1024).toFixed(2)} MB).`);
   }
-  const fileExt = file.name.split('.').pop();
-  const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-  const { error } = await supabase.storage.from('driver-licenses').upload(fileName, file);
-  if (error) throw error;
-  return { path: fileName, name: file.name };
+  const fileExt = file.name.split('.').pop() || 'bin';
+  const key = driverLicenseKey(prefix, fileExt);
+  await storageUpload(key, file);
+  return { path: key, name: file.name };
 };
 
 export function useCreateDriver() {
@@ -266,7 +267,8 @@ export function useUpdateDriver() {
 
       if (data.licenseFile) {
         if (existingDriver?.license_file_path) {
-          await supabase.storage.from('driver-licenses').remove([existingDriver.license_file_path]);
+          const key = toFullKey('DRIVER_LICENSES', existingDriver.license_file_path);
+          if (key) await storageRemove([key]);
         }
         const up = await uploadDriverFile(data.licenseFile, 'license');
         updateData.license_file_path = up.path;
@@ -274,7 +276,8 @@ export function useUpdateDriver() {
       }
       if (data.aadhaarFile) {
         if (existingDriver?.aadhaar_file_path) {
-          await supabase.storage.from('driver-licenses').remove([existingDriver.aadhaar_file_path]);
+          const key = toFullKey('DRIVER_LICENSES', existingDriver.aadhaar_file_path);
+          if (key) await storageRemove([key]);
         }
         const up = await uploadDriverFile(data.aadhaarFile, 'aadhaar');
         updateData.aadhaar_file_path = up.path;
@@ -282,7 +285,8 @@ export function useUpdateDriver() {
       }
       if (data.policeVerificationFile) {
         if (existingDriver?.police_verification_file_path) {
-          await supabase.storage.from('driver-licenses').remove([existingDriver.police_verification_file_path]);
+          const key = toFullKey('DRIVER_LICENSES', existingDriver.police_verification_file_path);
+          if (key) await storageRemove([key]);
         }
         const up = await uploadDriverFile(data.policeVerificationFile, 'police');
         updateData.police_verification_file_path = up.path;
@@ -290,7 +294,8 @@ export function useUpdateDriver() {
       }
       if (data.healthCertificateFile) {
         if (existingDriver?.health_certificate_file_path) {
-          await supabase.storage.from('driver-licenses').remove([existingDriver.health_certificate_file_path]);
+          const key = toFullKey('DRIVER_LICENSES', existingDriver.health_certificate_file_path);
+          if (key) await storageRemove([key]);
         }
         const up = await uploadDriverFile(data.healthCertificateFile, 'health');
         updateData.health_certificate_file_path = up.path;
@@ -335,7 +340,8 @@ export function useDeleteDriver() {
         driver?.health_certificate_file_path,
       ].filter(Boolean) as string[];
       if (paths.length > 0) {
-        await supabase.storage.from('driver-licenses').remove(paths);
+        const keys = paths.map((p) => toFullKey('DRIVER_LICENSES', p)).filter(Boolean) as string[];
+        if (keys.length) await storageRemove(keys);
       }
 
       const { error } = await supabase
@@ -361,13 +367,9 @@ export function useDownloadLicense(filePath: string | null) {
     queryKey: ['driver-license-url', filePath],
     queryFn: async () => {
       if (!filePath) return null;
-
-      const { data, error } = await supabase.storage
-        .from('driver-licenses')
-        .createSignedUrl(filePath, 3600);
-
-      if (error) throw error;
-      return data.signedUrl;
+      const key = toFullKey('DRIVER_LICENSES', filePath);
+      if (!key) return null;
+      return storageGetSignedUrl(key, 3600, undefined, 'driver-licenses');
     },
     enabled: !!filePath,
   });

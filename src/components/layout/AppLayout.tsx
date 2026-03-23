@@ -18,6 +18,7 @@ import { Loader2, Menu, LogOut } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
 import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 
 const SIDEBAR_COLLAPSED_KEY = 'app-sidebar-collapsed';
@@ -156,6 +157,7 @@ function AppLayoutContent({
   isMobile: boolean;
 }) {
   const navigate = useNavigate();
+  const logoDisplayUrl = useLogoDisplayUrl(auth?.organization?.logo_url);
 
   return (
     <SettingsLeaveProvider
@@ -221,7 +223,7 @@ function AppLayoutContent({
               <span className="sr-only">Toggle menu</span>
             </Button>
             <img
-              src={auth?.organization?.logo_url || DEFAULT_ORG_LOGO_URL}
+              src={logoDisplayUrl || DEFAULT_ORG_LOGO_URL}
               alt={auth?.organization?.company_name || auth?.organization?.name || 'Logo'}
               className="h-8 w-auto object-contain"
               onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }}

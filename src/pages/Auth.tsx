@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { AlertCircle, Loader2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { z } from 'zod';
+import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
 import { DEFAULT_ORG_LOGO_URL } from '@/lib/constants';
 
 const PASSWORD_MIN_LENGTH = 7;
@@ -61,6 +62,7 @@ export default function Auth() {
     if (loginEmail.trim()) return getCachedOrg(loginEmail) ?? getMostRecentOrg();
     return getMostRecentOrg();
   }, [loginEmail]);
+  const logoDisplayUrl = useLogoDisplayUrl(authOrg?.logo_url);
 
   useEffect(() => {
     if (!loading && !adminLoading && user) {
@@ -188,7 +190,7 @@ export default function Auth() {
         </div>
         <div className="text-center mb-8">
           <img
-            src={authOrg?.logo_url || DEFAULT_ORG_LOGO_URL}
+            src={logoDisplayUrl || DEFAULT_ORG_LOGO_URL}
             alt={authOrg?.company_name || authOrg?.name || 'Logo'}
             className="h-16 w-auto mx-auto mb-4 object-contain"
             onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }}

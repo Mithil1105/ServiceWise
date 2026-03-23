@@ -41,6 +41,9 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useOrg } from '@/hooks/use-org';
 import { useOrganizationSettings, useUpdateOrganizationSettings } from '@/hooks/use-organization-settings';
 import { useUpdateOrganization } from '@/hooks/use-organization';
+import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
+import { storageUpload } from '@/lib/storage';
+import { organizationLogoKey } from '@/lib/storage-keys';
 import { FleetFormConfigCard } from '@/components/settings/FleetFormConfigCard';
 import { DriverFormConfigCard } from '@/components/settings/DriverFormConfigCard';
 import { BookingFormConfigCard } from '@/components/settings/BookingFormConfigCard';
@@ -49,8 +52,6 @@ import { ServiceRecordFormConfigCard } from '@/components/settings/ServiceRecord
 import { DowntimeFormConfigCard } from '@/components/settings/DowntimeFormConfigCard';
 import { IncidentFormConfigCard } from '@/components/settings/IncidentFormConfigCard';
 import { ChallanTypesCard } from '@/components/settings/ChallanTypesCard';
-
-const LOGO_BUCKET = 'organization-logos';
 
 export default function Settings() {
   const { isAdmin, organization, refreshUser } = useAuth();
@@ -70,6 +71,7 @@ export default function Settings() {
   const { data: orgSettings } = useOrganizationSettings();
   const updateOrg = useUpdateOrganization();
   const updateOrgSettings = useUpdateOrganizationSettings();
+  const logoDisplayUrl = useLogoDisplayUrl(org?.logo_url ?? organization?.logo_url ?? null);
   const [brandingSaving, setBrandingSaving] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [companyName, setCompanyName] = useState('');
@@ -97,13 +99,11 @@ export default function Settings() {
     setLogoUploading(true);
     try {
       const ext = file.name.split('.').pop() || 'png';
-      const path = `${orgId}/${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from(LOGO_BUCKET).upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(path);
+      const key = organizationLogoKey(orgId, `${Date.now()}.${ext}`);
+      await storageUpload(key, file);
       const { data: updated, error: updateError } = await supabase
         .from('organizations')
-        .update({ logo_url: urlData.publicUrl })
+        .update({ logo_url: key })
         .eq('id', orgId)
         .select('id')
         .single();
@@ -171,7 +171,7 @@ export default function Settings() {
       setBrandingSaving(false);
     }
   };
-  
+
   // Brand management
   const { data: brandsWithRules = [] } = useBrandsWithRules();
   const { data: allBrands = [] } = useBrands();
@@ -179,18 +179,18 @@ export default function Settings() {
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
   const [isAddBrandDialogOpen, setIsAddBrandDialogOpen] = useState(false);
   const [newBrandName, setNewBrandName] = useState('');
-  
+
   // Service rules for selected brand
   const { data: serviceRules = [], isLoading } = useServiceRules(selectedBrand || undefined);
   const createRule = useCreateServiceRule();
   const copyRules = useCopyServiceRules();
   const applyRulesToBrands = useApplyRulesToBrands();
-  
+
   // Minimum KM thresholds
   const { data: minKmPerKm } = useSystemConfig('minimum_km_per_km');
   const { data: minKmHybridPerDay } = useSystemConfig('minimum_km_hybrid_per_day');
   const updateSystemConfig = useUpdateSystemConfig();
-  
+
   const [minKmSettings, setMinKmSettings] = useState({
     per_km: '100',
     hybrid_per_day: '100',
@@ -201,7 +201,7 @@ export default function Settings() {
     per_km: '100',
     hybrid_per_day: '100',
   });
-  
+
   // Update local state and snapshot when config loads/refetches
   useEffect(() => {
     const perValue =
@@ -522,88 +522,88 @@ export default function Settings() {
         </TabsList>
 
         <TabsContent value="branding" className="space-y-6 mt-6">
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ImageIcon className="h-5 w-5" />
-              Branding
-            </CardTitle>
-            <CardDescription>
-              Logo, company name, and terms & conditions used on bills and invoices.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label>Organization logo</Label>
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-24 border rounded flex items-center justify-center bg-muted/50 overflow-hidden shrink-0">
-                  {(org?.logo_url ?? organization?.logo_url) ? (
-                    <img
-                      src={org?.logo_url ?? organization?.logo_url ?? ''}
-                      alt="Logo"
-                      className="h-14 w-20 object-contain"
-                      onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }}
-                    />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">No logo</span>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={logoUploading}
-                      onClick={() => document.getElementById('settings-logo-input')?.click()}
-                    >
-                      {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Choose image'}
-                    </Button>
-                    <Input
-                      id="settings-logo-input"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoUpload}
-                      disabled={logoUploading}
-                      className="hidden"
-                    />
+          {isAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ImageIcon className="h-5 w-5" />
+                  Branding
+                </CardTitle>
+                <CardDescription>
+                  Logo, company name, and terms & conditions used on bills and invoices.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label>Organization logo</Label>
+                  <div className="flex items-center gap-4">
+                    <div className="h-16 w-24 border rounded flex items-center justify-center bg-muted/50 overflow-hidden shrink-0">
+                      {(org?.logo_url ?? organization?.logo_url) ? (
+                        <img
+                          src={logoDisplayUrl ?? DEFAULT_ORG_LOGO_URL}
+                          alt="Logo"
+                          className="h-14 w-20 object-contain"
+                          onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_ORG_LOGO_URL; }}
+                        />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No logo</span>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={logoUploading}
+                          onClick={() => document.getElementById('settings-logo-input')?.click()}
+                        >
+                          {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Choose image'}
+                        </Button>
+                        <Input
+                          id="settings-logo-input"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          disabled={logoUploading}
+                          className="hidden"
+                        />
+                      </div>
+                      {(org?.logo_url ?? organization?.logo_url) && (
+                        <Button type="button" variant="outline" size="sm" onClick={handleRemoveLogo} disabled={logoUploading}>
+                          {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Remove logo'}
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  {(org?.logo_url ?? organization?.logo_url) && (
-                    <Button type="button" variant="outline" size="sm" onClick={handleRemoveLogo} disabled={logoUploading}>
-                      {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Remove logo'}
-                    </Button>
-                  )}
                 </div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="company_name">Company name (legal)</Label>
-              <Input
-                id="company_name"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="e.g. PATIDAR TRAVELS PVT. LTD."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="terms">Terms & conditions</Label>
-              <Textarea
-                id="terms"
-                value={termsAndConditions}
-                onChange={(e) => setTermsAndConditions(e.target.value)}
-                placeholder="Paste your terms and conditions (shown on bills and invoices)."
-                rows={6}
-                className="resize-y"
-              />
-            </div>
-            <Button onClick={handleSaveBranding} disabled={brandingSaving} data-settings-save>
-              {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Save branding
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+                <div className="space-y-2">
+                  <Label htmlFor="company_name">Company name (legal)</Label>
+                  <Input
+                    id="company_name"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="e.g. PATIDAR TRAVELS PVT. LTD."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="terms">Terms & conditions</Label>
+                  <Textarea
+                    id="terms"
+                    value={termsAndConditions}
+                    onChange={(e) => setTermsAndConditions(e.target.value)}
+                    placeholder="Paste your terms and conditions (shown on bills and invoices)."
+                    rows={6}
+                    className="resize-y"
+                  />
+                </div>
+                <Button onClick={handleSaveBranding} disabled={brandingSaving} data-settings-save>
+                  {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Save branding
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="fleet" className="space-y-6 mt-6">
@@ -619,557 +619,557 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="billings" className="space-y-6 mt-6">
-      {isAdmin && (
-        <>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Bill number
-              </CardTitle>
-              <CardDescription>
-                Prefix for customer and company bill numbers (e.g. PT → PT-BILL-2025-000001, PT-CB-2025-000001).
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="bill_prefix_billings">Bill number prefix</Label>
-                <Input
-                  id="bill_prefix_billings"
-                  value={billPrefix}
-                  onChange={(e) => setBillPrefix(e.target.value.toUpperCase())}
-                  placeholder="PT"
-                  maxLength={20}
-                  className="w-24 font-mono"
-                />
-              </div>
-              <Button onClick={handleSaveBillPrefix} disabled={brandingSaving} data-settings-save>
-                {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Save prefix
-              </Button>
-            </CardContent>
-          </Card>
-          <BillingLayoutConfigCard onDirtyChange={(dirty) => registerCardDirty('billings', dirty)} />
-        </>
-      )}
+          {isAdmin && (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Bill number
+                  </CardTitle>
+                  <CardDescription>
+                    Prefix for customer and company bill numbers (e.g. PT → PT-BILL-2025-000001, PT-CB-2025-000001).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bill_prefix_billings">Bill number prefix</Label>
+                    <Input
+                      id="bill_prefix_billings"
+                      value={billPrefix}
+                      onChange={(e) => setBillPrefix(e.target.value.toUpperCase())}
+                      placeholder="PT"
+                      maxLength={20}
+                      className="w-24 font-mono"
+                    />
+                  </div>
+                  <Button onClick={handleSaveBillPrefix} disabled={brandingSaving} data-settings-save>
+                    {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Save prefix
+                  </Button>
+                </CardContent>
+              </Card>
+              <BillingLayoutConfigCard onDirtyChange={(dirty) => registerCardDirty('billings', dirty)} />
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="service" className="space-y-6 mt-6">
-      {/* Organization code (share with users who want to join) */}
-      {org?.join_code && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              Organization code
-            </CardTitle>
-            <CardDescription>
-              Share this code with users so they can request to join your organization (e.g. SW-ABCD-1234).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center gap-2">
-            <code className="rounded bg-muted px-3 py-2 font-mono text-lg">{org.join_code}</code>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                navigator.clipboard.writeText(org.join_code);
-                toast({ title: 'Code copied to clipboard' });
-              }}
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Copy
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Service Rules */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Wrench className="h-5 w-5" />
-              Service Rules
-            </CardTitle>
-            <CardDescription>
-              Define brand-specific service intervals and critical thresholds
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Dialog open={isCopyDialogOpen} onOpenChange={setIsCopyDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
+          {/* Organization code (share with users who want to join) */}
+          {org?.join_code && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  Organization code
+                </CardTitle>
+                <CardDescription>
+                  Share this code with users so they can request to join your organization (e.g. SW-ABCD-1234).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex items-center gap-2">
+                <code className="rounded bg-muted px-3 py-2 font-mono text-lg">{org.join_code}</code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(org.join_code);
+                    toast({ title: 'Code copied to clipboard' });
+                  }}
+                >
                   <Copy className="h-4 w-4 mr-2" />
-                  Copy Rules
+                  Copy
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Copy Service Rules</DialogTitle>
-                  <DialogDescription>
-                    Copy all service rules from one brand to another
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Copy From Brand</Label>
-                    <Select value={copyFromBrand} onValueChange={setCopyFromBrand}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select source brand" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {brandsWithRules.map(brand => (
-                          <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Copy To Brand</Label>
-                    <Select value={copyToBrand} onValueChange={setCopyToBrand}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select target brand" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allBrands.filter(b => b !== copyFromBrand).map(brand => (
-                          <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCopyDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={handleCopyRules} disabled={copyRules.isPending}>
-                    {copyRules.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    Copy Rules
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Dialog open={isApplyDialogOpen} onOpenChange={setIsApplyDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <Layers className="h-4 w-4 mr-2" />
-                  Apply to Multiple
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Apply Rules to Multiple Brands</DialogTitle>
-                  <DialogDescription>
-                    Copy service rules from one brand to multiple brands at once
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Copy From Brand</Label>
-                    <Select value={applyFromBrand} onValueChange={setApplyFromBrand}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select source brand" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {brandsWithRules.map(brand => (
-                          <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Apply To Brands (select multiple)</Label>
-                    <div className="border rounded-md p-2 max-h-48 overflow-y-auto">
-                      {allBrands.filter(b => b !== applyFromBrand).map(brand => (
-                        <label key={brand} className="flex items-center space-x-2 p-2 hover:bg-accent rounded cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={applyToBrands.includes(brand)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setApplyToBrands([...applyToBrands, brand]);
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Service Rules */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Wrench className="h-5 w-5" />
+                  Service Rules
+                </CardTitle>
+                <CardDescription>
+                  Define brand-specific service intervals and critical thresholds
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Dialog open={isCopyDialogOpen} onOpenChange={setIsCopyDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy Rules
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Copy Service Rules</DialogTitle>
+                      <DialogDescription>
+                        Copy all service rules from one brand to another
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label>Copy From Brand</Label>
+                        <Select value={copyFromBrand} onValueChange={setCopyFromBrand}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select source brand" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {brandsWithRules.map(brand => (
+                              <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Copy To Brand</Label>
+                        <Select value={copyToBrand} onValueChange={setCopyToBrand}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select target brand" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allBrands.filter(b => b !== copyFromBrand).map(brand => (
+                              <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsCopyDialogOpen(false)}>Cancel</Button>
+                      <Button onClick={handleCopyRules} disabled={copyRules.isPending}>
+                        {copyRules.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Copy Rules
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                <Dialog open={isApplyDialogOpen} onOpenChange={setIsApplyDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">
+                      <Layers className="h-4 w-4 mr-2" />
+                      Apply to Multiple
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Apply Rules to Multiple Brands</DialogTitle>
+                      <DialogDescription>
+                        Copy service rules from one brand to multiple brands at once
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label>Copy From Brand</Label>
+                        <Select value={applyFromBrand} onValueChange={setApplyFromBrand}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select source brand" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {brandsWithRules.map(brand => (
+                              <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Apply To Brands (select multiple)</Label>
+                        <div className="border rounded-md p-2 max-h-48 overflow-y-auto">
+                          {allBrands.filter(b => b !== applyFromBrand).map(brand => (
+                            <label key={brand} className="flex items-center space-x-2 p-2 hover:bg-accent rounded cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={applyToBrands.includes(brand)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setApplyToBrands([...applyToBrands, brand]);
+                                  } else {
+                                    setApplyToBrands(applyToBrands.filter(b => b !== brand));
+                                  }
+                                }}
+                                className="rounded"
+                              />
+                              <span>{brand}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsApplyDialogOpen(false)}>Cancel</Button>
+                      <Button onClick={handleApplyRulesToBrands} disabled={applyRulesToBrands.isPending}>
+                        {applyRulesToBrands.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Apply Rules
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Rule
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <form onSubmit={handleCreateRule}>
+                      <DialogHeader>
+                        <DialogTitle>Create Service Rule</DialogTitle>
+                        <DialogDescription>
+                          Add a new service rule that will be applied to vehicles
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="rule-brand">Brand *</Label>
+                          <Select
+                            value={newRule.brand === '__add_new__' ? '' : newRule.brand}
+                            onValueChange={(value) => {
+                              if (value === '__add_new__') {
+                                setIsAddBrandDialogOpen(true);
+                                // Don't update the brand value, keep it empty
                               } else {
-                                setApplyToBrands(applyToBrands.filter(b => b !== brand));
+                                setNewRule({ ...newRule, brand: value });
                               }
                             }}
-                            className="rounded"
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select brand" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {allBrands.map(brand => (
+                                <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                              ))}
+                              <SelectItem value="__add_new__" className="text-primary font-medium">
+                                + Add New Brand
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {errors.brand && (
+                            <p className="text-sm text-destructive flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3" />
+                              {errors.brand}
+                            </p>
+                          )}
+                        </div>
+                        <RuleNameAutocomplete
+                          ruleName={newRule.name}
+                          onRuleNameChange={(name) => setNewRule({ ...newRule, name })}
+                          required
+                        />
+                        {errors.name && (
+                          <p className="text-sm text-destructive flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            {errors.name}
+                          </p>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="interval-km">Interval (km)</Label>
+                            <Input
+                              id="interval-km"
+                              type="number"
+                              placeholder="e.g., 10000"
+                              value={newRule.interval_km}
+                              onChange={(e) => setNewRule({ ...newRule, interval_km: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="interval-days">Interval (days)</Label>
+                            <Input
+                              id="interval-days"
+                              type="number"
+                              placeholder="e.g., 180"
+                              value={newRule.interval_days}
+                              onChange={(e) => setNewRule({ ...newRule, interval_days: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        {errors.interval && (
+                          <p className="text-sm text-destructive flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            {errors.interval}
+                          </p>
+                        )}
+
+                        <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                          <div>
+                            <Label htmlFor="is-critical" className="font-medium">
+                              Critical Service
+                            </Label>
+                            <p className="text-sm text-muted-foreground">
+                              Shows popup alerts when due
+                            </p>
+                          </div>
+                          <Switch
+                            id="is-critical"
+                            checked={newRule.is_critical}
+                            onCheckedChange={(checked) =>
+                              setNewRule({ ...newRule, is_critical: checked })
+                            }
                           />
-                          <span>{brand}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsApplyDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={handleApplyRulesToBrands} disabled={applyRulesToBrands.isPending}>
-                    {applyRulesToBrands.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    Apply Rules
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Rule
-                </Button>
-              </DialogTrigger>
-            <DialogContent>
-              <form onSubmit={handleCreateRule}>
-                <DialogHeader>
-                  <DialogTitle>Create Service Rule</DialogTitle>
-                  <DialogDescription>
-                    Add a new service rule that will be applied to vehicles
-                  </DialogDescription>
-                </DialogHeader>
+                        </div>
 
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="rule-brand">Brand *</Label>
-                    <Select 
-                      value={newRule.brand === '__add_new__' ? '' : newRule.brand} 
-                      onValueChange={(value) => {
-                        if (value === '__add_new__') {
-                          setIsAddBrandDialogOpen(true);
-                          // Don't update the brand value, keep it empty
-                        } else {
-                          setNewRule({ ...newRule, brand: value });
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select brand" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allBrands.map(brand => (
-                          <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                        ))}
-                        <SelectItem value="__add_new__" className="text-primary font-medium">
-                          + Add New Brand
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {errors.brand && (
-                      <p className="text-sm text-destructive flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        {errors.brand}
-                      </p>
-                    )}
-                  </div>
-                  <RuleNameAutocomplete
-                    ruleName={newRule.name}
-                    onRuleNameChange={(name) => setNewRule({ ...newRule, name })}
-                    required
-                  />
-                  {errors.name && (
-                    <p className="text-sm text-destructive flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {errors.name}
-                    </p>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="interval-km">Interval (km)</Label>
-                      <Input
-                        id="interval-km"
-                        type="number"
-                        placeholder="e.g., 10000"
-                        value={newRule.interval_km}
-                        onChange={(e) => setNewRule({ ...newRule, interval_km: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="interval-days">Interval (days)</Label>
-                      <Input
-                        id="interval-days"
-                        type="number"
-                        placeholder="e.g., 180"
-                        value={newRule.interval_days}
-                        onChange={(e) => setNewRule({ ...newRule, interval_days: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  {errors.interval && (
-                    <p className="text-sm text-destructive flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {errors.interval}
-                    </p>
-                  )}
-
-                  <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                    <div>
-                      <Label htmlFor="is-critical" className="font-medium">
-                        Critical Service
-                      </Label>
-                      <p className="text-sm text-muted-foreground">
-                        Shows popup alerts when due
-                      </p>
-                    </div>
-                    <Switch
-                      id="is-critical"
-                      checked={newRule.is_critical}
-                      onCheckedChange={(checked) =>
-                        setNewRule({ ...newRule, is_critical: checked })
-                      }
-                    />
-                  </div>
-
-                  {newRule.is_critical && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="threshold-km">Due Soon Threshold (km)</Label>
-                        <Input
-                          id="threshold-km"
-                          type="number"
-                          value={newRule.due_soon_threshold_km}
-                          onChange={(e) =>
-                            setNewRule({ ...newRule, due_soon_threshold_km: e.target.value })
-                          }
-                        />
+                        {newRule.is_critical && (
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="threshold-km">Due Soon Threshold (km)</Label>
+                              <Input
+                                id="threshold-km"
+                                type="number"
+                                value={newRule.due_soon_threshold_km}
+                                onChange={(e) =>
+                                  setNewRule({ ...newRule, due_soon_threshold_km: e.target.value })
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="threshold-days">Due Soon Threshold (days)</Label>
+                              <Input
+                                id="threshold-days"
+                                type="number"
+                                value={newRule.due_soon_threshold_days}
+                                onChange={(e) =>
+                                  setNewRule({ ...newRule, due_soon_threshold_days: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
+
+                      <DialogFooter>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={createRule.isPending}>
+                          {createRule.isPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Creating...
+                            </>
+                          ) : (
+                            'Create Rule'
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Add New Brand Dialog */}
+                <Dialog open={isAddBrandDialogOpen} onOpenChange={setIsAddBrandDialogOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add New Brand</DialogTitle>
+                      <DialogDescription>
+                        Create a new brand that can be used for service rules
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
                       <div className="space-y-2">
-                        <Label htmlFor="threshold-days">Due Soon Threshold (days)</Label>
+                        <Label htmlFor="new-brand-name">Brand Name *</Label>
                         <Input
-                          id="threshold-days"
-                          type="number"
-                          value={newRule.due_soon_threshold_days}
-                          onChange={(e) =>
-                            setNewRule({ ...newRule, due_soon_threshold_days: e.target.value })
-                          }
+                          id="new-brand-name"
+                          placeholder="e.g., BMW, Audi, Mercedes-Benz"
+                          value={newBrandName}
+                          onChange={(e) => setNewBrandName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddBrand();
+                            }
+                          }}
                         />
                       </div>
                     </div>
-                  )}
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => {
+                        setIsAddBrandDialogOpen(false);
+                        setNewBrandName('');
+                      }}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleAddBrand} disabled={createBrand.isPending || !newBrandName.trim()}>
+                        {createBrand.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Creating...
+                          </>
+                        ) : (
+                          'Create Brand'
+                        )}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {brandsWithRules.length === 0 ? (
+                <div className="text-center py-12">
+                  <Wrench className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <h3 className="text-lg font-medium mb-2">No brands with rules</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Create service rules for a brand to get started
+                  </p>
                 </div>
+              ) : (
+                <Tabs value={selectedBrand || ''} onValueChange={setSelectedBrand}>
+                  <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${brandsWithRules.length}, minmax(0, 1fr))` }}>
+                    {brandsWithRules.map(brand => (
+                      <TabsTrigger key={brand} value={brand}>{brand}</TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {brandsWithRules.map(brand => (
+                    <TabsContent key={brand} value={brand}>
+                      {isLoading ? (
+                        <div className="flex items-center justify-center py-12">
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : serviceRules && serviceRules.length > 0 ? (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Name</TableHead>
+                              <TableHead>Interval (km)</TableHead>
+                              <TableHead>Interval (days)</TableHead>
+                              <TableHead>Type</TableHead>
+                              <TableHead>Threshold</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {serviceRules.map((rule) => (
+                              <TableRow key={rule.id}>
+                                <TableCell className="font-medium">{rule.name}</TableCell>
+                                <TableCell>
+                                  {rule.interval_km ? `${rule.interval_km.toLocaleString()} km` : '-'}
+                                </TableCell>
+                                <TableCell>
+                                  {rule.interval_days ? `${rule.interval_days} days` : '-'}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={rule.is_critical ? 'error' : 'muted'}>
+                                    {rule.is_critical ? 'Critical' : 'Normal'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  {rule.is_critical ? (
+                                    <span className="text-sm text-muted-foreground">
+                                      {rule.due_soon_threshold_km} km / {rule.due_soon_threshold_days} days
+                                    </span>
+                                  ) : (
+                                    '-'
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={rule.active ? 'success' : 'muted'}>
+                                    {rule.active ? 'Active' : 'Inactive'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleToggleActive(rule.id, rule.active)}
+                                  >
+                                    {rule.active ? 'Disable' : 'Enable'}
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      ) : (
+                        <div className="text-center py-12">
+                          <Wrench className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                          <h3 className="text-lg font-medium mb-2">No service rules for {brand}</h3>
+                          <p className="text-muted-foreground mb-4">
+                            Create service rules for this brand to get started
+                          </p>
+                        </div>
+                      )}
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              )}
+            </CardContent>
+          </Card>
 
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={createRule.isPending}>
-                    {createRule.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Creating...
-                      </>
-                    ) : (
-                      'Create Rule'
-                    )}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-          
-          {/* Add New Brand Dialog */}
-          <Dialog open={isAddBrandDialogOpen} onOpenChange={setIsAddBrandDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Brand</DialogTitle>
-                <DialogDescription>
-                  Create a new brand that can be used for service rules
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
+          {/* Minimum KM Thresholds */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Gauge className="h-5 w-5" />
+                Minimum KM Thresholds
+              </CardTitle>
+              <CardDescription>
+                Set default minimum KM charges for booking rates (applies to all bookings)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="new-brand-name">Brand Name *</Label>
+                  <Label htmlFor="min-km-per-km">Minimum KM for Per KM Rate</Label>
                   <Input
-                    id="new-brand-name"
-                    placeholder="e.g., BMW, Audi, Mercedes-Benz"
-                    value={newBrandName}
-                    onChange={(e) => setNewBrandName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddBrand();
-                      }
-                    }}
+                    id="min-km-per-km"
+                    type="number"
+                    value={minKmSettings.per_km}
+                    onChange={(e) => setMinKmSettings({ ...minKmSettings, per_km: e.target.value })}
+                    placeholder="100"
+                    min="0"
                   />
+                  <p className="text-sm text-muted-foreground">
+                    Minimum KM to charge when rate type is "Per KM". If estimated KM is less than this, this value will be charged.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="min-km-hybrid">Minimum KM per Day for Hybrid Rate</Label>
+                  <Input
+                    id="min-km-hybrid"
+                    type="number"
+                    value={minKmSettings.hybrid_per_day}
+                    onChange={(e) => setMinKmSettings({ ...minKmSettings, hybrid_per_day: e.target.value })}
+                    placeholder="100"
+                    min="0"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Minimum KM per day for "Hybrid" rate type. Total minimum = (this value × number of days). If estimated KM is less, this minimum will be charged.
+                  </p>
                 </div>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => {
-                  setIsAddBrandDialogOpen(false);
-                  setNewBrandName('');
-                }}>
-                  Cancel
-                </Button>
-                <Button onClick={handleAddBrand} disabled={createBrand.isPending || !newBrandName.trim()}>
-                  {createBrand.isPending ? (
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSaveMinKmSettings}
+                  disabled={updateSystemConfig.isPending}
+                  data-settings-save
+                >
+                  {updateSystemConfig.isPending ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Creating...
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
                     </>
                   ) : (
-                    'Create Brand'
+                    'Save Thresholds'
                   )}
                 </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {brandsWithRules.length === 0 ? (
-            <div className="text-center py-12">
-              <Wrench className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <h3 className="text-lg font-medium mb-2">No brands with rules</h3>
-              <p className="text-muted-foreground mb-4">
-                Create service rules for a brand to get started
-              </p>
-            </div>
-          ) : (
-            <Tabs value={selectedBrand || ''} onValueChange={setSelectedBrand}>
-              <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${brandsWithRules.length}, minmax(0, 1fr))` }}>
-                {brandsWithRules.map(brand => (
-                  <TabsTrigger key={brand} value={brand}>{brand}</TabsTrigger>
-                ))}
-              </TabsList>
-              {brandsWithRules.map(brand => (
-                <TabsContent key={brand} value={brand}>
-                  {isLoading ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : serviceRules && serviceRules.length > 0 ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Interval (km)</TableHead>
-                          <TableHead>Interval (days)</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Threshold</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {serviceRules.map((rule) => (
-                          <TableRow key={rule.id}>
-                            <TableCell className="font-medium">{rule.name}</TableCell>
-                            <TableCell>
-                              {rule.interval_km ? `${rule.interval_km.toLocaleString()} km` : '-'}
-                            </TableCell>
-                            <TableCell>
-                              {rule.interval_days ? `${rule.interval_days} days` : '-'}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={rule.is_critical ? 'error' : 'muted'}>
-                                {rule.is_critical ? 'Critical' : 'Normal'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {rule.is_critical ? (
-                                <span className="text-sm text-muted-foreground">
-                                  {rule.due_soon_threshold_km} km / {rule.due_soon_threshold_days} days
-                                </span>
-                              ) : (
-                                '-'
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={rule.active ? 'success' : 'muted'}>
-                                {rule.active ? 'Active' : 'Inactive'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleToggleActive(rule.id, rule.active)}
-                              >
-                                {rule.active ? 'Disable' : 'Enable'}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  ) : (
-                    <div className="text-center py-12">
-                      <Wrench className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                      <h3 className="text-lg font-medium mb-2">No service rules for {brand}</h3>
-                      <p className="text-muted-foreground mb-4">
-                        Create service rules for this brand to get started
-                      </p>
-                    </div>
-                  )}
-                </TabsContent>
-              ))}
-            </Tabs>
-          )}
-        </CardContent>
-      </Card>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Minimum KM Thresholds */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Gauge className="h-5 w-5" />
-            Minimum KM Thresholds
-          </CardTitle>
-          <CardDescription>
-            Set default minimum KM charges for booking rates (applies to all bookings)
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="min-km-per-km">Minimum KM for Per KM Rate</Label>
-              <Input
-                id="min-km-per-km"
-                type="number"
-                value={minKmSettings.per_km}
-                onChange={(e) => setMinKmSettings({ ...minKmSettings, per_km: e.target.value })}
-                placeholder="100"
-                min="0"
-              />
-              <p className="text-sm text-muted-foreground">
-                Minimum KM to charge when rate type is "Per KM". If estimated KM is less than this, this value will be charged.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="min-km-hybrid">Minimum KM per Day for Hybrid Rate</Label>
-              <Input
-                id="min-km-hybrid"
-                type="number"
-                value={minKmSettings.hybrid_per_day}
-                onChange={(e) => setMinKmSettings({ ...minKmSettings, hybrid_per_day: e.target.value })}
-                placeholder="100"
-                min="0"
-              />
-              <p className="text-sm text-muted-foreground">
-                Minimum KM per day for "Hybrid" rate type. Total minimum = (this value × number of days). If estimated KM is less, this minimum will be charged.
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button 
-              onClick={handleSaveMinKmSettings}
-              disabled={updateSystemConfig.isPending}
-              data-settings-save
-            >
-              {updateSystemConfig.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                'Save Thresholds'
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {isAdmin && <ServiceRecordFormConfigCard onDirtyChange={(dirty) => registerCardDirty('service', dirty)} />}
+          {isAdmin && <ServiceRecordFormConfigCard onDirtyChange={(dirty) => registerCardDirty('service', dirty)} />}
         </TabsContent>
 
         <TabsContent value="incidents-downtime" className="space-y-6 mt-6">

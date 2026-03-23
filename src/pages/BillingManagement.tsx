@@ -32,7 +32,8 @@ import { useAllBills, useUpdateBillStatus, useUploadBillPDF, useBillsNeedingRemi
 import { useCompanyBills, useUploadCompanyBillPDF } from '@/hooks/use-company-bills';
 import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import { useBookings } from '@/hooks/use-bookings';
-import { supabase } from '@/integrations/supabase/client';
+import { storageGetSignedUrl } from '@/lib/storage';
+import { toFullKey } from '@/lib/storage-keys';
 import { GenerateBillDialog } from '@/components/bookings/GenerateBillDialog';
 import { CreateStandaloneBillDialog } from '@/components/bookings/CreateStandaloneBillDialog';
 import { TRIP_TYPE_LABELS, RATE_TYPE_LABELS, type Bill } from '@/types/booking';
@@ -42,6 +43,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/auth-context';
+import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
 import { formatCarLabel } from '@/lib/utils';
 import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -67,7 +69,8 @@ export default function BillingManagement() {
   const uploadCompanyPDF = useUploadCompanyBillPDF();
   const markReminderSent = useMarkReminderSent();
   const companyName = organization?.company_name || organization?.name || 'Company';
-  const logoUrl = organization?.logo_url || DEFAULT_ORG_LOGO_URL;
+  const logoDisplayUrl = useLogoDisplayUrl(organization?.logo_url);
+  const logoUrl = logoDisplayUrl || DEFAULT_ORG_LOGO_URL;
   const qrPrefix = (orgSettings?.bill_number_prefix || 'PT').trim().toUpperCase().replace(/-/g, '') || 'PT';
 
   const [billTypeTab, setBillTypeTab] = useState<'customer' | 'company'>('customer');
@@ -271,13 +274,10 @@ export default function BillingManagement() {
     if (!selectedBill.pdf_file_path) {
       pdfBlob = await generatePdfBlob(selectedBill);
     } else {
-      // Get PDF from storage
-      const { data: { publicUrl } } = supabase.storage
-        .from('bills')
-        .getPublicUrl(selectedBill.pdf_file_path);
-      
-      // Fetch the PDF
-      const response = await fetch(publicUrl);
+      const key = toFullKey('BILLS', selectedBill.pdf_file_path);
+      if (!key) throw new Error('Invalid bill file path');
+      const signedUrl = await storageGetSignedUrl(key, 3600, undefined, 'bills');
+      const response = await fetch(signedUrl);
       pdfBlob = await response.blob();
     }
     
