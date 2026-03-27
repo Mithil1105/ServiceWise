@@ -73,8 +73,8 @@ export function DriverFormConfigCard({ onDirtyChange }: DriverFormConfigCardProp
   useEffect(() => {
     const saved = JSON.stringify({
       fieldOverrides: config.fieldOverrides ?? {},
-      licenseTypeOptions: config.licenseTypeOptions ?? DEFAULT_LICENSE_TYPE_OPTIONS,
-      driverTypeOptions: config.driverTypeOptions ?? DEFAULT_DRIVER_TYPE_OPTIONS,
+      licenseTypeOptions: config.licenseTypeOptions?.length ? config.licenseTypeOptions : DEFAULT_LICENSE_TYPE_OPTIONS,
+      driverTypeOptions: config.driverTypeOptions?.length ? config.driverTypeOptions : DEFAULT_DRIVER_TYPE_OPTIONS,
       customFields: config.customFields ?? [],
     });
     const current = JSON.stringify({ fieldOverrides, licenseTypeOptions, driverTypeOptions, customFields });

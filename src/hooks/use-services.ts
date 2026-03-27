@@ -4,6 +4,7 @@ import type { ServiceRule, ServiceRecord, CarServiceRule, CriticalServiceItem } 
 import { useToast } from '@/hooks/use-toast';
 import { isoAtNoonUtcFromDateInput } from '@/lib/date';
 import { useOrg } from '@/hooks/use-org';
+import { addDays, differenceInCalendarDays } from 'date-fns';
 
 /**
  * Search existing rule names (for autocomplete)
@@ -111,6 +112,7 @@ export function useCreateServiceRecord() {
     mutationFn: async (record: {
       car_id: string;
       rule_id?: string;
+      rule_ids?: string[];
       service_name: string;
       serviced_at: string;
       odometer_km: number;
@@ -126,12 +128,15 @@ export function useCreateServiceRecord() {
       if (!orgId) throw new Error('Organization not found');
       const { data: { user } } = await supabase.auth.getUser();
       
+      const { rule_ids, ...recordPayload } = record;
+
       // Create service record
       const { data, error } = await supabase
         .from('service_records')
         .insert({
           organization_id: orgId,
-          ...record,
+          ...recordPayload,
+          rule_id: rule_ids && rule_ids.length === 1 ? rule_ids[0] : record.rule_id,
           entered_by: user?.id,
         })
         .select()
@@ -173,8 +178,15 @@ export function useCreateServiceRecord() {
         if (odoInsertError) throw odoInsertError;
       }
 
-      // Update car_service_rules if rule_id is provided
-      if (record.rule_id) {
+      // Update car_service_rules for all selected rules (single or multi-select).
+      const effectiveRuleIds = Array.from(
+        new Set(
+          (rule_ids && rule_ids.length > 0)
+            ? rule_ids
+            : (record.rule_id ? [record.rule_id] : [])
+        )
+      );
+      if (effectiveRuleIds.length > 0) {
         await supabase
           .from('car_service_rules')
           .update({
@@ -182,7 +194,7 @@ export function useCreateServiceRecord() {
             last_serviced_at: record.serviced_at,
           })
           .eq('car_id', record.car_id)
-          .eq('rule_id', record.rule_id);
+          .in('rule_id', effectiveRuleIds);
       }
 
       // Log supervisor activity if user is supervisor
@@ -200,6 +212,7 @@ export function useCreateServiceRecord() {
           action_type: 'service_added',
           action_details: {
             service_name: record.service_name,
+            service_rule_ids: (rule_ids && rule_ids.length > 0) ? rule_ids : (record.rule_id ? [record.rule_id] : []),
             odometer_km: record.odometer_km,
             cost: record.cost,
             vendor_name: record.vendor_name,
@@ -227,6 +240,162 @@ export function useCreateServiceRecord() {
         description: error.message,
         variant: 'destructive',
       });
+    },
+  });
+}
+
+export interface ServicePlannerItem {
+  car_id: string;
+  vehicle_number: string;
+  model?: string | null;
+  brand?: string | null;
+  service_name: string;
+  current_km: number;
+  due_km: number | null;
+  remaining_km: number | null;
+  last_serviced_km?: number;
+  last_serviced_at?: string;
+  estimated_due_date: string | null;
+  remaining_days: number | null;
+  status: 'overdue' | 'due-soon' | 'upcoming';
+  estimation_source: 'km-trend' | 'interval-days' | 'earliest-of-both' | 'unknown';
+  avg_daily_km_used: number | null;
+}
+
+function deriveAverageDailyKmFromHistory(odometerRows: Array<{ odometer_km: number; reading_at: string }>): number | null {
+  if (!odometerRows || odometerRows.length < 2) return null;
+
+  const sorted = [...odometerRows]
+    .filter((row) => Number.isFinite(row.odometer_km) && !!row.reading_at)
+    .sort((a, b) => new Date(a.reading_at).getTime() - new Date(b.reading_at).getTime());
+  if (sorted.length < 2) return null;
+
+  const now = new Date();
+  const cutoff = addDays(now, -120).getTime();
+  const windowed = sorted.filter((r) => new Date(r.reading_at).getTime() >= cutoff);
+  const target = windowed.length >= 2 ? windowed : sorted;
+
+  const first = target[0];
+  const last = target[target.length - 1];
+  const days = (new Date(last.reading_at).getTime() - new Date(first.reading_at).getTime()) / (1000 * 60 * 60 * 24);
+  const km = last.odometer_km - first.odometer_km;
+  if (!Number.isFinite(days) || days <= 0) return null;
+  if (!Number.isFinite(km) || km <= 0) return null;
+
+  const avg = km / days;
+  if (!Number.isFinite(avg) || avg <= 0) return null;
+  return avg;
+}
+
+export function useServicePlannerItems() {
+  return useQuery({
+    queryKey: ['service-planner-items'],
+    queryFn: async (): Promise<ServicePlannerItem[]> => {
+      const { data: cars, error: carsError } = await supabase
+        .from('cars')
+        .select('*')
+        .eq('status', 'active');
+      if (carsError) throw carsError;
+
+      const { data: odometers, error: odoError } = await supabase
+        .from('odometer_entries')
+        .select('*')
+        .order('reading_at', { ascending: false });
+      if (odoError) throw odoError;
+
+      const { data: carServiceRules, error: csrError } = await supabase
+        .from('car_service_rules')
+        .select('*, service_rules(*)')
+        .eq('enabled', true);
+      if (csrError) throw csrError;
+
+      const now = new Date();
+      const items: ServicePlannerItem[] = [];
+
+      for (const car of cars || []) {
+        const carOdometers = (odometers || []).filter((o: any) => o.car_id === car.id);
+        const latestOdo = carOdometers[0];
+        const currentKm = latestOdo?.odometer_km || 0;
+        const avgDailyKm = deriveAverageDailyKmFromHistory(
+          carOdometers.map((o: any) => ({ odometer_km: o.odometer_km, reading_at: o.reading_at }))
+        );
+
+        const carRules = (carServiceRules || []).filter((csr: any) => csr.car_id === car.id);
+
+        for (const csr of carRules) {
+          const rule = csr.service_rules as ServiceRule | undefined;
+          if (!rule) continue;
+
+          const hasKmInterval = typeof rule.interval_km === 'number' && rule.interval_km > 0;
+          const hasDayInterval = typeof rule.interval_days === 'number' && rule.interval_days > 0;
+          if (!hasKmInterval && !hasDayInterval) continue;
+
+          const lastServicedKm = csr.last_serviced_km || 0;
+          const dueKm = hasKmInterval ? lastServicedKm + Number(rule.interval_km) : null;
+          const remainingKm = dueKm != null ? dueKm - currentKm : null;
+
+          const kmProjectedDate = (remainingKm != null && avgDailyKm && avgDailyKm > 0)
+            ? addDays(now, Math.floor(remainingKm / avgDailyKm))
+            : null;
+          const dayProjectedDate = hasDayInterval
+            ? addDays(csr.last_serviced_at ? new Date(csr.last_serviced_at) : now, Number(rule.interval_days))
+            : null;
+
+          let estimatedDueDate: Date | null = null;
+          let estimationSource: ServicePlannerItem['estimation_source'] = 'unknown';
+          if (kmProjectedDate && dayProjectedDate) {
+            estimatedDueDate = kmProjectedDate < dayProjectedDate ? kmProjectedDate : dayProjectedDate;
+            estimationSource = 'earliest-of-both';
+          } else {
+            estimatedDueDate = kmProjectedDate ?? dayProjectedDate ?? null;
+            if (kmProjectedDate) estimationSource = 'km-trend';
+            else if (dayProjectedDate) estimationSource = 'interval-days';
+          }
+          const remainingDays = estimatedDueDate ? differenceInCalendarDays(estimatedDueDate, now) : null;
+
+          const dueSoonKm = rule.due_soon_threshold_km ?? 500;
+          const dueSoonDays = rule.due_soon_threshold_days ?? 7;
+
+          const isOverdueByKm = remainingKm != null && remainingKm < 0;
+          const isOverdueByDays = remainingDays != null && remainingDays < 0;
+          const isDueSoonByKm = remainingKm != null && remainingKm <= dueSoonKm;
+          const isDueSoonByDays = remainingDays != null && remainingDays <= dueSoonDays;
+
+          const status: ServicePlannerItem['status'] = (isOverdueByKm || isOverdueByDays)
+            ? 'overdue'
+            : (isDueSoonByKm || isDueSoonByDays)
+              ? 'due-soon'
+              : 'upcoming';
+
+          items.push({
+            car_id: car.id,
+            vehicle_number: car.vehicle_number,
+            model: car.model,
+            brand: car.brand,
+            service_name: rule.name,
+            current_km: currentKm,
+            due_km: dueKm,
+            remaining_km: remainingKm,
+            last_serviced_km: csr.last_serviced_km ?? undefined,
+            last_serviced_at: csr.last_serviced_at ?? undefined,
+            estimated_due_date: estimatedDueDate ? estimatedDueDate.toISOString() : null,
+            remaining_days: remainingDays,
+            status,
+            estimation_source: estimationSource,
+            avg_daily_km_used: avgDailyKm,
+          });
+        }
+      }
+
+      items.sort((a, b) => {
+        const rank = { overdue: 0, 'due-soon': 1, upcoming: 2 } as const;
+        if (rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status];
+        const aDays = a.remaining_days ?? Number.MAX_SAFE_INTEGER;
+        const bDays = b.remaining_days ?? Number.MAX_SAFE_INTEGER;
+        return aDays - bDays;
+      });
+
+      return items;
     },
   });
 }

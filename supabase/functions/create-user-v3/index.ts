@@ -155,9 +155,9 @@ Deno.serve(async (req) => {
             );
         }
 
-        if (role && !["admin", "manager", "supervisor"].includes(role)) {
+        if (role && !["admin", "manager", "supervisor", "fuel_filler"].includes(role)) {
             return new Response(
-                JSON.stringify({ error: "Invalid role. Must be admin, manager, or supervisor" }),
+                JSON.stringify({ error: "Invalid role. Must be admin, manager, supervisor, or fuel_filler" }),
                 { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
         }
@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
                 .insert({
                     organization_id: organizationId,
                     user_id: newUser.user.id,
-                    role: role as "admin" | "manager" | "supervisor",
+                    role: role as "admin" | "manager" | "supervisor" | "fuel_filler",
                     created_at: new Date().toISOString(),
                 });
 

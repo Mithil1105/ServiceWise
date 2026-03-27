@@ -63,20 +63,27 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
 
   const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<BookingFormBuiltInFieldKey, FieldOverride>>>({});
   const [tripTypeOptions, setTripTypeOptions] = useState<SelectOption[]>([]);
+  const [supervisorAssignmentMode, setSupervisorAssignmentMode] = useState<'project' | 'legacy'>('project');
   const [customFields, setCustomFields] = useState<FleetNewCarCustomField[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setFieldOverrides(config.fieldOverrides ?? {});
     setTripTypeOptions(config.tripTypeOptions?.length ? [...config.tripTypeOptions] : [...DEFAULT_TRIP_TYPE_OPTIONS]);
+    setSupervisorAssignmentMode((orgSettings?.supervisor_assignment_mode as 'project' | 'legacy' | null) ?? 'project');
     setCustomFields(config.customFields ?? []);
-  }, [config.fieldOverrides, config.tripTypeOptions, config.customFields]);
+  }, [config.fieldOverrides, config.tripTypeOptions, config.customFields, orgSettings?.supervisor_assignment_mode]);
 
   useEffect(() => {
-    const saved = JSON.stringify({ fieldOverrides: config.fieldOverrides ?? {}, tripTypeOptions: config.tripTypeOptions ?? DEFAULT_TRIP_TYPE_OPTIONS, customFields: config.customFields ?? [] });
-    const current = JSON.stringify({ fieldOverrides, tripTypeOptions, customFields });
+    const saved = JSON.stringify({
+      fieldOverrides: config.fieldOverrides ?? {},
+      tripTypeOptions: config.tripTypeOptions?.length ? config.tripTypeOptions : DEFAULT_TRIP_TYPE_OPTIONS,
+      supervisorAssignmentMode: (orgSettings?.supervisor_assignment_mode as 'project' | 'legacy' | null) ?? 'project',
+      customFields: config.customFields ?? [],
+    });
+    const current = JSON.stringify({ fieldOverrides, tripTypeOptions, supervisorAssignmentMode, customFields });
     onDirtyChange?.(saved !== current);
-  }, [fieldOverrides, tripTypeOptions, customFields, config, onDirtyChange]);
+  }, [fieldOverrides, tripTypeOptions, supervisorAssignmentMode, customFields, config, orgSettings?.supervisor_assignment_mode, onDirtyChange]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -86,8 +93,10 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
         booking_form_config: {
           fieldOverrides: Object.keys(fieldOverrides).length ? fieldOverrides : undefined,
           tripTypeOptions: cleanedTripTypeOptions.length > 0 ? cleanedTripTypeOptions : undefined,
+          supervisorAssignmentMode,
           customFields: customFields.length ? customFields : undefined,
         },
+        supervisor_assignment_mode: supervisorAssignmentMode,
       });
       onDirtyChange?.(false);
     } finally {
@@ -168,6 +177,24 @@ export function BookingFormConfigCard({ onDirtyChange }: BookingFormConfigCardPr
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <Label className="text-base font-medium">Supervisor Assignment Mode</Label>
+          <p className="text-sm text-muted-foreground">
+            Project mode (default) uses Open Project + supervisor projects. Legacy mode keeps direct supervisor-car assignments.
+          </p>
+          <div className="max-w-sm">
+            <Select value={supervisorAssignmentMode} onValueChange={(v) => setSupervisorAssignmentMode(v as 'project' | 'legacy')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="project">Project Mode (Default)</SelectItem>
+                <SelectItem value="legacy">Legacy Mode (Direct Car Assignment)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

@@ -1,18 +1,19 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Car, Wrench, Gauge, AlertTriangle, ArrowRight } from 'lucide-react';
-import { useAuth } from '@/lib/auth-context';
-import { useSupervisorAssignments } from '@/hooks/use-car-assignments';
+import { Car, Wrench, Gauge, ArrowRight } from 'lucide-react';
+import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
+import { useCars } from '@/hooks/use-cars';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
 import { formatCarLabel } from '@/lib/utils';
 
 export default function SupervisorDashboard() {
-  const { user } = useAuth();
   const navigate = useNavigate();
-  const { data: assignments = [], isLoading } = useSupervisorAssignments(user?.id);
+  const { data: cars = [], isLoading: carsLoading } = useCars();
+  const { assignedCarIds, isRestricted, isLoading: assignedLoading } = useAssignedCarIdsForCurrentUser();
+  const assignedCars = isRestricted && assignedCarIds
+    ? cars.filter((car) => assignedCarIds.includes(car.id))
+    : cars;
+  const isLoading = carsLoading || assignedLoading;
 
   if (isLoading) {
     return (
@@ -26,7 +27,7 @@ export default function SupervisorDashboard() {
     );
   }
 
-  if (assignments.length === 0) {
+  if (assignedCars.length === 0) {
     return (
       <div className="p-6">
         <Card>
@@ -47,7 +48,7 @@ export default function SupervisorDashboard() {
       <div>
         <h1 className="text-2xl font-bold">My Assigned Cars</h1>
         <p className="text-muted-foreground">
-          You have {assignments.length} car{assignments.length !== 1 ? 's' : ''} assigned to you
+          You have {assignedCars.length} car{assignedCars.length !== 1 ? 's' : ''} assigned to you
         </p>
       </div>
 
@@ -60,7 +61,7 @@ export default function SupervisorDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{assignments.length}</div>
+            <div className="text-2xl font-bold">{assignedCars.length}</div>
           </CardContent>
         </Card>
         <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate('/app/services/new')}>
@@ -97,17 +98,17 @@ export default function SupervisorDashboard() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {assignments.map((assignment) => (
+            {assignedCars.map((car) => (
               <Card
-                key={assignment.id}
+                key={car.id}
                 className="cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => navigate(`/fleet/${assignment.car_id}`)}
+                onClick={() => navigate(`/app/fleet/${car.id}`)}
               >
                 <CardContent className="pt-4">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="font-semibold">{formatCarLabel(assignment.cars)}</h3>
-                      <p className="text-sm text-muted-foreground">{assignment.cars.model}</p>
+                      <h3 className="font-semibold">{formatCarLabel(car)}</h3>
+                      <p className="text-sm text-muted-foreground">{car.brand ?? ''} {car.model}</p>
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   </div>
@@ -117,7 +118,7 @@ export default function SupervisorDashboard() {
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/services/new?car=${assignment.car_id}`);
+                        navigate(`/app/services/new?car=${car.id}`);
                       }}
                     >
                       <Wrench className="h-3 w-3 mr-1" />
@@ -128,18 +129,13 @@ export default function SupervisorDashboard() {
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/odometer?car=${assignment.car_id}`);
+                        navigate(`/app/odometer?car=${car.id}`);
                       }}
                     >
                       <Gauge className="h-3 w-3 mr-1" />
                       Odometer
                     </Button>
                   </div>
-                  {assignment.notes && (
-                    <p className="mt-2 text-xs text-muted-foreground truncate">
-                      Note: {assignment.notes}
-                    </p>
-                  )}
                 </CardContent>
               </Card>
             ))}

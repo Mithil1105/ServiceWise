@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
         const callerData = { id: claims.claims.sub as string, email: claims.claims.email as string | undefined };
         const email = (body.email as string)?.trim()?.toLowerCase();
         const tempPassword = (body.tempPassword as string)?.trim();
-        const role = (body.role as "supervisor" | "manager" | "admin") || "supervisor";
+        const role = (body.role as "supervisor" | "manager" | "admin" | "fuel_filler") || "supervisor";
         const fullName = (body.fullName as string)?.trim();
         const organizationIdParam = body.organizationId as string | undefined;
 
@@ -127,8 +127,8 @@ Deno.serve(async (req) => {
             });
         }
 
-        if (role && !["supervisor", "manager", "admin"].includes(role)) {
-            return new Response(JSON.stringify({ error: "role must be supervisor, manager, or admin" }), {
+        if (role && !["supervisor", "manager", "admin", "fuel_filler"].includes(role)) {
+            return new Response(JSON.stringify({ error: "role must be supervisor, manager, admin, or fuel_filler" }), {
                 status: 400,
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });

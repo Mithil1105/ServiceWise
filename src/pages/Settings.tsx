@@ -33,14 +33,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Settings as SettingsIcon, Plus, Wrench, Loader2, AlertCircle, Shield, Gauge, Copy, Layers, Building2, ImageIcon, Car, Users, Calendar, FileText, PauseCircle } from 'lucide-react';
+import { Settings as SettingsIcon, Plus, Wrench, Loader2, AlertCircle, Shield, Gauge, Copy, Layers, Building2, ImageIcon, Car, Users, Calendar, FileText, PauseCircle, Fuel } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useOrg } from '@/hooks/use-org';
-import { useOrganizationSettings, useUpdateOrganizationSettings } from '@/hooks/use-organization-settings';
+import { useOrganizationSettings, useUpdateOrganizationSettings, type OcrTier } from '@/hooks/use-organization-settings';
 import { useUpdateOrganization } from '@/hooks/use-organization';
+import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
 import { storageUpload } from '@/lib/storage';
 import { organizationLogoKey } from '@/lib/storage-keys';
@@ -52,10 +53,34 @@ import { BillingLayoutConfigCard } from '@/components/settings/BillingLayoutConf
 import { ServiceRecordFormConfigCard } from '@/components/settings/ServiceRecordFormConfigCard';
 import { DowntimeFormConfigCard } from '@/components/settings/DowntimeFormConfigCard';
 import { IncidentFormConfigCard } from '@/components/settings/IncidentFormConfigCard';
+import { FuelEntryFormConfigCard } from '@/components/settings/FuelEntryFormConfigCard';
 import { ChallanTypesCard } from '@/components/settings/ChallanTypesCard';
+
+type BulkRuleRow = {
+  id: string;
+  name: string;
+  interval_km: string;
+  interval_days: string;
+  is_critical: boolean;
+  due_soon_threshold_km: string;
+  due_soon_threshold_days: string;
+};
+
+const COMMON_SERVICE_RULE_NAMES = [
+  'Engine Oil + Filter',
+  'Air Filter',
+  'AC Service',
+  'Brake Pad Inspection',
+  'Coolant Flush',
+  'Wheel Alignment',
+  'Battery Check',
+  'Tyre Rotation',
+  'General Service',
+];
 
 export default function Settings() {
   const { isAdmin, organization, refreshUser } = useAuth();
+  const { isMasterAdmin } = useIsMasterAdmin();
   const { orgId } = useOrg();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -78,6 +103,7 @@ export default function Settings() {
   const [companyName, setCompanyName] = useState('');
   const [termsAndConditions, setTermsAndConditions] = useState('');
   const [billPrefix, setBillPrefix] = useState('PT');
+  const [ocrTier, setOcrTier] = useState<OcrTier>('basic');
   useEffect(() => {
     const name = org?.company_name ?? organization?.company_name ?? '';
     if (name !== '') setCompanyName(name);
@@ -88,6 +114,9 @@ export default function Settings() {
   useEffect(() => {
     if (orgSettings?.bill_number_prefix != null) setBillPrefix(orgSettings.bill_number_prefix);
   }, [orgSettings?.bill_number_prefix]);
+  useEffect(() => {
+    setOcrTier((orgSettings?.ocr_tier as OcrTier | null) ?? 'basic');
+  }, [orgSettings?.ocr_tier]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -168,6 +197,20 @@ export default function Settings() {
       toast({ title: 'Bill number prefix saved' });
     } catch (err: any) {
       toast({ title: 'Failed to save', description: err?.message, variant: 'destructive' });
+    } finally {
+      setBrandingSaving(false);
+    }
+  };
+
+  const handleSaveOcrTier = async () => {
+    setBrandingSaving(true);
+    try {
+      await updateOrgSettings.mutateAsync({
+        ocr_tier: ocrTier,
+      });
+      toast({ title: 'OCR plan tier saved' });
+    } catch (err: any) {
+      toast({ title: 'Failed to save OCR tier', description: err?.message, variant: 'destructive' });
     } finally {
       setBrandingSaving(false);
     }
@@ -280,8 +323,15 @@ export default function Settings() {
   }, [brandsWithRules, selectedBrand]);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
   const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false);
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
+  const [bulkStep, setBulkStep] = useState<1 | 2>(1);
+  const [bulkBrand, setBulkBrand] = useState('');
+  const [bulkSelectedStarters, setBulkSelectedStarters] = useState<string[]>([]);
+  const [bulkRows, setBulkRows] = useState<BulkRuleRow[]>([]);
+  const [bulkError, setBulkError] = useState('');
+  const [bulkRowErrors, setBulkRowErrors] = useState<Record<string, string>>({});
   const [newRule, setNewRule] = useState({
     name: '',
     brand: '',
@@ -296,6 +346,10 @@ export default function Settings() {
   const [applyFromBrand, setApplyFromBrand] = useState('');
   const [applyToBrands, setApplyToBrands] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const starterRuleNames = useMemo(() => {
+    const existing = Array.from(new Set((serviceRules ?? []).map((r) => r.name).filter(Boolean)));
+    return Array.from(new Set([...COMMON_SERVICE_RULE_NAMES, ...existing])).sort((a, b) => a.localeCompare(b));
+  }, [serviceRules]);
 
   if (!isAdmin) {
     return (
@@ -453,6 +507,125 @@ export default function Settings() {
     }
   };
 
+  const createEmptyBulkRow = (): BulkRuleRow => ({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    interval_km: '',
+    interval_days: '',
+    is_critical: false,
+    due_soon_threshold_km: '500',
+    due_soon_threshold_days: '7',
+  });
+
+  const openBulkDialog = () => {
+    setBulkStep(1);
+    setBulkBrand(selectedBrand || allBrands[0] || '');
+    setBulkSelectedStarters([]);
+    setBulkRows([]);
+    setBulkError('');
+    setBulkRowErrors({});
+    setIsBulkDialogOpen(true);
+  };
+
+  const handleStartBulkGrid = () => {
+    if (!bulkBrand.trim()) {
+      setBulkError('Please select a brand');
+      return;
+    }
+    const rows =
+      bulkSelectedStarters.length > 0
+        ? bulkSelectedStarters.map((name) => ({
+            ...createEmptyBulkRow(),
+            name,
+          }))
+        : [createEmptyBulkRow()];
+    setBulkRows(rows);
+    setBulkError('');
+    setBulkStep(2);
+  };
+
+  const updateBulkRow = (id: string, patch: Partial<BulkRuleRow>) => {
+    setBulkRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+    setBulkRowErrors((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const validateBulkRows = () => {
+    const rowErrors: Record<string, string> = {};
+    for (const row of bulkRows) {
+      if (!row.name.trim()) {
+        rowErrors[row.id] = 'Rule name is required';
+        continue;
+      }
+      if (!row.interval_km.trim() && !row.interval_days.trim()) {
+        rowErrors[row.id] = 'Add at least one interval (km or days)';
+        continue;
+      }
+      if (
+        row.interval_km.trim() &&
+        (!Number.isFinite(Number(row.interval_km)) || Number(row.interval_km) <= 0)
+      ) {
+        rowErrors[row.id] = 'Interval km must be a positive number';
+        continue;
+      }
+      if (
+        row.interval_days.trim() &&
+        (!Number.isFinite(Number(row.interval_days)) || Number(row.interval_days) <= 0)
+      ) {
+        rowErrors[row.id] = 'Interval days must be a positive number';
+      }
+    }
+    setBulkRowErrors(rowErrors);
+    return Object.keys(rowErrors).length === 0;
+  };
+
+  const handleBulkCreateRules = async () => {
+    setBulkError('');
+    if (!bulkBrand.trim()) {
+      setBulkError('Please select a brand');
+      return;
+    }
+    if (bulkRows.length === 0) {
+      setBulkError('Add at least one rule row');
+      return;
+    }
+    if (!validateBulkRows()) {
+      setBulkError('Please fix row errors before creating rules.');
+      return;
+    }
+
+    try {
+      for (const row of bulkRows) {
+        await createRule.mutateAsync({
+          name: row.name.trim(),
+          brand: bulkBrand.trim(),
+          interval_km: row.interval_km ? parseInt(row.interval_km, 10) : undefined,
+          interval_days: row.interval_days ? parseInt(row.interval_days, 10) : undefined,
+          is_critical: row.is_critical,
+          due_soon_threshold_km: parseInt(row.due_soon_threshold_km, 10) || 500,
+          due_soon_threshold_days: parseInt(row.due_soon_threshold_days, 10) || 7,
+        });
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['service-rules'] });
+      await queryClient.invalidateQueries({ queryKey: ['brands-with-rules'] });
+      setSelectedBrand(bulkBrand);
+      setIsBulkDialogOpen(false);
+      setBulkStep(1);
+      setBulkRows([]);
+      setBulkSelectedStarters([]);
+      toast({
+        title: 'Rules created',
+        description: `Created ${bulkRows.length} rules for ${bulkBrand}.`,
+      });
+    } catch (error: any) {
+      setBulkError(error?.message ?? 'Failed to create one or more rules.');
+    }
+  };
+
   const handleSaveMinKmSettings = async () => {
     try {
       await updateSystemConfig.mutateAsync({
@@ -499,6 +672,10 @@ export default function Settings() {
           <TabsTrigger value="fleet" className="flex items-center gap-2">
             <Car className="h-4 w-4" />
             Fleet
+          </TabsTrigger>
+          <TabsTrigger value="fuel" className="flex items-center gap-2">
+            <Fuel className="h-4 w-4" />
+            Fuel
           </TabsTrigger>
           <TabsTrigger value="drivers" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -611,6 +788,10 @@ export default function Settings() {
           <FleetFormConfigCard onDirtyChange={(dirty) => registerCardDirty('fleet', dirty)} />
         </TabsContent>
 
+        <TabsContent value="fuel" className="space-y-6 mt-6">
+          <FuelEntryFormConfigCard onDirtyChange={(dirty) => registerCardDirty('fuel', dirty)} />
+        </TabsContent>
+
         <TabsContent value="drivers" className="space-y-6 mt-6">
           <DriverFormConfigCard onDirtyChange={(dirty) => registerCardDirty('drivers', dirty)} />
         </TabsContent>
@@ -656,6 +837,41 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="service" className="space-y-6 mt-6">
+          {isMasterAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  OCR plan tier
+                </CardTitle>
+                <CardDescription>
+                  Controls service-record OCR capability: Basic (no OCR), Plus (limited OCR), Pro (full OCR).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2 max-w-xs">
+                  <Label htmlFor="ocr-tier">OCR tier</Label>
+                  <Select value={ocrTier} onValueChange={(v) => setOcrTier(v as OcrTier)}>
+                    <SelectTrigger id="ocr-tier">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="basic">Basic - No OCR</SelectItem>
+                      <SelectItem value="plus">Plus - Limited OCR</SelectItem>
+                      <SelectItem value="pro">Pro - Full OCR</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveOcrTier} disabled={brandingSaving} data-settings-save>
+                    {brandingSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Save OCR tier
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Organization code (share with users who want to join) */}
           {org?.join_code && (
             <Card>
@@ -967,6 +1183,189 @@ export default function Settings() {
                     </form>
                   </DialogContent>
                 </Dialog>
+                <Dialog open={isBulkDialogOpen} onOpenChange={setIsBulkDialogOpen}>
+                  <Button variant="outline" onClick={openBulkDialog}>
+                    <Layers className="h-4 w-4 mr-2" />
+                    Add Rules in Bulk
+                  </Button>
+                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                    <DialogHeader>
+                      <DialogTitle>Add Rules in Bulk</DialogTitle>
+                      <DialogDescription>
+                        {bulkStep === 1
+                          ? 'Step 1: choose brand and starter rules'
+                          : `Step 2: edit rows and create ${bulkRows.length} rule(s) for ${bulkBrand || 'selected brand'}`}
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="flex-1 overflow-y-auto pr-1 space-y-4">
+                      {bulkStep === 1 ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label>Brand *</Label>
+                            <Select value={bulkBrand} onValueChange={setBulkBrand}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select brand" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allBrands.map((brand) => (
+                                  <SelectItem key={brand} value={brand}>
+                                    {brand}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Starter Rules (optional)</Label>
+                            <p className="text-xs text-muted-foreground">
+                              Select as many as you want. You can edit everything in next step.
+                            </p>
+                            <div className="border rounded-md p-2 max-h-64 overflow-y-auto">
+                              {starterRuleNames.map((name) => {
+                                const checked = bulkSelectedStarters.includes(name);
+                                return (
+                                  <label
+                                    key={name}
+                                    className="flex items-center gap-2 p-2 rounded hover:bg-accent cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setBulkSelectedStarters((prev) => [...prev, name]);
+                                        } else {
+                                          setBulkSelectedStarters((prev) => prev.filter((r) => r !== name));
+                                        }
+                                      }}
+                                    />
+                                    <span>{name}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <Label>Rules for {bulkBrand}</Label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setBulkRows((prev) => [...prev, createEmptyBulkRow()])}
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Add Row
+                            </Button>
+                          </div>
+                          <div className="space-y-3">
+                            {bulkRows.map((row, idx) => (
+                              <div key={row.id} className="border rounded-md p-3 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-medium">Rule #{idx + 1}</p>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setBulkRows((prev) => prev.filter((r) => r.id !== row.id))}
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Rule name *</Label>
+                                    <Input
+                                      value={row.name}
+                                      onChange={(e) => updateBulkRow(row.id, { name: e.target.value })}
+                                      placeholder="e.g., Engine Oil + Filter"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Type</Label>
+                                    <div className="flex items-center gap-2 pt-2">
+                                      <Switch
+                                        checked={row.is_critical}
+                                        onCheckedChange={(checked) => updateBulkRow(row.id, { is_critical: checked })}
+                                      />
+                                      <span className="text-sm">{row.is_critical ? 'Critical' : 'Normal'}</span>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Interval (km)</Label>
+                                    <Input
+                                      type="number"
+                                      value={row.interval_km}
+                                      onChange={(e) => updateBulkRow(row.id, { interval_km: e.target.value })}
+                                      placeholder="10000"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Interval (days)</Label>
+                                    <Input
+                                      type="number"
+                                      value={row.interval_days}
+                                      onChange={(e) => updateBulkRow(row.id, { interval_days: e.target.value })}
+                                      placeholder="180"
+                                    />
+                                  </div>
+                                  {row.is_critical && (
+                                    <>
+                                      <div className="space-y-1">
+                                        <Label className="text-xs">Due Soon Threshold (km)</Label>
+                                        <Input
+                                          type="number"
+                                          value={row.due_soon_threshold_km}
+                                          onChange={(e) => updateBulkRow(row.id, { due_soon_threshold_km: e.target.value })}
+                                        />
+                                      </div>
+                                      <div className="space-y-1">
+                                        <Label className="text-xs">Due Soon Threshold (days)</Label>
+                                        <Input
+                                          type="number"
+                                          value={row.due_soon_threshold_days}
+                                          onChange={(e) => updateBulkRow(row.id, { due_soon_threshold_days: e.target.value })}
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                                {bulkRowErrors[row.id] ? (
+                                  <p className="text-sm text-destructive">{bulkRowErrors[row.id]}</p>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      {bulkError ? <p className="text-sm text-destructive">{bulkError}</p> : null}
+                    </div>
+
+                    <DialogFooter>
+                      {bulkStep === 2 ? (
+                        <Button type="button" variant="outline" onClick={() => setBulkStep(1)}>
+                          Back
+                        </Button>
+                      ) : null}
+                      <Button type="button" variant="outline" onClick={() => setIsBulkDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      {bulkStep === 1 ? (
+                        <Button type="button" onClick={handleStartBulkGrid}>
+                          Next
+                        </Button>
+                      ) : (
+                        <Button type="button" onClick={handleBulkCreateRules} disabled={createRule.isPending}>
+                          {createRule.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                          Create {bulkRows.length} Rule{bulkRows.length === 1 ? '' : 's'}
+                        </Button>
+                      )}
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
 
                 {/* Add New Brand Dialog */}
                 <Dialog open={isAddBrandDialogOpen} onOpenChange={setIsAddBrandDialogOpen}>
@@ -1024,6 +1423,10 @@ export default function Settings() {
                   <p className="text-muted-foreground mb-4">
                     Create service rules for a brand to get started
                   </p>
+                  <Button variant="outline" onClick={openBulkDialog}>
+                    <Layers className="h-4 w-4 mr-2" />
+                    Start with Bulk Setup
+                  </Button>
                 </div>
               ) : (
                 <Tabs value={selectedBrand || ''} onValueChange={setSelectedBrand}>

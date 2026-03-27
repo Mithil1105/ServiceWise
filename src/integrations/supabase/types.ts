@@ -162,9 +162,9 @@ export type Database = {
         Relationships: []
       }
       organization_settings: {
-        Row: { organization_id: string; buffer_minutes: number; minimum_km_per_km: number; minimum_km_hybrid_per_day: number; support_notes: string | null; updated_at: string }
-        Insert: { organization_id: string; buffer_minutes?: number; minimum_km_per_km?: number; minimum_km_hybrid_per_day?: number; support_notes?: string | null; updated_at?: string }
-        Update: { organization_id?: string; buffer_minutes?: number; minimum_km_per_km?: number; minimum_km_hybrid_per_day?: number; support_notes?: string | null; updated_at?: string }
+        Row: { organization_id: string; buffer_minutes: number; minimum_km_per_km: number; minimum_km_hybrid_per_day: number; support_notes: string | null; ocr_tier: string | null; updated_at: string }
+        Insert: { organization_id: string; buffer_minutes?: number; minimum_km_per_km?: number; minimum_km_hybrid_per_day?: number; support_notes?: string | null; ocr_tier?: string | null; updated_at?: string }
+        Update: { organization_id?: string; buffer_minutes?: number; minimum_km_per_km?: number; minimum_km_hybrid_per_day?: number; support_notes?: string | null; ocr_tier?: string | null; updated_at?: string }
         Relationships: []
       }
       platform_audit_log: {

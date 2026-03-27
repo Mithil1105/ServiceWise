@@ -114,8 +114,8 @@ Deno.serve(async (req) => {
     }
 
     // Validate role
-    if (role && !["admin", "manager", "supervisor"].includes(role)) {
-      return new Response(JSON.stringify({ error: "Invalid role. Must be 'admin', 'manager', or 'supervisor'" }), {
+    if (role && !["admin", "manager", "supervisor", "fuel_filler"].includes(role)) {
+      return new Response(JSON.stringify({ error: "Invalid role. Must be 'admin', 'manager', 'supervisor', or 'fuel_filler'" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -163,8 +163,8 @@ Deno.serve(async (req) => {
     // Assign role if specified
     if (role) {
       const { error: roleError } = await supabaseAdmin
-        .from("user_roles")
-        .insert({ user_id: newUser.user.id, role: role as "admin" | "manager" | "supervisor" });
+      .from("user_roles")
+      .insert({ user_id: newUser.user.id, role: role as "admin" | "manager" | "supervisor" | "fuel_filler" });
 
       if (roleError) {
         console.error("Error assigning role:", roleError);

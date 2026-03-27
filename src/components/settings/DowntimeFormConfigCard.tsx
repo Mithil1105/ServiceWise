@@ -58,7 +58,11 @@ export function DowntimeFormConfigCard({ onDirtyChange }: DowntimeFormConfigCard
   }, [config.fieldOverrides, config.reasonOptions, config.customFields]);
 
   useEffect(() => {
-    const saved = JSON.stringify({ fieldOverrides: config.fieldOverrides ?? {}, reasonOptions: config.reasonOptions ?? DEFAULT_DOWNTIME_REASON_OPTIONS, customFields: config.customFields ?? [] });
+    const saved = JSON.stringify({
+      fieldOverrides: config.fieldOverrides ?? {},
+      reasonOptions: config.reasonOptions?.length ? config.reasonOptions : DEFAULT_DOWNTIME_REASON_OPTIONS,
+      customFields: config.customFields ?? [],
+    });
     const current = JSON.stringify({ fieldOverrides, reasonOptions, customFields });
     onDirtyChange?.(saved !== current);
   }, [fieldOverrides, reasonOptions, customFields, config, onDirtyChange]);

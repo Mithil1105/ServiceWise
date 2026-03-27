@@ -2,8 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrg } from '@/hooks/use-org';
-import type { FleetNewCarFormConfig, DriverFormConfig, BookingFormConfig, ServiceRecordFormConfig, DowntimeFormConfig, IncidentFormConfig } from '@/types/form-config';
+import type { FleetNewCarFormConfig, DriverFormConfig, BookingFormConfig, ServiceRecordFormConfig, DowntimeFormConfig, IncidentFormConfig, FuelEntryFormConfig } from '@/types/form-config';
 import type { BillingLayoutConfig } from '@/types/billing-config';
+
+export type OcrTier = 'basic' | 'plus' | 'pro';
 
 export interface OrganizationSettingsRow {
   organization_id: string;
@@ -20,6 +22,9 @@ export interface OrganizationSettingsRow {
   service_record_form_config: ServiceRecordFormConfig | null;
   downtime_form_config: DowntimeFormConfig | null;
   incident_form_config: IncidentFormConfig | null;
+  fuel_entry_form_config: FuelEntryFormConfig | null;
+  supervisor_assignment_mode: 'project' | 'legacy' | null;
+  ocr_tier: OcrTier | null;
   updated_at: string;
 }
 
@@ -56,6 +61,9 @@ export function useUpdateOrganizationSettings() {
       service_record_form_config?: ServiceRecordFormConfig | null;
       downtime_form_config?: DowntimeFormConfig | null;
       incident_form_config?: IncidentFormConfig | null;
+      fuel_entry_form_config?: FuelEntryFormConfig | null;
+      supervisor_assignment_mode?: 'project' | 'legacy';
+      ocr_tier?: OcrTier | null;
     }) => {
       if (!orgId) throw new Error('Organization not found');
       const { data: existing } = await supabase
@@ -85,6 +93,9 @@ export function useUpdateOrganizationSettings() {
           service_record_form_config: updates.service_record_form_config ?? null,
           downtime_form_config: updates.downtime_form_config ?? null,
           incident_form_config: updates.incident_form_config ?? null,
+          fuel_entry_form_config: updates.fuel_entry_form_config ?? null,
+          supervisor_assignment_mode: updates.supervisor_assignment_mode ?? 'project',
+          ocr_tier: updates.ocr_tier ?? 'basic',
           updated_at: new Date().toISOString(),
         });
         if (error) throw error;

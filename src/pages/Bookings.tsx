@@ -15,11 +15,15 @@ import { BookingDetailsDrawer } from '@/components/bookings/BookingDetailsDrawer
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { TRIP_TYPE_LABELS, type BookingWithDetails, type BookingStatus } from '@/types/booking';
 import { useSystemConfig } from '@/hooks/use-dashboard';
+import { useOpenBookingAccess } from '@/hooks/use-projects';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 
 export default function Bookings() {
   const navigate = useNavigate();
   const { isSupervisor, isAdmin, isManager } = useAuth();
   const isSupervisorOnly = isSupervisor && !isAdmin && !isManager;
+  const { data: canOpenSupervisorBook = false } = useOpenBookingAccess();
+  const { data: orgSettings } = useOrganizationSettings();
   const { data: bookings, isLoading } = useBookings();
   const { data: minKmPerKm } = useSystemConfig('minimum_km_per_km');
   const { data: minKmHybridPerDay } = useSystemConfig('minimum_km_hybrid_per_day');
@@ -28,12 +32,16 @@ export default function Bookings() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedBooking, setSelectedBooking] = useState<BookingWithDetails | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const supervisorAssignmentMode = (orgSettings?.supervisor_assignment_mode ?? 'project') as 'project' | 'legacy';
+  const supervisorCanAssign = !isSupervisorOnly || supervisorAssignmentMode === 'legacy' || canOpenSupervisorBook;
+  const supervisorReadOnly = isSupervisorOnly && !supervisorCanAssign;
 
   // Supervisors only see bookings that need vehicle assignment: confirmed/ongoing, have requested vehicles, not fully assigned
   const baseBookings = useMemo(() => {
     if (!bookings) return [];
     if (isSupervisorOnly) {
-      return bookings.filter(b => {
+      if (supervisorReadOnly) return bookings;
+      return bookings.filter((b) => {
         if (b.status !== 'confirmed' && b.status !== 'ongoing') return false;
         const requestedCount = b.booking_requested_vehicles?.length ?? 0;
         if (requestedCount === 0) return false;
@@ -42,7 +50,7 @@ export default function Bookings() {
       });
     }
     return bookings;
-  }, [bookings, isSupervisorOnly]);
+  }, [bookings, isSupervisorOnly, supervisorReadOnly]);
 
   const filteredBookings = useMemo(() => {
     if (!baseBookings.length) return [];
@@ -150,7 +158,13 @@ export default function Bookings() {
         <div>
           <h1 className="page-title">Bookings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {isSupervisorOnly ? 'Assign vehicles to bookings' : 'Manage all customer bookings'}
+            {isSupervisorOnly
+              ? (
+                supervisorReadOnly
+                  ? 'Read-only view. Booking assignment is handled by the designated Open Project supervisor.'
+                  : 'Assign vehicles to bookings'
+              )
+              : 'Manage all customer bookings'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -335,15 +349,20 @@ export default function Bookings() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
-                                  variant={isSupervisorOnly ? 'default' : 'ghost'}
+                                  variant={isSupervisorOnly && !supervisorReadOnly ? 'default' : 'ghost'}
                                   size="icon"
                                   onClick={() => navigate(`/app/bookings/${booking.id}/edit`)}
+                                  disabled={supervisorReadOnly}
                                 >
                                   <Edit className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p>{isSupervisorOnly ? 'Assign vehicles' : 'Edit Booking'}</p>
+                                <p>
+                                  {isSupervisorOnly
+                                    ? (supervisorReadOnly ? 'Read-only in project mode' : 'Assign vehicles')
+                                    : 'Edit Booking'}
+                                </p>
                               </TooltipContent>
                             </Tooltip>
                             {!isSupervisorOnly && (booking.status === 'confirmed' || booking.status === 'ongoing' || booking.status === 'completed') && (
@@ -369,7 +388,9 @@ export default function Bookings() {
           ) : (
             <div className="flex flex-col items-center justify-center h-64 gap-4">
               <p className="text-muted-foreground">
-                {isSupervisorOnly ? 'No bookings need vehicle assignment right now.' : 'No bookings found'}
+                {isSupervisorOnly
+                  ? (supervisorReadOnly ? 'No bookings available.' : 'No bookings need vehicle assignment right now.')
+                  : 'No bookings found'}
               </p>
               {!isSupervisorOnly && (
                 <Button onClick={() => navigate('/app/bookings/new')}>
@@ -388,6 +409,7 @@ export default function Bookings() {
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         onEdit={() => {
+          if (supervisorReadOnly) return;
           setDrawerOpen(false);
           if (selectedBooking) navigate(`/app/bookings/${selectedBooking.id}/edit`);
         }}

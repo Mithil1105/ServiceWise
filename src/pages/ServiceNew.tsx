@@ -19,7 +19,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { DocumentFileInput } from '@/components/ui/document-file-input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Tooltip,
   TooltipContent,
@@ -35,18 +37,57 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ArrowLeft, Wrench, Loader2, AlertCircle, Upload, X, HelpCircle, Lightbulb, FileText, Image as ImageIcon, Plus, Trash2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { toLocalDateInputValue } from '@/lib/date';
 import { MAX_UPLOAD_MB } from '@/lib/document-upload';
+import {
+  extractServiceRecordWithTier,
+  type ServiceRecordFieldCandidate,
+  type ServiceRecordFieldKey,
+  type ServiceRecordLineItem,
+  type ServiceRecordOcrResult,
+} from '@/lib/ocr-service-record';
+import type { OcrTier } from '@/hooks/use-organization-settings';
 
 interface WarrantyItem {
   itemName: string;
   serialNumber: string;
   expiryDate: string;
 }
+
+interface OcrReviewFields {
+  service_name: string;
+  serviced_at: string;
+  odometer_km: string;
+  vendor_name: string;
+  vendor_location: string;
+  cost: string;
+  notes: string;
+  serial_number: string;
+  warranty_expiry: string;
+}
+
+type OcrReviewCandidates = Record<ServiceRecordFieldKey, ServiceRecordFieldCandidate[]>;
+type OcrReviewLineItem = ServiceRecordLineItem & { id: string };
 
 // File size limits: 2 MB max per file, 2 MB combined total (from shared constant)
 const MAX_TOTAL_SIZE_MB = MAX_UPLOAD_MB;
@@ -113,6 +154,8 @@ export default function ServiceNew() {
     warrantyFieldOverrides[key]?.required === true;
 
   const [selectedCarId, setSelectedCarId] = useState(preselectedCarId || '');
+  const [serviceTypeSearch, setServiceTypeSearch] = useState('');
+  const [selectedRuleIds, setSelectedRuleIds] = useState<string[]>(preselectedRuleId ? [preselectedRuleId] : []);
   const { data: latestOdo } = useLatestOdometer(selectedCarId);
   const { data: carServiceRecords } = useServiceRecords(selectedCarId);
 
@@ -136,6 +179,33 @@ export default function ServiceNew() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  const [ocrFile, setOcrFile] = useState<File | null>(null);
+  const [ocrExtracting, setOcrExtracting] = useState(false);
+  const [ocrResult, setOcrResult] = useState<ServiceRecordOcrResult | null>(null);
+  const [ocrReviewOpen, setOcrReviewOpen] = useState(false);
+  const [ocrReviewFields, setOcrReviewFields] = useState<OcrReviewFields>({
+    service_name: '',
+    serviced_at: '',
+    odometer_km: '',
+    vendor_name: '',
+    vendor_location: '',
+    cost: '',
+    notes: '',
+    serial_number: '',
+    warranty_expiry: '',
+  });
+  const [ocrReviewCandidates, setOcrReviewCandidates] = useState<OcrReviewCandidates>({
+    service_name: [],
+    serviced_at: [],
+    odometer_km: [],
+    vendor_name: [],
+    vendor_location: [],
+    cost: [],
+    notes: [],
+    serial_number: [],
+    warranty_expiry: [],
+  });
+  const [ocrReviewLineItems, setOcrReviewLineItems] = useState<OcrReviewLineItem[]>([]);
 
   // Validation confirmation states
   const [showOdoWarning, setShowOdoWarning] = useState(false);
@@ -146,6 +216,7 @@ export default function ServiceNew() {
   // Smart suggestions
   const [suggestedVendor, setSuggestedVendor] = useState<string | null>(null);
   const [suggestedCost, setSuggestedCost] = useState<number | null>(null);
+  const ocrTier: OcrTier = (orgSettings?.ocr_tier as OcrTier | null) ?? 'basic';
 
   // Auto-fill odometer from latest reading
   useEffect(() => {
@@ -157,18 +228,21 @@ export default function ServiceNew() {
     }
   }, [latestOdo]);
 
-  // Auto-fill service name from rule
+  // Auto-fill service name from selected service rule(s)
   useEffect(() => {
-    if (formData.rule_id) {
-      const rule = serviceRules?.find((r) => r.id === formData.rule_id);
-      if (rule) {
-        setFormData((prev) => ({
-          ...prev,
-          service_name: rule.name,
-        }));
-      }
+    if (!serviceRules) return;
+    if (selectedRuleIds.length === 0) return;
+    const selectedNames = serviceRules
+      .filter((r) => selectedRuleIds.includes(r.id))
+      .map((r) => r.name);
+    if (selectedNames.length > 0) {
+      setFormData((prev) => ({
+        ...prev,
+        rule_id: selectedRuleIds.length === 1 ? selectedRuleIds[0] : '',
+        service_name: selectedNames.join(' + '),
+      }));
     }
-  }, [formData.rule_id, serviceRules]);
+  }, [selectedRuleIds, serviceRules]);
 
   // Preselect rule from URL
   useEffect(() => {
@@ -180,6 +254,7 @@ export default function ServiceNew() {
           rule_id: preselectedRuleId,
           service_name: rule.name,
         }));
+        setSelectedRuleIds([preselectedRuleId]);
       }
     }
   }, [preselectedRuleId, serviceRules]);
@@ -314,7 +389,8 @@ export default function ServiceNew() {
       // Create the service record first
       const record = await createRecord.mutateAsync({
         car_id: data.car_id,
-        rule_id: data.rule_id,
+        rule_id: selectedRuleIds.length === 1 ? selectedRuleIds[0] : data.rule_id,
+        rule_ids: selectedRuleIds,
         service_name: data.service_name,
         serviced_at: data.serviced_at,
         odometer_km: data.odometer_km,
@@ -504,6 +580,212 @@ export default function ServiceNew() {
     }
   };
 
+  const applyOcrPrefill = (f: Partial<OcrReviewFields>) => {
+    setFormData((prev) => ({
+      ...prev,
+      service_name: f.service_name ?? prev.service_name,
+      serviced_at: f.serviced_at ?? prev.serviced_at,
+      odometer_km: f.odometer_km ?? prev.odometer_km,
+      vendor_name: f.vendor_name ?? prev.vendor_name,
+      vendor_location: f.vendor_location ?? prev.vendor_location,
+      cost: f.cost ?? prev.cost,
+      notes: f.notes ?? prev.notes,
+    }));
+
+    if (f.serial_number || f.warranty_expiry) {
+      setWarrantyItems((prev) => {
+        const next = [...prev];
+        if (!next[0]) next[0] = { itemName: '', serialNumber: '', expiryDate: '' };
+        next[0] = {
+          ...next[0],
+          serialNumber: f.serial_number ?? next[0].serialNumber,
+          expiryDate: f.warranty_expiry ?? next[0].expiryDate,
+        };
+        return next;
+      });
+    }
+  };
+
+  const openOcrReview = (result: ServiceRecordOcrResult) => {
+    const fr = result.fieldResults;
+    const valueOrBlank = (key: ServiceRecordFieldKey, minConfidence: number): string => {
+      const r = fr[key];
+      if (!r || r.confidence < minConfidence || r.value == null) return '';
+      return String(r.value);
+    };
+    setOcrReviewFields({
+      service_name: valueOrBlank('service_name', 60),
+      serviced_at: valueOrBlank('serviced_at', 65),
+      odometer_km: valueOrBlank('odometer_km', 70),
+      vendor_name: valueOrBlank('vendor_name', 60),
+      vendor_location: valueOrBlank('vendor_location', 60),
+      cost: valueOrBlank('cost', 70),
+      notes: valueOrBlank('notes', 40),
+      serial_number: valueOrBlank('serial_number', 55),
+      warranty_expiry: valueOrBlank('warranty_expiry', 60),
+    });
+    setOcrReviewCandidates({
+      service_name: fr.service_name.candidates,
+      serviced_at: fr.serviced_at.candidates,
+      odometer_km: fr.odometer_km.candidates,
+      vendor_name: fr.vendor_name.candidates,
+      vendor_location: fr.vendor_location.candidates,
+      cost: fr.cost.candidates,
+      notes: fr.notes.candidates,
+      serial_number: fr.serial_number.candidates,
+      warranty_expiry: fr.warranty_expiry.candidates,
+    });
+    setOcrReviewLineItems(
+      (result.lineItems ?? []).map((item, index) => ({
+        ...item,
+        id: `${item.kind}-${index}-${item.name}`,
+      }))
+    );
+    setOcrReviewOpen(true);
+  };
+
+  const handleApplyReviewedOcr = () => {
+    applyOcrPrefill(ocrReviewFields);
+    const isEmptyWarrantyItem = (item: WarrantyItem) =>
+      !item.itemName.trim() && !item.serialNumber.trim() && !item.expiryDate;
+    const warrantyKey = (item: WarrantyItem) =>
+      `${item.itemName.trim().toLowerCase()}|${item.serialNumber.trim().toLowerCase()}|${item.expiryDate}`;
+
+    const ocrPartWarrantyItems: WarrantyItem[] = ocrReviewLineItems
+      .filter((li) => li.kind === 'part')
+      .map((lineItem) => ({
+        itemName: lineItem.name,
+        serialNumber: lineItem.serialNumber ?? '',
+        expiryDate: lineItem.warrantyExpiry ?? ocrReviewFields.warranty_expiry ?? '',
+      }))
+      .filter((item) => item.itemName.trim() || item.serialNumber.trim() || item.expiryDate);
+
+    const ocrLaborNotes = ocrReviewLineItems
+      .filter((li) => li.kind === 'labor')
+      .map((li) => li.name?.trim())
+      .filter(Boolean);
+
+    if (ocrLaborNotes.length > 0) {
+      const suffix = `Labor: ${ocrLaborNotes.join(', ')}`;
+      setFormData((prev) => ({
+        ...prev,
+        notes: prev.notes?.trim()
+          ? `${prev.notes.trim()}\n${suffix}`
+          : suffix,
+      }));
+    }
+
+    if (ocrPartWarrantyItems.length > 0) {
+      setWarrantyItems((prev) => {
+        const hasManualData = prev.some((item) => !isEmptyWarrantyItem(item));
+        const base = hasManualData ? [...prev] : [];
+        const existingKeys = new Set(base.map(warrantyKey));
+        for (const item of ocrPartWarrantyItems) {
+          const key = warrantyKey(item);
+          if (!existingKeys.has(key)) {
+            base.push(item);
+            existingKeys.add(key);
+          }
+        }
+        return base.length > 0 ? base : [{ itemName: '', serialNumber: '', expiryDate: '' }];
+      });
+    }
+
+    setOcrReviewOpen(false);
+    toast({
+      title: 'OCR values applied',
+      description: 'Reviewed OCR fields and detected parts/labor were filled in the form.',
+    });
+  };
+
+  const updateReviewLineItem = (id: string, patch: Partial<OcrReviewLineItem>) => {
+    setOcrReviewLineItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  };
+
+  const removeReviewLineItem = (id: string) => {
+    setOcrReviewLineItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const addReviewLineItem = () => {
+    setOcrReviewLineItems((prev) => [
+      ...prev,
+      { id: `manual-${Date.now()}-${prev.length}`, kind: 'part', name: '', serialNumber: '', warrantyExpiry: '' },
+    ]);
+  };
+
+  const renderCandidateSelector = (
+    field: ServiceRecordFieldKey,
+    currentValue: string,
+    onPick: (value: string) => void
+  ) => {
+    const options = ocrReviewCandidates[field] || [];
+    if (options.length <= 1) return null;
+    return (
+      <Select value={currentValue} onValueChange={onPick}>
+        <SelectTrigger className="h-8 text-xs">
+          <SelectValue placeholder="Pick suggested value" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((c, idx) => (
+            <SelectItem key={`${String(c.value)}-${idx}`} value={String(c.value)}>
+              {String(c.value)} ({Math.round(c.score)}%)
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  };
+
+  const handleExtractOcr = async () => {
+    if (!ocrFile) {
+      toast({
+        title: 'No file selected',
+        description: 'Choose an image or PDF to extract details.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (ocrTier === 'basic') {
+      toast({
+        title: 'OCR disabled on Basic plan',
+        description: 'Switch to Plus or Pro in Settings to use OCR autofill.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setOcrExtracting(true);
+    try {
+      const result = await extractServiceRecordWithTier(ocrFile, ocrTier);
+      setOcrResult(result);
+      if (ocrTier === 'pro') {
+        openOcrReview(result);
+        toast({
+          title: 'OCR complete',
+          description: 'Review parsed fields before applying.',
+        });
+      } else {
+        openOcrReview(result);
+        toast({
+          title: 'OCR complete',
+          description: 'Review parsed fields and apply to form.',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'OCR extraction failed',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setOcrExtracting(false);
+    }
+  };
+
+  const handleClearOcrState = () => {
+    setOcrFile(null);
+    setOcrResult(null);
+  };
+
   const addWarrantyItem = () => {
     setWarrantyItems(prev => [...prev, { itemName: '', serialNumber: '', expiryDate: '' }]);
   };
@@ -573,12 +855,22 @@ export default function ServiceNew() {
   }));
 
   const serviceTypeOptions = [
-    { value: 'custom', label: 'Custom Service' },
     ...(serviceRules?.map((rule) => ({
       value: rule.id,
       label: `${rule.name}${rule.is_critical ? ' (Critical)' : ''}`,
     })) || []),
   ];
+
+  const visibleServiceTypeOptions = serviceTypeOptions.filter((opt) =>
+    opt.label.toLowerCase().includes(serviceTypeSearch.trim().toLowerCase())
+  );
+
+  const toggleRule = (ruleId: string, checked: boolean) => {
+    setSelectedRuleIds((prev) => {
+      if (checked) return prev.includes(ruleId) ? prev : [...prev, ruleId];
+      return prev.filter((id) => id !== ruleId);
+    });
+  };
 
   return (
     <div className="space-y-6 animate-fade-in max-w-2xl">
@@ -616,6 +908,77 @@ export default function ServiceNew() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label className="text-sm font-medium">OCR Autofill</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Plan tier: <span className="font-medium uppercase">{ocrTier}</span> -{' '}
+                    {ocrTier === 'basic'
+                      ? 'OCR disabled'
+                      : ocrTier === 'plus'
+                      ? 'Limited OCR (images only)'
+                      : 'Full OCR (images + PDFs + fallback)'}
+                  </p>
+                </div>
+                {ocrResult && (
+                  <Badge variant={ocrResult.needsReview ? 'warning' : 'success'}>
+                    OCR {ocrResult.ocrConfidence}% / Parse {ocrResult.parsingConfidence}%
+                  </Badge>
+                )}
+              </div>
+
+              <DocumentFileInput
+                id="service-ocr-file"
+                value={ocrFile}
+                onChange={setOcrFile}
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                buttonLabel="Choose OCR file"
+                disabled={ocrExtracting || ocrTier === 'basic'}
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleExtractOcr}
+                  disabled={ocrExtracting || ocrTier === 'basic' || !ocrFile}
+                >
+                  {ocrExtracting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Extract & Autofill
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={handleClearOcrState}
+                  disabled={ocrExtracting || (!ocrFile && !ocrResult)}
+                >
+                  Clear OCR
+                </Button>
+                {ocrTier === 'plus' && (
+                  <p className="text-xs text-muted-foreground">PDF extraction is available on Pro only.</p>
+                )}
+              </div>
+
+              {ocrResult?.warnings?.length ? (
+                <div className="space-y-1">
+                  {ocrResult.warnings.map((warning, idx) => (
+                    <p key={`${warning}-${idx}`} className="text-xs text-warning">
+                      {warning}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+
+              {ocrResult?.rawText ? (
+                <Textarea
+                  readOnly
+                  rows={4}
+                  value={ocrResult.rawText}
+                  className="text-xs font-mono bg-background"
+                />
+              ) : null}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {!isFieldHidden('car_id') && (
                 <div className="space-y-2">
@@ -641,16 +1004,32 @@ export default function ServiceNew() {
               {!isFieldHidden('rule_id') && (
                 <div className="space-y-2">
                   <Label htmlFor="service_type">{getFieldLabel('rule_id')}{isFieldRequired('rule_id') ? ' *' : ''}</Label>
-                  <SearchableSelect
-                    id="service_type"
-                    options={serviceTypeOptions}
-                    value={formData.rule_id || 'custom'}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, rule_id: value === 'custom' ? '' : value })
-                    }
-                    placeholder="Select or custom"
-                    searchPlaceholder="Search service types..."
-                  />
+                  <div className="rounded-md border p-3 space-y-3">
+                    <Input
+                      id="service_type"
+                      placeholder="Search service types..."
+                      value={serviceTypeSearch}
+                      onChange={(e) => setServiceTypeSearch(e.target.value)}
+                    />
+                    <div className="max-h-44 overflow-y-auto space-y-2">
+                      {visibleServiceTypeOptions.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No service types found.</p>
+                      ) : (
+                        visibleServiceTypeOptions.map((opt) => (
+                          <label key={opt.value} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={selectedRuleIds.includes(opt.value)}
+                              onCheckedChange={(v) => toggleRule(opt.value, !!v)}
+                            />
+                            <span>{opt.label}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      You can select multiple service types for one service visit.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -1015,6 +1394,206 @@ export default function ServiceNew() {
           </form>
         </CardContent>
       </Card>
+
+      <Dialog open={ocrReviewOpen} onOpenChange={setOcrReviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>OCR Review</DialogTitle>
+            <DialogDescription>
+              Review and edit parsed values before applying them to the service form.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Service Name</Label>
+              <Input
+                value={ocrReviewFields.service_name}
+                onChange={(e) => setOcrReviewFields((p) => ({ ...p, service_name: e.target.value }))}
+              />
+              {renderCandidateSelector('service_name', ocrReviewFields.service_name, (value) =>
+                setOcrReviewFields((p) => ({ ...p, service_name: value }))
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Service Date</Label>
+              <Input
+                type="date"
+                value={ocrReviewFields.serviced_at}
+                onChange={(e) => setOcrReviewFields((p) => ({ ...p, serviced_at: e.target.value }))}
+              />
+              {renderCandidateSelector('serviced_at', ocrReviewFields.serviced_at, (value) =>
+                setOcrReviewFields((p) => ({ ...p, serviced_at: value }))
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Odometer (km)</Label>
+              <Input
+                type="number"
+                value={ocrReviewFields.odometer_km}
+                onChange={(e) => setOcrReviewFields((p) => ({ ...p, odometer_km: e.target.value }))}
+              />
+              {renderCandidateSelector('odometer_km', ocrReviewFields.odometer_km, (value) =>
+                setOcrReviewFields((p) => ({ ...p, odometer_km: value }))
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Vendor Name</Label>
+              <Input
+                value={ocrReviewFields.vendor_name}
+                onChange={(e) => setOcrReviewFields((p) => ({ ...p, vendor_name: e.target.value }))}
+              />
+              {renderCandidateSelector('vendor_name', ocrReviewFields.vendor_name, (value) =>
+                setOcrReviewFields((p) => ({ ...p, vendor_name: value }))
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Vendor Location</Label>
+              <Input
+                value={ocrReviewFields.vendor_location}
+                onChange={(e) => setOcrReviewFields((p) => ({ ...p, vendor_location: e.target.value }))}
+              />
+              {renderCandidateSelector('vendor_location', ocrReviewFields.vendor_location, (value) =>
+                setOcrReviewFields((p) => ({ ...p, vendor_location: value }))
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Total Cost</Label>
+              <Input
+                type="number"
+                value={ocrReviewFields.cost}
+                onChange={(e) => setOcrReviewFields((p) => ({ ...p, cost: e.target.value }))}
+              />
+              {renderCandidateSelector('cost', ocrReviewFields.cost, (value) =>
+                setOcrReviewFields((p) => ({ ...p, cost: value }))
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Warranty Expiry</Label>
+              <Input
+                type="date"
+                value={ocrReviewFields.warranty_expiry}
+                onChange={(e) => setOcrReviewFields((p) => ({ ...p, warranty_expiry: e.target.value }))}
+              />
+              {renderCandidateSelector('warranty_expiry', ocrReviewFields.warranty_expiry, (value) =>
+                setOcrReviewFields((p) => ({ ...p, warranty_expiry: value }))
+              )}
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Serial Number</Label>
+              <Input
+                value={ocrReviewFields.serial_number}
+                onChange={(e) => setOcrReviewFields((p) => ({ ...p, serial_number: e.target.value }))}
+              />
+              {renderCandidateSelector('serial_number', ocrReviewFields.serial_number, (value) =>
+                setOcrReviewFields((p) => ({ ...p, serial_number: value }))
+              )}
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Notes</Label>
+              <Textarea
+                rows={4}
+                value={ocrReviewFields.notes}
+                onChange={(e) => setOcrReviewFields((p) => ({ ...p, notes: e.target.value }))}
+              />
+              {renderCandidateSelector('notes', ocrReviewFields.notes, (value) =>
+                setOcrReviewFields((p) => ({ ...p, notes: value }))
+              )}
+            </div>
+            <div className="space-y-3 md:col-span-2 border rounded-md p-3">
+              <div className="flex items-center justify-between">
+                <Label>Detected Parts & Labor (reviewable)</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addReviewLineItem}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Row
+                </Button>
+              </div>
+              {ocrReviewLineItems.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No parts/labor were auto-detected. You can add rows manually.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[110px]">Type</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="w-[160px]">Serial</TableHead>
+                      <TableHead className="w-[180px]">Warranty Expiry</TableHead>
+                      <TableHead className="w-[90px] text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ocrReviewLineItems.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <Select
+                            value={item.kind}
+                            onValueChange={(value) => updateReviewLineItem(item.id, { kind: value as 'part' | 'labor' })}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="part">Part</SelectItem>
+                              <SelectItem value="labor">Labor</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={item.name}
+                            onChange={(e) => updateReviewLineItem(item.id, { name: e.target.value })}
+                            placeholder="Part/Labor name"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={item.serialNumber ?? ''}
+                            onChange={(e) => updateReviewLineItem(item.id, { serialNumber: e.target.value })}
+                            placeholder="Serial no."
+                            disabled={item.kind === 'labor'}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="date"
+                            value={item.warrantyExpiry ?? ''}
+                            onChange={(e) => updateReviewLineItem(item.id, { warrantyExpiry: e.target.value })}
+                            disabled={item.kind === 'labor'}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removeReviewLineItem(item.id)}>
+                            Remove
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+            {ocrResult?.rawText ? (
+              <div className="space-y-2 md:col-span-2">
+                <Label>Raw OCR Text (reference)</Label>
+                <Textarea readOnly rows={4} value={ocrResult.rawText} className="text-xs font-mono bg-muted/30" />
+              </div>
+            ) : null}
+          </div>
+          </div>
+
+          <DialogFooter className="border-t pt-3 bg-background">
+            <Button type="button" variant="outline" onClick={() => setOcrReviewOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleApplyReviewedOcr}>
+              Apply Reviewed Values
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Lower Odometer Warning Dialog */}
       <AlertDialog open={showOdoWarning} onOpenChange={setShowOdoWarning}>

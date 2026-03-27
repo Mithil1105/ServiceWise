@@ -621,6 +621,7 @@ export default function UserManagement() {
                   <SelectContent>
                     <SelectItem value="supervisor">Supervisor – View and manage assigned cars only</SelectItem>
                     <SelectItem value="manager">Manager – Review and verify fleet, services, and bookings</SelectItem>
+                    <SelectItem value="fuel_filler">Fuel Filler – Log fuel fills and view fuel reports</SelectItem>
                     <SelectItem value="admin">Admin – Full system access</SelectItem>
                   </SelectContent>
                 </Select>
@@ -846,6 +847,8 @@ export default function UserManagement() {
                               variant={
                                 u.role === 'admin'
                                   ? 'accent'
+                                  : u.role === 'fuel_filler'
+                                    ? 'success'
                                   : u.role === 'supervisor'
                                     ? 'warning'
                                     : 'muted'
@@ -873,6 +876,7 @@ export default function UserManagement() {
                               <SelectItem value="none">No Role</SelectItem>
                               <SelectItem value="supervisor">Supervisor</SelectItem>
                               <SelectItem value="manager">Manager</SelectItem>
+                              <SelectItem value="fuel_filler">Fuel Filler</SelectItem>
                               <SelectItem value="admin">Admin</SelectItem>
                             </SelectContent>
                           </Select>

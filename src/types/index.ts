@@ -1,4 +1,4 @@
-export type AppRole = 'admin' | 'manager' | 'supervisor';
+export type AppRole = 'admin' | 'manager' | 'supervisor' | 'fuel_filler';
 
 export interface Organization {
   id: string;
@@ -32,6 +32,7 @@ export interface Car {
   model: string;
   year?: number;
   fuel_type?: string;
+  allowed_fuel_types?: string[] | null;
   seats?: number;
   vehicle_type?: 'private' | 'commercial';
   vehicle_class?: 'lmv' | 'hmv';
@@ -56,6 +57,33 @@ export interface OdometerEntry {
   odometer_km: number;
   reading_at: string;
   entered_by?: string;
+  created_at: string;
+}
+
+// Fuel fills logged by fuel fillers/admins
+export interface FuelEntry {
+  id: string;
+  organization_id: string;
+  car_id: string;
+  filled_at: string;
+  odometer_km: number;
+  fuel_liters: number;
+  amount_inr: number;
+  fuel_type: 'petrol' | 'diesel' | 'cng' | 'electric' | string;
+  is_full_tank: boolean;
+  notes?: string;
+  entered_by?: string;
+  created_at: string;
+}
+
+export interface FuelEntryBill {
+  id: string;
+  organization_id: string;
+  fuel_entry_id: string;
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  file_type: string;
   created_at: string;
 }
 
@@ -133,7 +161,7 @@ export interface CriticalServiceItem {
 
 export interface TimelineItem {
   id: string;
-  type: 'odometer' | 'service' | 'expense' | 'incident' | 'downtime';
+  type: 'odometer' | 'service' | 'expense' | 'fuel' | 'incident' | 'downtime';
   date: string;
   title: string;
   description?: string;

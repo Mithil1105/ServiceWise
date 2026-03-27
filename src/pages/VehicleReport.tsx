@@ -3,6 +3,7 @@ import { useParams, Link, Navigate } from 'react-router-dom';
 import { useCar } from '@/hooks/use-cars';
 import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useOdometerEntries, useLatestOdometer } from '@/hooks/use-odometer';
+import { useFuelEntries, useFuelEntryBillsByFuelEntryIds } from '@/hooks/use-fuel';
 import { useServiceRecords } from '@/hooks/use-services';
 import { useServiceBillsByRecordIds, ServiceBillFile } from '@/hooks/use-service-bills';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,10 +35,13 @@ import {
   Printer,
   Calendar,
   Car,
+  Fuel as FuelIcon,
 } from 'lucide-react';
 import { formatDateDMY, formatDateTimeDMY } from '@/lib/date';
 import { storageGetSignedUrl } from '@/lib/storage';
 import { toFullKey } from '@/lib/storage-keys';
+import { computeFuelMileageForCar } from '@/lib/fuel-mileage';
+import type { FuelEntryBill } from '@/types';
 
 export default function VehicleReport() {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +50,7 @@ export default function VehicleReport() {
   const { data: latestOdo } = useLatestOdometer(id!);
   const { data: odometerEntries, isLoading: odoLoading } = useOdometerEntries(id);
   const { data: serviceRecords, isLoading: servicesLoading } = useServiceRecords(id);
+  const { data: fuelEntries = [], isLoading: fuelLoading } = useFuelEntries({ carId: id! });
 
   if (isRestricted && id && assignedCarIds && !assignedCarIds.includes(id)) {
     return <Navigate to="/app" replace />;
@@ -58,9 +63,48 @@ export default function VehicleReport() {
   const [billUrls, setBillUrls] = useState<Record<string, string>>({});
   const [billLoading, setBillLoading] = useState(false);
 
+  const [fuelBillPreviewOpen, setFuelBillPreviewOpen] = useState(false);
+  const [fuelBillPreview, setFuelBillPreview] = useState<FuelEntryBill | null>(null);
+  const [fuelBillPreviewUrl, setFuelBillPreviewUrl] = useState<string | null>(null);
+  const [fuelBillPreviewLoading, setFuelBillPreviewLoading] = useState(false);
+
   const currentKm = latestOdo?.odometer_km || 0;
   const totalServices = serviceRecords?.length || 0;
   const totalServiceCost = serviceRecords?.reduce((sum, r) => sum + (r.cost || 0), 0) || 0;
+
+  const fuelEntriesAsc = useMemo(
+    () =>
+      [...(fuelEntries ?? [])].sort(
+        (a, b) => new Date(a.filled_at).getTime() - new Date(b.filled_at).getTime()
+      ),
+    [fuelEntries]
+  );
+  const fuelSummary = fuelEntriesAsc.length ? computeFuelMileageForCar(fuelEntriesAsc) : null;
+
+  const fuelTotalsByType = useMemo(() => {
+    const byType = new Map<string, { liters: number; spend: number }>();
+    for (const e of fuelEntriesAsc) {
+      const t = String((e as any).fuel_type || 'unknown').trim().toLowerCase();
+      if (!byType.has(t)) byType.set(t, { liters: 0, spend: 0 });
+      const cur = byType.get(t)!;
+      cur.liters += Number(e.fuel_liters) || 0;
+      cur.spend += Number(e.amount_inr) || 0;
+    }
+    return Array.from(byType.entries())
+      .map(([fuel_type, v]) => ({
+        fuel_type,
+        liters: v.liters,
+        spend: v.spend,
+        avgPricePerL: v.liters > 0 ? v.spend / v.liters : null,
+      }))
+      .sort((a, b) => b.spend - a.spend);
+  }, [fuelEntriesAsc]);
+
+  const fuelEntryIds = useMemo(() => fuelEntriesAsc.map((e) => e.id), [fuelEntriesAsc]);
+  const {
+    data: fuelEntryBillsByEntryId = {} as Record<string, FuelEntryBill[]>,
+    isLoading: fuelBillsLoading,
+  } = useFuelEntryBillsByFuelEntryIds(fuelEntryIds);
 
   const handleViewBills = async (bills: ServiceBillFile[], serviceName: string) => {
     setBillLoading(true);
@@ -77,6 +121,22 @@ export default function VehicleReport() {
     }
     setBillUrls(urls);
     setBillLoading(false);
+  };
+
+  const openFuelBillPreview = async (bill: FuelEntryBill) => {
+    setFuelBillPreview(bill);
+    setFuelBillPreviewOpen(true);
+    setFuelBillPreviewUrl(null);
+    setFuelBillPreviewLoading(true);
+    try {
+      const url = await storageGetSignedUrl(bill.file_path, 3600);
+      setFuelBillPreviewUrl(url);
+    } catch (e) {
+      console.error('Error loading fuel bill:', e);
+      setFuelBillPreviewUrl(null);
+    } finally {
+      setFuelBillPreviewLoading(false);
+    }
   };
 
   const handlePrint = () => {
@@ -107,6 +167,24 @@ export default function VehicleReport() {
           }
         } catch (e) {
           console.error('Error getting bill URL:', e);
+        }
+      }
+    }
+
+    const exportFuelBillUrls: { date: string; url: string; fileName: string; isPdf: boolean }[] = [];
+    for (const fill of fuelEntriesAsc ?? []) {
+      const bills = fuelEntryBillsByEntryId[fill.id] ?? [];
+      for (const bill of bills) {
+        try {
+          const url = await storageGetSignedUrl(bill.file_path, 86400);
+          exportFuelBillUrls.push({
+            date: formatDateDMY(fill.filled_at),
+            url,
+            fileName: bill.file_name,
+            isPdf: bill.file_type === 'application/pdf',
+          });
+        } catch (e) {
+          console.error('Error getting fuel bill URL:', e);
         }
       }
     }
@@ -235,6 +313,92 @@ export default function VehicleReport() {
       </tbody>
     </table>
   </div>
+
+  <div class="section">
+    <h2 class="section-title">⛽ Fuel Fills</h2>
+    <p class="muted">
+      Total fuel: ${fuelSummary?.litersTotal.toLocaleString() ?? '0'} L • Spend: ₹${fuelSummary?.spendTotal.toLocaleString() ?? '0'} • Est. distance: ${fuelSummary?.estimatedDistanceKm.toLocaleString() ?? '0'} km
+    </p>
+    ${
+      fuelTotalsByType.length > 0
+        ? `
+    <p class="muted">
+      Totals by fuel type:
+      ${fuelTotalsByType
+        .map(
+          (r) =>
+            `${r.fuel_type}: ${r.liters.toLocaleString()} L / ₹${r.spend.toLocaleString()}`
+        )
+        .join(' • ')}
+    </p>
+    `
+        : ''
+    }
+    <table>
+      <thead>
+        <tr>
+          <th>Date & Time</th>
+          <th>Fuel Type</th>
+          <th>Liters</th>
+          <th>Amount (INR)</th>
+          <th>Odometer</th>
+          <th>Full Tank</th>
+          <th>Est km/L</th>
+          <th>Full-tank km/L</th>
+          <th>Bills</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${(fuelEntriesAsc ?? [])
+          .slice()
+          .reverse()
+          .map((fill) => {
+            const est = fuelSummary?.estimatedPoints.find((p) => p.entryId === fill.id) ?? null;
+            const full = fuelSummary?.fullTankSegments.find((s) => s.endEntryId === fill.id) ?? null;
+            const bills = fuelEntryBillsByEntryId[fill.id] ?? [];
+
+            const estText = est?.kmPerL != null ? est.kmPerL.toFixed(2) : '-';
+            const fullText = full?.kmPerL != null ? full.kmPerL.toFixed(2) : '-';
+            const billsText = bills.length > 0 ? `✓ ${bills.length} file${bills.length > 1 ? 's' : ''}` : '-';
+
+            const fuelType = String((fill as any).fuel_type || 'unknown');
+            return `
+              <tr>
+                <td>${formatDateTimeDMY(fill.filled_at)}</td>
+                <td>${fuelType}</td>
+                <td>${fill.fuel_liters.toLocaleString()}</td>
+                <td class="cost">₹${fill.amount_inr.toLocaleString()}</td>
+                <td>${fill.odometer_km.toLocaleString()} km</td>
+                <td>${fill.is_full_tank ? '✓' : '-'}</td>
+                <td>${estText}</td>
+                <td>${fullText}</td>
+                <td>${billsText}</td>
+                <td>${fill.notes || '-'}</td>
+              </tr>
+            `;
+          })
+          .join('') || '<tr><td colspan="10">No fuel fills</td></tr>'}
+      </tbody>
+    </table>
+  </div>
+
+  ${exportFuelBillUrls.length > 0 ? `
+  <div class="bill-images">
+    <h2 class="section-title">📎 Fuel Bills (${exportFuelBillUrls.length} files)</h2>
+    ${exportFuelBillUrls.map((bill) => bill.isPdf ? `
+      <div class="bill-image">
+        <p class="caption"><strong>${bill.date}</strong></p>
+        <p><a href="${bill.url}" class="bill-link" target="_blank">📄 ${bill.fileName} (PDF - Click to View)</a></p>
+      </div>
+    ` : `
+      <div class="bill-image">
+        <img src="${bill.url}" alt="Fuel bill for ${bill.date}" />
+        <p class="caption"><strong>${bill.date}</strong> - ${bill.fileName}</p>
+      </div>
+    `).join('')}
+  </div>
+  ` : ''}
 
   ${exportBillUrls.length > 0 ? `
   <div class="bill-images">
@@ -468,6 +632,129 @@ export default function VehicleReport() {
         </CardContent>
       </Card>
 
+      {/* Fuel History */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FuelIcon className="h-5 w-5 text-warning" />
+            Fuel Fill History
+          </CardTitle>
+          <CardDescription>
+            Total fuel: {fuelSummary?.litersTotal != null ? fuelSummary.litersTotal.toLocaleString() : '0'} L • Spend: ₹{fuelSummary?.spendTotal != null ? fuelSummary.spendTotal.toLocaleString() : '0'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {fuelLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : fuelEntriesAsc.length > 0 ? (
+            <div className="space-y-4">
+              {fuelTotalsByType.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {fuelTotalsByType.map((r) => (
+                    <div key={r.fuel_type} className="p-3 rounded-lg bg-muted/30">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant="outline" className="capitalize">{r.fuel_type}</Badge>
+                        <span className="text-xs text-muted-foreground">{r.avgPricePerL == null ? '—' : `₹${r.avgPricePerL.toFixed(2)}/L`}</span>
+                      </div>
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        <div>{r.liters.toLocaleString()} L</div>
+                        <div>₹{r.spend.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date & Time</TableHead>
+                    <TableHead>Fuel Type</TableHead>
+                    <TableHead className="text-right">Liters</TableHead>
+                    <TableHead className="text-right">Amount (₹)</TableHead>
+                    <TableHead className="text-right">Odometer (km)</TableHead>
+                    <TableHead>Full Tank</TableHead>
+                    <TableHead className="text-right">Est km/L</TableHead>
+                    <TableHead className="text-right">Full-tank km/L</TableHead>
+                    <TableHead>Bill</TableHead>
+                    <TableHead className="max-w-xs">Notes</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...fuelEntriesAsc].reverse().map((fill) => (
+                    <TableRow key={fill.id}>
+                      <TableCell className="whitespace-nowrap">
+                        {formatDateTimeDMY(fill.filled_at)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <Badge variant="secondary" className="capitalize">
+                          {String((fill as any).fuel_type || 'unknown')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        {fill.fuel_liters.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap font-medium">
+                        ₹{fill.amount_inr.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        {fill.odometer_km.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={fill.is_full_tank ? 'success' : 'muted'}>
+                          {fill.is_full_tank ? 'Yes' : 'No'}
+                        </Badge>
+                      </TableCell>
+                      {(() => {
+                        const est = fuelSummary?.estimatedPoints.find((p) => p.entryId === fill.id) ?? null;
+                        const full = fuelSummary?.fullTankSegments.find((s) => s.endEntryId === fill.id) ?? null;
+                        const estKmPerL = est?.kmPerL ?? null;
+                        const fullKmPerL = full?.kmPerL ?? null;
+                        const bills = fuelEntryBillsByEntryId[fill.id] ?? [];
+
+                        return (
+                          <>
+                            <TableCell className="text-right whitespace-nowrap">
+                              {estKmPerL == null ? <Badge variant="muted">N/A</Badge> : <Badge variant="secondary">{estKmPerL.toFixed(2)} km/L</Badge>}
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              {fullKmPerL == null ? <Badge variant="muted">N/A</Badge> : <Badge variant="secondary">{fullKmPerL.toFixed(2)} km/L</Badge>}
+                            </TableCell>
+                            <TableCell>
+                              {bills.length > 0 ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openFuelBillPreview(bills[0])}
+                                  disabled={fuelBillsLoading || fuelBillPreviewLoading}
+                                >
+                                  View ({bills.length})
+                                </Button>
+                              ) : (
+                                <Badge variant="muted">No bill</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="max-w-xs truncate">{fill.notes || '-'}</TableCell>
+                          </>
+                        );
+                      })()}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No fuel fills recorded
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Odometer History */}
       <Card>
         <CardHeader>
@@ -593,6 +880,64 @@ export default function VehicleReport() {
                 })
               )}
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Fuel bill preview dialog */}
+      <Dialog
+        open={fuelBillPreviewOpen}
+        onOpenChange={(open) => {
+          setFuelBillPreviewOpen(open);
+          if (!open) {
+            setFuelBillPreview(null);
+            setFuelBillPreviewUrl(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {fuelBillPreview?.file_type?.startsWith('image/') ? (
+                <ImageIcon className="h-5 w-5 text-primary" />
+              ) : (
+                <FileText className="h-5 w-5 text-destructive" />
+              )}
+              {fuelBillPreview?.file_name || 'Fuel Bill'}
+            </DialogTitle>
+          </DialogHeader>
+
+          {fuelBillPreviewLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : fuelBillPreviewUrl && fuelBillPreview ? (
+            <div className="space-y-4">
+              {fuelBillPreview.file_type?.startsWith('image/') ? (
+                <img
+                  src={fuelBillPreviewUrl}
+                  alt={fuelBillPreview.file_name}
+                  className="w-full rounded-lg border max-h-[600px] object-contain"
+                />
+              ) : (
+                <iframe
+                  src={fuelBillPreviewUrl}
+                  title={fuelBillPreview.file_name}
+                  className="w-full h-[600px] rounded-lg border"
+                />
+              )}
+
+              <div className="flex gap-2">
+                <Button variant="outline" type="button" asChild>
+                  <a href={fuelBillPreviewUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    Open in new tab
+                  </a>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No preview available.</p>
           )}
         </DialogContent>
       </Dialog>

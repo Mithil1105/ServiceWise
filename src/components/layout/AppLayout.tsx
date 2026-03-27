@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, Navigate, useNavigate } from 'react-router-dom';
+import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { SettingsLeaveProvider } from '@/lib/settings-leave-context';
 import {
@@ -28,6 +28,7 @@ export default function AppLayout() {
     setNoIndexMeta('App');
   }, []);
 
+  const location = useLocation();
   const auth = useAuth();
   const user = auth.user;
   const profile = auth.profile ?? null;
@@ -127,6 +128,22 @@ export default function AppLayout() {
 
   if (!role && isMasterAdmin) {
     return <Navigate to="/admin" replace />;
+  }
+
+  // Fuel fillers: restrict the tenant app routes to only the fuel/oedometer workflow
+  if (role === 'fuel_filler' && !isMasterAdmin) {
+    const pathname = location.pathname;
+    const allowed =
+      pathname === '/app' ||
+      pathname === '/app/odometer' ||
+      pathname === '/app/fuel' ||
+      pathname === '/app/fuel-reports' ||
+      pathname.startsWith('/app/fleet/') ||
+      pathname.startsWith('/app/vehicle-report/');
+
+    if (!allowed) {
+      return <Navigate to="/app/odometer" replace />;
+    }
   }
 
   return (

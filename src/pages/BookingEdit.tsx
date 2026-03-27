@@ -25,6 +25,7 @@ import { DEFAULT_TRIP_TYPE_OPTIONS } from '@/types/form-config';
 import { useBankAccounts } from '@/hooks/use-bank-accounts';
 import { getEstimatedKmFromDistance } from '@/lib/estimated-km';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { useOpenBookingAccess } from '@/hooks/use-projects';
 
 interface VehicleAssignment {
   id?: string;
@@ -59,7 +60,9 @@ export default function BookingEdit() {
   const { data: companyAccounts } = useBankAccounts('company');
   const { data: personalAccounts } = useBankAccounts('personal');
   const { data: orgSettings } = useOrganizationSettings();
+  const { data: canOpenSupervisorBook = false } = useOpenBookingAccess();
   const tripTypeOptions = (orgSettings?.booking_form_config?.tripTypeOptions?.length ? orgSettings.booking_form_config.tripTypeOptions : DEFAULT_TRIP_TYPE_OPTIONS).filter((o) => o.value && o.label);
+  const supervisorAssignmentMode = (orgSettings?.supervisor_assignment_mode ?? 'project') as 'project' | 'legacy';
 
   // Form state - initialized from booking data
   const [customerName, setCustomerName] = useState('');
@@ -418,6 +421,10 @@ export default function BookingEdit() {
   }
 
   if (isSupervisorMode && booking.status !== 'confirmed' && booking.status !== 'ongoing') {
+    return <Navigate to="/app/bookings" replace />;
+  }
+
+  if (isSupervisorMode && supervisorAssignmentMode === 'project' && !canOpenSupervisorBook) {
     return <Navigate to="/app/bookings" replace />;
   }
 

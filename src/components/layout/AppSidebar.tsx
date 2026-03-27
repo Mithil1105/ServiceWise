@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   AlertCircle,
   FileText,
+  Fuel,
   Settings,
   Users,
   LogOut,
@@ -23,6 +24,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Upload,
+  Layers,
 } from 'lucide-react';
 import { useIsMasterAdmin } from '@/hooks/use-is-master-admin';
 import { useLogoDisplayUrl } from '@/hooks/use-logo-display-url';
@@ -35,10 +37,13 @@ import { Separator } from '@/components/ui/separator';
 const navItems = [
   { title: 'Dashboard', href: '/app', icon: LayoutDashboard },
   { title: 'Bookings', href: '/app/bookings', icon: CalendarDays, adminOnly: true },
+  { title: 'Projects', href: '/app/projects', icon: Layers, adminOnly: true },
   { title: 'Billing', href: '/app/billing', icon: Receipt, adminOnly: true },
   { title: 'Fleet', href: '/app/fleet', icon: Car },
   { title: 'Drivers', href: '/app/drivers', icon: UserCheck },
   { title: 'Odometer', href: '/app/odometer', icon: Gauge },
+  { title: 'Fuel', href: '/app/fuel', icon: Fuel },
+  { title: 'Fuel Reports', href: '/app/fuel-reports', icon: FileText },
   { title: 'Services', href: '/app/services', icon: Wrench },
   { title: 'Critical Queue', href: '/app/critical', icon: AlertTriangle },
   { title: 'Incidents', href: '/app/incidents', icon: AlertCircle },
@@ -63,7 +68,7 @@ interface AppSidebarProps {
 const SETTINGS_PATH = '/app/settings';
 
 export default function AppSidebar({ onNavigate, collapsed = false, onToggleCollapse }: AppSidebarProps = {}) {
-  const { profile, role, signOut, isAdmin, isManager, isSupervisor, organization } = useAuth();
+  const { profile, role, signOut, isAdmin, isManager, isSupervisor, isFuelFiller, organization } = useAuth();
   const { isMasterAdmin } = useIsMasterAdmin();
   const location = useLocation();
   const leaveContext = useSettingsLeave();
@@ -83,14 +88,25 @@ export default function AppSidebar({ onNavigate, collapsed = false, onToggleColl
   const visuallyNarrow = collapsed && !hoverExpanded;
   const showFullContent = !visuallyNarrow;
 
-  // Filter nav items: supervisors see Bookings (assign-only), but not Billing; other adminOnly only for admin/manager
-  const filteredNavItems = navItems.filter((item) => {
-    if (item.adminOnly && isSupervisor && !isAdmin && !isManager) {
-      if (item.href === '/app/bookings') return true; // Supervisors see Bookings to assign vehicles
-      return false; // Billing and other admin-only stay hidden
-    }
-    return true;
-  });
+  // Filter nav items:
+  // - Fuel fillers: only show Fuel + Odometer + Fuel Reports
+  // - Supervisors: hide Fuel UI, keep Fuel Reports + project workflows
+  // - Others: keep existing behavior
+  const filteredNavItems = isFuelFiller
+    ? navItems.filter((item) => item.href === '/app/fuel' || item.href === '/app/odometer' || item.href === '/app/fuel-reports')
+    : navItems.filter((item) => {
+      if (item.href === '/app/fuel') {
+        return !isSupervisor || isAdmin || isManager;
+      }
+      if (item.href === '/app/fuel-reports') {
+        return isAdmin || isManager || isSupervisor;
+      }
+      if (item.adminOnly && isSupervisor && !isAdmin && !isManager) {
+        if (item.href === '/app/bookings' || item.href === '/app/projects') return true;
+        return false; // Billing and other admin-only stay hidden
+      }
+      return true;
+    });
 
   const handleNavClick = (e: React.MouseEvent, href: string) => {
     if (shouldPromptLeave && href !== SETTINGS_PATH) {

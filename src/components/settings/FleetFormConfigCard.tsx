@@ -94,10 +94,10 @@ export function FleetFormConfigCard({ onDirtyChange }: FleetFormConfigCardProps 
     const saved = JSON.stringify({
       fieldOverrides: config.fieldOverrides ?? {},
       documentTypes: config.documentTypes ?? {},
-      vehicleTypeOptions: config.vehicleTypeOptions ?? DEFAULT_VEHICLE_TYPE_OPTIONS,
-      vehicleClassOptions: config.vehicleClassOptions ?? DEFAULT_VEHICLE_CLASS_OPTIONS,
-      fuelTypeOptions: config.fuelTypeOptions ?? DEFAULT_FUEL_TYPE_OPTIONS,
-      seatsOptions: config.seatsOptions ?? DEFAULT_SEATS_OPTIONS,
+      vehicleTypeOptions: config.vehicleTypeOptions?.length ? config.vehicleTypeOptions : DEFAULT_VEHICLE_TYPE_OPTIONS,
+      vehicleClassOptions: config.vehicleClassOptions?.length ? config.vehicleClassOptions : DEFAULT_VEHICLE_CLASS_OPTIONS,
+      fuelTypeOptions: config.fuelTypeOptions?.length ? config.fuelTypeOptions : DEFAULT_FUEL_TYPE_OPTIONS,
+      seatsOptions: config.seatsOptions?.length ? config.seatsOptions : DEFAULT_SEATS_OPTIONS,
       customFields: config.customFields ?? [],
     });
     const current = JSON.stringify({ fieldOverrides, documentTypes, vehicleTypeOptions, vehicleClassOptions, fuelTypeOptions, seatsOptions, customFields });

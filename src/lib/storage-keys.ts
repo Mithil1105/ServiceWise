@@ -10,6 +10,7 @@ export const STORAGE_PREFIX = {
   CAR_DOCUMENTS: 'car-documents/',
   SERVICE_BILLS: 'service-bills/',
   INCIDENT_ATTACHMENTS: 'incident-attachments/',
+  FUEL_BILLS: 'fuel-bills/',
 } as const;
 
 export type StorageDomain = keyof typeof STORAGE_PREFIX;
@@ -24,6 +25,9 @@ const DOMAIN_TO_BUCKET: Record<StorageDomain, StorageBucket> = {
   // There is currently no dedicated Supabase storage bucket for incidents.
   // This only matters if the code falls back to Supabase Storage, which should not happen for R2-prefixed keys.
   INCIDENT_ATTACHMENTS: 'car-documents',
+  // Fuel bills are stored in R2 under `fuel-bills/`.
+  // Legacy fallback is not expected to be used, but keep mapping for completeness.
+  FUEL_BILLS: 'service-bills',
 };
 
 export const KNOWN_R2_PREFIXES = Object.values(STORAGE_PREFIX);
@@ -58,6 +62,13 @@ export function incidentAttachmentKey(carId: string, ext: string): string {
   const safeExt = (ext || 'bin').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}.${safeExt}`;
   return `${STORAGE_PREFIX.INCIDENT_ATTACHMENTS}${carId}/${suffix}`;
+}
+
+export function fuelBillKey(fuelEntryId: string, fileName: string): string {
+  const ext = (fileName.split('.').pop() || 'bin').replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
+  const safeBase = fileName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9-_]+/g, '-');
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}-${safeBase}.${ext}`;
+  return `${STORAGE_PREFIX.FUEL_BILLS}${fuelEntryId}/${suffix}`;
 }
 
 export function isFullUrl(value: string | null | undefined): boolean {

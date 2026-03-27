@@ -192,6 +192,8 @@ export interface BookingFormConfig {
   fieldOverrides?: Partial<Record<BookingFormBuiltInFieldKey, FieldOverride>>;
   /** Customizable options for Trip Type dropdown. If empty/undefined, defaults are used. */
   tripTypeOptions?: SelectOption[];
+  /** Supervisor booking assignment mode. Project mode is default; legacy keeps direct car assignment behavior. */
+  supervisorAssignmentMode?: 'project' | 'legacy';
   customFields?: FleetNewCarCustomField[];
 }
 
@@ -341,4 +343,31 @@ export const INCIDENT_FORM_FIELD_LABELS: Record<IncidentFormBuiltInFieldKey, str
   location: 'Location',
   cost: 'Cost (₹)',
   driver_name: 'Driver Name',
+};
+
+// ---------------------------------------------------------------------------
+// Fuel entry form config (Log Fuel). Stored in organization_settings.fuel_entry_form_config.
+// ---------------------------------------------------------------------------
+
+export type FuelEntryFormBuiltInFieldKey =
+  | 'fuel_type'
+  | 'odometer_km'
+  | 'fuel_liters'
+  | 'amount_inr'
+  | 'is_full_tank'
+  | 'notes'
+  | 'bill_upload';
+
+export interface FuelEntryFormConfig {
+  fieldOverrides?: Partial<Record<FuelEntryFormBuiltInFieldKey, FieldOverride>>;
+}
+
+export const FUEL_ENTRY_FORM_FIELD_LABELS: Record<FuelEntryFormBuiltInFieldKey, string> = {
+  fuel_type: 'Fuel Type',
+  odometer_km: 'Odometer (km)',
+  fuel_liters: 'Liters',
+  amount_inr: 'Amount (INR)',
+  is_full_tank: 'Full tank fill?',
+  notes: 'Notes',
+  bill_upload: 'Fuel bill (optional)',
 };

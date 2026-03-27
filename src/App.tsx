@@ -15,6 +15,8 @@ import Odometer from "./pages/Odometer";
 import VehicleReport from "./pages/VehicleReport";
 import Services from "./pages/Services";
 import ServiceNew from "./pages/ServiceNew";
+import Fuel from "./pages/Fuel";
+import FuelReports from "./pages/FuelReports";
 import CriticalQueue from "./pages/CriticalQueue";
 import Incidents from "./pages/Incidents";
 import DowntimeReport from "./pages/DowntimeReport";
@@ -32,6 +34,7 @@ import BookingHistory from "./pages/BookingHistory";
 import Bills from "./pages/Bills";
 import BillingManagement from "./pages/BillingManagement";
 import BillViewPage from "./pages/BillViewPage";
+import Projects from "./pages/Projects";
 import Drivers from "./pages/Drivers";
 import Supervisors from "./pages/Supervisors";
 import NotFound from "./pages/NotFound";
@@ -98,6 +101,8 @@ const App = () => (
               <Route path="drivers" element={<Drivers />} />
               <Route path="odometer" element={<Odometer />} />
               <Route path="vehicle-report/:id" element={<VehicleReport />} />
+              <Route path="fuel" element={<Fuel />} />
+              <Route path="fuel-reports" element={<FuelReports />} />
               <Route path="services" element={<Services />} />
               <Route path="services/new" element={<ServiceNew />} />
               <Route path="critical" element={<CriticalQueue />} />
@@ -118,6 +123,7 @@ const App = () => (
               <Route path="bookings/:id/history" element={<BookingHistory />} />
               <Route path="billing" element={<BillingManagement />} />
               <Route path="billing/bill/:billId" element={<BillViewPage />} />
+              <Route path="projects" element={<Projects />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

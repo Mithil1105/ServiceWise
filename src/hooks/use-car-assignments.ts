@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useOrg } from '@/hooks/use-org';
 import { useAuth } from '@/lib/auth-context';
+import { useMyAccessibleCarIds } from '@/hooks/use-projects';
+import { useOrganizationSettings } from '@/hooks/use-organization-settings';
 
 export interface CarAssignment {
   id: string;
@@ -90,15 +92,23 @@ export function useSupervisorAssignments(supervisorId: string | undefined) {
 export function useAssignedCarIdsForCurrentUser() {
   const { user, isSupervisor, isAdmin, isManager } = useAuth();
   const restrictToAssigned = isSupervisor && !isAdmin && !isManager;
-  const { data: assignments = [] } = useSupervisorAssignments(
-    restrictToAssigned ? user?.id : undefined
-  );
+  const { data: orgSettings } = useOrganizationSettings();
+  const supervisorAssignmentMode = (orgSettings?.supervisor_assignment_mode ?? 'project') as 'project' | 'legacy';
+  const { data: projectScopedCarIds = [], isLoading: projectScopedLoading } = useMyAccessibleCarIds();
+  const { data: assignments = [], isLoading: assignmentsLoading } = useSupervisorAssignments(restrictToAssigned ? user?.id : undefined);
   const assignedCarIds = restrictToAssigned
-    ? assignments.map((a) => a.car_id)
+    ? (
+      supervisorAssignmentMode === 'legacy'
+        ? assignments.map((a) => a.car_id)
+        : projectScopedCarIds
+    )
     : null;
   return {
     assignedCarIds,
     isRestricted: restrictToAssigned,
+    isLoading: restrictToAssigned
+      ? (supervisorAssignmentMode === 'legacy' ? assignmentsLoading : projectScopedLoading)
+      : false,
   };
 }
 

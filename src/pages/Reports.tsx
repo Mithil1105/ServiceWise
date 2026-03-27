@@ -1,17 +1,20 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCars } from '@/hooks/use-cars';
 import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { useServiceRecords } from '@/hooks/use-services';
 import { useOdometerEntries } from '@/hooks/use-odometer';
+import { useFuelEntries } from '@/hooks/use-fuel';
 import { useTrafficChallans } from '@/hooks/use-traffic-challans';
 import { useIncidents } from '@/hooks/use-incidents';
 import { useDowntimeLogs } from '@/hooks/use-downtime';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeAuthed } from '@/lib/functions-invoke';
+import { computeFuelMileageForCar } from '@/lib/fuel-mileage';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import * as TableUI from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
@@ -33,6 +36,7 @@ export default function Reports() {
   const { data: cars } = useCars();
   const { data: serviceRecords } = useServiceRecords();
   const { data: odometerEntries } = useOdometerEntries();
+  const { data: fuelEntries } = useFuelEntries();
   const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
   const { toast } = useToast();
 
@@ -46,6 +50,10 @@ export default function Reports() {
     ? (odometerEntries ?? []).filter((e) => assignedCarIds.includes(e.car_id))
     : (odometerEntries ?? []);
 
+  const scopedFuelEntries = assignedCarIds
+    ? (fuelEntries ?? []).filter((e) => assignedCarIds.includes(e.car_id))
+    : (fuelEntries ?? []);
+
   const [selectedCars, setSelectedCars] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
@@ -53,6 +61,7 @@ export default function Reports() {
   });
   const [includeServices, setIncludeServices] = useState(true);
   const [includeOdometer, setIncludeOdometer] = useState(false);
+  const [includeFuel, setIncludeFuel] = useState(false);
   const [includeExpenses, setIncludeExpenses] = useState(false);
   const [includeIncidents, setIncludeIncidents] = useState(false);
   const [includeDowntime, setIncludeDowntime] = useState(false);
@@ -84,6 +93,78 @@ export default function Reports() {
     ? (downtimeLogsRaw ?? []).filter((d) => assignedCarIds.includes(d.car_id))
     : (downtimeLogsRaw ?? []);
 
+  const fuelSummaryForSelection = useMemo(() => {
+    if (!includeFuel || selectedCars.length === 0) return null;
+
+    const fromStr = exportFullTimeData ? '' : (dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : '');
+    const toStr = exportFullTimeData ? '' : (dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : '');
+
+    const inDateRange = (dateStrOrIso: string | Date) => {
+      if (!fromStr || !toStr) return true;
+      const d = format(typeof dateStrOrIso === 'string' ? new Date(dateStrOrIso) : dateStrOrIso, 'yyyy-MM-dd');
+      return d >= fromStr && d <= toStr;
+    };
+
+    const filtered = scopedFuelEntries.filter((e) => selectedCars.includes(e.car_id) && inDateRange(e.filled_at));
+    if (filtered.length === 0) {
+      return { litersTotal: 0, spendTotal: 0, distanceTotal: 0, costPerKm: null as number | null, avgPricePerL: null as number | null };
+    }
+
+    const grouped = new Map<string, typeof filtered>();
+    for (const e of filtered) {
+      if (!grouped.has(e.car_id)) grouped.set(e.car_id, []);
+      grouped.get(e.car_id)!.push(e);
+    }
+
+    const summaries = Array.from(grouped.entries()).map(([carId, entriesDesc]) => {
+      const entriesAsc = [...entriesDesc].sort(
+        (a, b) => new Date(a.filled_at).getTime() - new Date(b.filled_at).getTime()
+      );
+      const s = computeFuelMileageForCar(entriesAsc);
+      return { carId, s };
+    });
+
+    const litersTotal = summaries.reduce((sum, x) => sum + x.s.litersTotal, 0);
+    const spendTotal = summaries.reduce((sum, x) => sum + x.s.spendTotal, 0);
+    const distanceTotal = summaries.reduce((sum, x) => sum + x.s.estimatedDistanceKm, 0);
+    const costPerKm = distanceTotal > 0 ? spendTotal / distanceTotal : null;
+    const avgPricePerL = litersTotal > 0 ? spendTotal / litersTotal : null;
+
+    return { litersTotal, spendTotal, distanceTotal, costPerKm, avgPricePerL };
+  }, [includeFuel, selectedCars, exportFullTimeData, dateRange?.from, dateRange?.to, scopedFuelEntries]);
+
+  const fuelSummaryByTypeForSelection = useMemo(() => {
+    if (!includeFuel || selectedCars.length === 0) return null;
+
+    const fromStr = exportFullTimeData ? '' : (dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : '');
+    const toStr = exportFullTimeData ? '' : (dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : '');
+
+    const inDateRange = (dateStrOrIso: string | Date) => {
+      if (!fromStr || !toStr) return true;
+      const d = format(typeof dateStrOrIso === 'string' ? new Date(dateStrOrIso) : dateStrOrIso, 'yyyy-MM-dd');
+      return d >= fromStr && d <= toStr;
+    };
+
+    const filtered = scopedFuelEntries.filter((e) => selectedCars.includes(e.car_id) && inDateRange(e.filled_at));
+    const byType = new Map<string, { liters: number; spend: number }>();
+    for (const e of filtered) {
+      const t = ((e as any).fuel_type || 'unknown').toString().trim().toLowerCase();
+      if (!byType.has(t)) byType.set(t, { liters: 0, spend: 0 });
+      const cur = byType.get(t)!;
+      cur.liters += Number(e.fuel_liters) || 0;
+      cur.spend += Number(e.amount_inr) || 0;
+    }
+
+    return Array.from(byType.entries())
+      .map(([fuel_type, v]) => ({
+        fuel_type,
+        liters: v.liters,
+        spend: v.spend,
+        avgPricePerL: v.liters > 0 ? v.spend / v.liters : null,
+      }))
+      .sort((a, b) => b.spend - a.spend);
+  }, [includeFuel, selectedCars, exportFullTimeData, dateRange?.from, dateRange?.to, scopedFuelEntries]);
+
   const handleSelectAllCars = () => {
     setSelectedCars(scopedCars.map((c) => c.id));
   };
@@ -104,7 +185,7 @@ export default function Reports() {
   };
 
   const hasAtLeastOneDataType =
-    includeServices || includeOdometer || includeExpenses || includeIncidents || includeDowntime || includeChallans;
+    includeServices || includeOdometer || includeFuel || includeExpenses || includeIncidents || includeDowntime || includeChallans;
 
   const handleExportCSV = async () => {
     if (selectedCars.length === 0) {
@@ -185,6 +266,13 @@ export default function Reports() {
           }
         });
       }
+      if (includeFuel) {
+        scopedFuelEntries.forEach((r) => {
+          if (selectedCars.includes(r.car_id) && inDateRange(r.filled_at) && (r as { entered_by?: string }).entered_by) {
+            userIds.add((r as { entered_by: string }).entered_by);
+          }
+        });
+      }
       if (includeChallans) {
         (trafficChallans as { car_id: string; incident_at: string; created_by?: string }[]).forEach((c) => {
           if (selectedCars.includes(c.car_id) && inDateRange(c.incident_at) && c.created_by) userIds.add(c.created_by);
@@ -248,6 +336,35 @@ export default function Reports() {
           row[3] = 'Odometer Entry';
           row[11] = entry.odometer_km.toString();
           row[17] = 'Fleet';
+          rows.push(row);
+        }
+      }
+
+      // Add fuel fills (if selected)
+      if (includeFuel) {
+        const filteredFuel = scopedFuelEntries.filter((entry) => {
+          if (!selectedCars.includes(entry.car_id)) return false;
+          return inDateRange(entry.filled_at);
+        });
+
+        for (const entry of filteredFuel) {
+          const car = scopedCars.find((c) => c.id === entry.car_id);
+          const row = emptyRow();
+
+          row[0] = formatDateDMY(entry.filled_at);
+          row[1] = format(new Date(entry.filled_at), 'HH:mm');
+          row[2] = car ? formatCarLabel(car) : '';
+          row[3] = 'Fuel Fill';
+          row[5] = getAddedBy((entry as { entered_by?: string }).entered_by);
+
+          row[6] = 'Fuel Fill';
+          row[7] = `Fuel (${String((entry as any).fuel_type || 'unknown')})`;
+          row[10] = entry.amount_inr?.toString() ?? '';
+          row[11] = entry.odometer_km.toString();
+          row[12] = entry.notes || '';
+          row[16] = JSON.stringify({ fuel_type: (entry as any).fuel_type ?? null });
+
+          row[17] = 'Fuel';
           rows.push(row);
         }
       }
@@ -550,6 +667,16 @@ export default function Reports() {
                   </div>
                   <div className="flex items-center space-x-2">
                     <Checkbox
+                      id="fuel"
+                      checked={includeFuel}
+                      onCheckedChange={(checked) => setIncludeFuel(!!checked)}
+                    />
+                    <label htmlFor="fuel" className="text-sm font-medium leading-none">
+                      Fuel Entries
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
                       id="expenses"
                       checked={includeExpenses}
                       onCheckedChange={(checked) => setIncludeExpenses(!!checked)}
@@ -593,6 +720,44 @@ export default function Reports() {
                   </div>
                 </div>
               </div>
+
+              {includeFuel && (
+                <div className="p-4 rounded-lg border bg-muted/30 space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium">Fuel totals (selected vehicles)</p>
+                    <Badge variant="secondary">{selectedCars.length || 0} car(s)</Badge>
+                  </div>
+                  {fuelSummaryForSelection ? (
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <div>Liters: {fuelSummaryForSelection.litersTotal.toLocaleString()}</div>
+                      <div>Spend: ₹{fuelSummaryForSelection.spendTotal.toLocaleString()}</div>
+                      <div>Est. Distance: {fuelSummaryForSelection.distanceTotal.toLocaleString()} km</div>
+                      <div>
+                        Avg Fuel Price: {fuelSummaryForSelection.avgPricePerL == null ? '—' : `₹${fuelSummaryForSelection.avgPricePerL.toFixed(2)}`}/L
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Select vehicles to preview fuel totals.</p>
+                  )}
+
+                  {fuelSummaryByTypeForSelection && fuelSummaryByTypeForSelection.length > 0 && (
+                    <div className="pt-3 mt-3 border-t space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Fuel totals by type</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {fuelSummaryByTypeForSelection.map((r) => (
+                          <div key={r.fuel_type} className="flex items-center justify-between gap-3 rounded-md bg-background/60 border px-3 py-2">
+                            <Badge variant="outline" className="capitalize">{r.fuel_type}</Badge>
+                            <div className="text-right text-xs text-muted-foreground">
+                              <div>{r.liters.toLocaleString()} L</div>
+                              <div>₹{r.spend.toLocaleString()}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Export all data (no date filter) */}
               <div className="space-y-2">
