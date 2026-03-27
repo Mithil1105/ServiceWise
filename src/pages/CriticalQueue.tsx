@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { Fragment, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useCriticalServices } from '@/hooks/use-services';
+import { useServicePlannerItems } from '@/hooks/use-services';
 import { useAssignedCarIdsForCurrentUser } from '@/hooks/use-car-assignments';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,45 +23,31 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { AlertTriangle, Wrench, Loader2, Calendar, Filter } from 'lucide-react';
+import { AlertTriangle, Wrench, Loader2, Calendar, Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import { addDays, isBefore, isAfter, parseISO } from 'date-fns';
 import { formatDateDMY } from '@/lib/date';
 import { formatCarLabel } from '@/lib/utils';
 
-// Estimated daily km for projecting service dates
-const ESTIMATED_DAILY_KM = 150;
+type DateFilterValue = 'all' | '7' | '14' | '30' | 'custom';
 
 export default function CriticalQueue() {
-  const { data: criticalServices, isLoading } = useCriticalServices();
+  const { data: plannerItems, isLoading } = useServicePlannerItems();
   const { assignedCarIds } = useAssignedCarIdsForCurrentUser();
 
   const scopedCriticalServices = useMemo(() => {
-    if (!criticalServices) return [];
-    if (!assignedCarIds) return criticalServices;
-    return criticalServices.filter((s) => assignedCarIds.includes(s.car_id));
-  }, [criticalServices, assignedCarIds]);
+    if (!plannerItems) return [];
+    if (!assignedCarIds) return plannerItems;
+    return plannerItems.filter((s) => assignedCarIds.includes(s.car_id));
+  }, [plannerItems, assignedCarIds]);
 
   // Date range filter
-  const [dateFilter, setDateFilter] = useState<'all' | '7' | '14' | '30' | 'custom'>('all');
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedCars, setExpandedCars] = useState<Record<string, boolean>>({});
 
-  // Calculate estimated due date for each service
-  const servicesWithDates = useMemo(() => {
-    if (!scopedCriticalServices.length) return [];
-
-    return scopedCriticalServices.map(service => {
-      // Estimate when the service will be due based on remaining km
-      const daysUntilDue = service.remaining_km / ESTIMATED_DAILY_KM;
-      const estimatedDueDate = addDays(new Date(), daysUntilDue);
-      
-      return {
-        ...service,
-        estimatedDueDate,
-        daysUntilDue: Math.round(daysUntilDue),
-      };
-    });
-  }, [scopedCriticalServices]);
+  const servicesWithDates = scopedCriticalServices;
 
   // Filter by date range
   const filteredServices = useMemo(() => {
@@ -83,19 +69,99 @@ export default function CriticalQueue() {
 
     return servicesWithDates.filter(service => {
       if (service.status === 'overdue') return true; // Always show overdue
-      
-      const dueDate = service.estimatedDueDate;
+      if (!service.estimated_due_date) return false;
+      const dueDate = new Date(service.estimated_due_date);
       if (startDate && isBefore(dueDate, startDate)) return false;
       if (endDate && isAfter(dueDate, endDate)) return false;
       return true;
     });
   }, [servicesWithDates, dateFilter, customStartDate, customEndDate]);
 
-  const overdue = filteredServices.filter((s) => s.status === 'overdue');
-  const dueSoon = filteredServices.filter((s) => s.status === 'due-soon');
+  const groupedCars = useMemo(() => {
+    const statusRank = { overdue: 0, 'due-soon': 1, upcoming: 2 } as const;
+    const map = new Map<string, { car_id: string; vehicle_number: string; model?: string | null; brand?: string | null; services: typeof filteredServices; nearest: (typeof filteredServices)[number] }>();
 
-  const renderTable = (items: typeof filteredServices) => {
-    if (!items || items.length === 0) {
+    for (const item of filteredServices) {
+      const existing = map.get(item.car_id);
+      if (!existing) {
+        map.set(item.car_id, {
+          car_id: item.car_id,
+          vehicle_number: item.vehicle_number,
+          model: item.model,
+          brand: item.brand,
+          services: [item],
+          nearest: item,
+        });
+        continue;
+      }
+
+      existing.services.push(item);
+      const a = existing.nearest;
+      const b = item;
+      const aRank = statusRank[a.status];
+      const bRank = statusRank[b.status];
+      if (bRank < aRank) {
+        existing.nearest = b;
+      } else if (bRank === aRank) {
+        const aDays = a.remaining_days ?? Number.MAX_SAFE_INTEGER;
+        const bDays = b.remaining_days ?? Number.MAX_SAFE_INTEGER;
+        if (bDays < aDays) existing.nearest = b;
+      }
+    }
+
+    return Array.from(map.values())
+      .map((group) => ({
+        ...group,
+        services: [...group.services].sort((a, b) => {
+          const aRank = statusRank[a.status];
+          const bRank = statusRank[b.status];
+          if (aRank !== bRank) return aRank - bRank;
+          const aDays = a.remaining_days ?? Number.MAX_SAFE_INTEGER;
+          const bDays = b.remaining_days ?? Number.MAX_SAFE_INTEGER;
+          return aDays - bDays;
+        }),
+      }))
+      .sort((a, b) => {
+        const aRank = statusRank[a.nearest.status];
+        const bRank = statusRank[b.nearest.status];
+        if (aRank !== bRank) return aRank - bRank;
+        const aDays = a.nearest.remaining_days ?? Number.MAX_SAFE_INTEGER;
+        const bDays = b.nearest.remaining_days ?? Number.MAX_SAFE_INTEGER;
+        return aDays - bDays;
+      });
+  }, [filteredServices]);
+
+  const searchedGroupedCars = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return groupedCars;
+    return groupedCars.filter((group) => {
+      const vehicleText = `${group.vehicle_number} ${group.brand ?? ''} ${group.model ?? ''}`.toLowerCase();
+      if (vehicleText.includes(q)) return true;
+      return group.services.some((svc) => svc.service_name.toLowerCase().includes(q));
+    });
+  }, [groupedCars, searchQuery]);
+
+  const overdueCars = searchedGroupedCars.filter((g) => g.nearest.status === 'overdue');
+  const dueSoonCars = searchedGroupedCars.filter((g) => g.nearest.status === 'due-soon');
+  const upcomingCars = searchedGroupedCars.filter((g) => g.nearest.status === 'upcoming');
+
+  const formatEstimationSource = (item: (typeof filteredServices)[number]) => {
+    if (item.estimation_source === 'earliest-of-both') {
+      return item.avg_daily_km_used
+        ? `Earlier of trend (${item.avg_daily_km_used.toFixed(1)} km/day) and interval`
+        : 'Earlier of trend and interval';
+    }
+    if (item.estimation_source === 'km-trend') {
+      return item.avg_daily_km_used
+        ? `Trend-based (${item.avg_daily_km_used.toFixed(1)} km/day)`
+        : 'Trend-based';
+    }
+    if (item.estimation_source === 'interval-days') return 'Service interval date';
+    return 'Insufficient history';
+  };
+
+  const renderTable = (groups: typeof groupedCars) => {
+    if (!groups || groups.length === 0) {
       return (
         <div className="text-center py-12">
           <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
@@ -109,81 +175,132 @@ export default function CriticalQueue() {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead></TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Vehicle</TableHead>
-            <TableHead>Service</TableHead>
+            <TableHead>Nearest Service</TableHead>
             <TableHead>Current KM</TableHead>
             <TableHead>Due / Overdue</TableHead>
             <TableHead>Est. Due Date</TableHead>
-            <TableHead>Last Serviced</TableHead>
+            <TableHead>Method Used</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
-            <TableRow key={`${item.car_id}-${item.service_name}`}>
-              <TableCell>
-                <Badge variant={item.status === 'overdue' ? 'error' : 'warning'}>
-                  {item.status === 'overdue' ? 'Overdue' : 'Due Soon'}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Link
-                  to={`/app/fleet/${item.car_id}`}
-                  className="font-medium text-accent hover:underline"
-                >
-                  {formatCarLabel(item)}
-                </Link>
-              </TableCell>
-              <TableCell className="font-medium">{item.service_name}</TableCell>
-              <TableCell>{item.current_km.toLocaleString()} km</TableCell>
-              <TableCell>
-                {item.status === 'overdue' ? (
-                  <span className="text-destructive font-medium">
-                    Overdue by {Math.abs(item.remaining_km).toLocaleString()} km
-                  </span>
-                ) : (
-                  <span className="text-warning font-medium">
-                    Due in {item.remaining_km.toLocaleString()} km
-                  </span>
-                )}
-              </TableCell>
-              <TableCell>
-                {item.status === 'overdue' ? (
-                  <span className="text-destructive">Now!</span>
-                ) : (
-                  <span className="text-muted-foreground">
-                    ~{formatDateDMY(item.estimatedDueDate)}
-                    <span className="text-xs ml-1">({item.daysUntilDue}d)</span>
-                  </span>
-                )}
-              </TableCell>
-              <TableCell>
-                {item.last_serviced_km ? (
-                  <div>
-                    <span>{item.last_serviced_km.toLocaleString()} km</span>
-                    {item.last_serviced_at && (
-                      <span className="text-xs text-muted-foreground block">
-                        {formatDateDMY(item.last_serviced_at)}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-muted-foreground">Never</span>
-                )}
-              </TableCell>
-              <TableCell>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" size="sm" asChild>
-                    <Link to={`/services/new?car=${item.car_id}`}>
-                      <Wrench className="h-3 w-3 mr-1" />
-                      Add Service
+          {groups.map((group) => {
+            const item = group.nearest;
+            const isExpanded = !!expandedCars[group.car_id];
+            return (
+              <Fragment key={group.car_id}>
+                <TableRow key={`${group.car_id}-summary`}>
+                  <TableCell>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setExpandedCars((prev) => ({ ...prev, [group.car_id]: !prev[group.car_id] }))}
+                    >
+                      {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </Button>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={item.status === 'overdue' ? 'error' : item.status === 'due-soon' ? 'warning' : 'secondary'}>
+                      {item.status === 'overdue' ? 'Overdue' : item.status === 'due-soon' ? 'Due Soon' : 'Upcoming'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      to={`/app/fleet/${item.car_id}`}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {formatCarLabel(item)}
                     </Link>
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+                    <p className="text-xs text-muted-foreground">{group.services.length} service(s)</p>
+                  </TableCell>
+                  <TableCell className="font-medium">{item.service_name}</TableCell>
+                  <TableCell>{item.current_km.toLocaleString()} km</TableCell>
+                  <TableCell>
+                    {item.status === 'overdue' ? (
+                      <div className="space-y-0.5">
+                        <span className="text-destructive font-medium block">
+                          Overdue by {Math.abs(item.remaining_km ?? 0).toLocaleString()} km
+                        </span>
+                        <span className="text-destructive/80 text-xs block">
+                          Alert pending for {Math.max(1, Math.abs(item.remaining_days ?? 0))} day(s)
+                        </span>
+                      </div>
+                    ) : item.remaining_km != null ? (
+                      <span className="text-warning font-medium">
+                        Due in {item.remaining_km.toLocaleString()} km
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Distance-based N/A</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.status === 'overdue' ? (
+                      <span className="text-destructive">Now!</span>
+                    ) : item.estimated_due_date ? (
+                      <span className="text-muted-foreground">
+                        ~{formatDateDMY(item.estimated_due_date)}
+                        {item.remaining_days != null && (
+                          <span className="text-xs ml-1">({item.remaining_days}d)</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">N/A</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-muted-foreground">{formatEstimationSource(item)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link to={`/app/services/new?car=${item.car_id}`}>
+                          <Wrench className="h-3 w-3 mr-1" />
+                          Add Service
+                        </Link>
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+                {isExpanded && (
+                  <TableRow key={`${group.car_id}-expanded`}>
+                    <TableCell colSpan={9} className="bg-muted/20">
+                      <div className="space-y-2 py-2">
+                        <p className="text-sm font-medium">All upcoming service dates for this car</p>
+                        <div className="space-y-1">
+                          {group.services.map((svc, idx) => (
+                            <div key={`${svc.car_id}-${svc.service_name}-${svc.due_km ?? 'na'}-${idx}`} className="grid grid-cols-1 md:grid-cols-5 gap-2 text-xs border rounded-md p-2 bg-background">
+                              <span className="font-medium">{svc.service_name}</span>
+                              <span>
+                                {svc.status === 'overdue'
+                                  ? `Overdue by ${Math.abs(svc.remaining_km ?? 0).toLocaleString()} km · Alert pending ${Math.max(1, Math.abs(svc.remaining_days ?? 0))} day(s)`
+                                  : svc.remaining_km != null
+                                    ? `Due in ${svc.remaining_km.toLocaleString()} km`
+                                    : 'Distance-based N/A'}
+                              </span>
+                              <span>
+                                {svc.estimated_due_date
+                                  ? `~${formatDateDMY(svc.estimated_due_date)}${svc.remaining_days != null ? ` (${svc.remaining_days}d)` : ''}`
+                                  : 'N/A'}
+                              </span>
+                              <span>{formatEstimationSource(svc)}</span>
+                              <span>
+                                {svc.last_serviced_at
+                                  ? `Last: ${formatDateDMY(svc.last_serviced_at)} @ ${svc.last_serviced_km?.toLocaleString() ?? '-'} km`
+                                  : 'Last: Never'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            );
+          })}
         </TableBody>
       </Table>
     );
@@ -197,9 +314,7 @@ export default function CriticalQueue() {
             <AlertTriangle className="h-6 w-6 text-destructive" />
             Critical Queue
           </h1>
-          <p className="text-muted-foreground">
-            Vehicles requiring critical service attention
-          </p>
+          <p className="text-muted-foreground">Overdue, due-soon, and upcoming service planning for fleet cars</p>
         </div>
       </div>
 
@@ -213,7 +328,7 @@ export default function CriticalQueue() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as any)}>
+              <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilterValue)}>
                 <SelectTrigger className="w-40">
                   <SelectValue />
                 </SelectTrigger>
@@ -250,15 +365,25 @@ export default function CriticalQueue() {
               </>
             )}
 
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">Search:</Label>
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Vehicle, model, brand, service..."
+                className="w-64"
+              />
+            </div>
+
             <p className="text-xs text-muted-foreground">
-              * Dates estimated based on ~{ESTIMATED_DAILY_KM} km/day average
+              Estimation uses each car&apos;s own odometer trend when available; otherwise interval-days date. If both exist, earlier date is used.
             </p>
           </div>
         </CardContent>
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="stat-card border-destructive/30">
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-lg bg-destructive/10">
@@ -266,7 +391,7 @@ export default function CriticalQueue() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Overdue</p>
-              <p className="text-2xl font-bold text-destructive">{overdue.length}</p>
+              <p className="text-2xl font-bold text-destructive">{overdueCars.length}</p>
             </div>
           </div>
         </Card>
@@ -278,7 +403,7 @@ export default function CriticalQueue() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Due Soon</p>
-              <p className="text-2xl font-bold text-warning">{dueSoon.length}</p>
+              <p className="text-2xl font-bold text-warning">{dueSoonCars.length}</p>
             </div>
           </div>
         </Card>
@@ -289,8 +414,19 @@ export default function CriticalQueue() {
               <Wrench className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Total Critical</p>
-              <p className="text-2xl font-bold">{filteredServices.length}</p>
+              <p className="text-sm text-muted-foreground">Upcoming</p>
+              <p className="text-2xl font-bold">{upcomingCars.length}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="stat-card">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-muted">
+              <Wrench className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Total Services</p>
+              <p className="text-2xl font-bold">{searchedGroupedCars.length}</p>
             </div>
           </div>
         </Card>
@@ -305,10 +441,13 @@ export default function CriticalQueue() {
                 All Critical ({filteredServices.length})
               </TabsTrigger>
               <TabsTrigger value="overdue" className="text-destructive">
-                Overdue ({overdue.length})
+                Overdue ({overdueCars.length})
               </TabsTrigger>
               <TabsTrigger value="due-soon" className="text-warning">
-                Due Soon ({dueSoon.length})
+                Due Soon ({dueSoonCars.length})
+              </TabsTrigger>
+              <TabsTrigger value="upcoming">
+                Upcoming ({upcomingCars.length})
               </TabsTrigger>
             </TabsList>
 
@@ -319,9 +458,10 @@ export default function CriticalQueue() {
                 </div>
               ) : (
                 <>
-                  <TabsContent value="all">{renderTable(filteredServices)}</TabsContent>
-                  <TabsContent value="overdue">{renderTable(overdue)}</TabsContent>
-                  <TabsContent value="due-soon">{renderTable(dueSoon)}</TabsContent>
+                  <TabsContent value="all">{renderTable(searchedGroupedCars)}</TabsContent>
+                  <TabsContent value="overdue">{renderTable(overdueCars)}</TabsContent>
+                  <TabsContent value="due-soon">{renderTable(dueSoonCars)}</TabsContent>
+                  <TabsContent value="upcoming">{renderTable(upcomingCars)}</TabsContent>
                 </>
               )}
             </CardContent>
