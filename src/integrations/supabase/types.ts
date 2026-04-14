@@ -50,6 +50,51 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_requests: {
+        Row: {
+          id: string
+          company_name: string
+          fleet_size: string | null
+          city: string | null
+          contact_person: string
+          phone: string
+          email: string
+          message: string | null
+          status: string
+          source_page: string | null
+          user_agent: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          company_name: string
+          fleet_size?: string | null
+          city?: string | null
+          contact_person: string
+          phone: string
+          email: string
+          message?: string | null
+          status?: string
+          source_page?: string | null
+          user_agent?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          company_name?: string
+          fleet_size?: string | null
+          city?: string | null
+          contact_person?: string
+          phone?: string
+          email?: string
+          message?: string | null
+          status?: string
+          source_page?: string | null
+          user_agent?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       organization_members: {
         Row: {
           id: string

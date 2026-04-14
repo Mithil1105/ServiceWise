@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeAuthed } from '@/lib/functions-invoke';
+import { formatDateTimeDMY } from '@/lib/date';
 import { Building2, Plus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,22 @@ export default function AdminOrganizationsList() {
       const { data, error } = await supabase
         .from('organizations')
         .select('id, name, slug, status, join_code, created_at')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const {
+    data: contactRequests = [],
+    isLoading: contactRequestsLoading,
+    error: contactRequestsError,
+  } = useQuery({
+    queryKey: ['admin-contact-requests'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('contact_requests')
+        .select('id, company_name, fleet_size, city, contact_person, phone, email, message, status, created_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -143,6 +160,56 @@ export default function AdminOrganizationsList() {
           ))}
         </ul>
       )}
+
+      <div className="mt-10 border-t pt-8">
+        <h2 className="text-xl font-semibold mb-2">Contact requests</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Leads submitted from the public Contact page appear here for master admin follow-up.
+        </p>
+
+        {contactRequestsLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading contact requests…
+          </div>
+        ) : contactRequestsError ? (
+          <p className="text-sm text-destructive">Could not load contact requests.</p>
+        ) : contactRequests.length === 0 ? (
+          <p className="text-muted-foreground">No contact requests yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {contactRequests.map((request) => (
+              <div key={request.id} className="rounded-lg border p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-medium">{request.company_name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {request.contact_person} · {request.city || 'City not provided'} · Fleet: {request.fleet_size || 'Not provided'}
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground whitespace-nowrap">
+                    {formatDateTimeDMY(request.created_at)}
+                  </p>
+                </div>
+                <div className="mt-2 text-sm text-muted-foreground">
+                  <a href={`mailto:${request.email}`} className="hover:underline text-foreground">
+                    {request.email}
+                  </a>
+                  {' · '}
+                  <a href={`tel:${request.phone}`} className="hover:underline text-foreground">
+                    {request.phone}
+                  </a>
+                  {' · '}
+                  <span className="uppercase">{request.status}</span>
+                </div>
+                {request.message && (
+                  <p className="mt-3 text-sm">{request.message}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

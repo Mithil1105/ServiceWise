@@ -8,6 +8,7 @@ import { CheckCircle, MessageSquare, Calendar, Eye, FileText, Mail, Phone, MapPi
 import { SectionHeading } from '@/components/marketing/SectionHeading';
 import { PageFAQ } from '@/components/marketing/PageFAQ';
 import { PAGE_FAQS } from '@/lib/page-faqs';
+import { supabase } from '@/integrations/supabase/client';
 
 const contactOptions = {
   email: 'info@unimisk.com',
@@ -36,13 +37,14 @@ function isValidEmail(email: string) {
 }
 
 function isValidPhone(phone: string) {
-  return /^[\d\s\-\+\(\)]{8,}$/.test(phone.trim());
+  return /^[\d\s+()-]{8,}$/.test(phone.trim());
 }
 
 export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState('');
   const [form, setForm] = useState({
     companyName: '',
     fleetSize: '',
@@ -55,6 +57,7 @@ export default function ContactPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError('');
     const newErrors: Record<string, string> = {};
     if (!form.companyName.trim()) newErrors.companyName = 'Company name is required.';
     if (!form.contactPerson.trim()) newErrors.contactPerson = 'Contact person is required.';
@@ -66,8 +69,23 @@ export default function ContactPage() {
     if (Object.keys(newErrors).length > 0) return;
 
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 800));
+    const { error } = await supabase.from('contact_requests').insert({
+      company_name: form.companyName.trim(),
+      fleet_size: form.fleetSize.trim() || null,
+      city: form.city.trim() || null,
+      contact_person: form.contactPerson.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      message: form.message.trim() || null,
+      source_page: '/contact',
+      user_agent: typeof navigator === 'undefined' ? null : navigator.userAgent,
+    });
     setSubmitting(false);
+    if (error) {
+      setSubmitError('Could not submit your request right now. Please try again in a minute.');
+      return;
+    }
+
     setSubmitted(true);
   };
 
@@ -252,6 +270,9 @@ export default function ContactPage() {
                       placeholder="Any specific requirements or questions?"
                     />
                   </div>
+                  {submitError && (
+                    <p className="text-sm text-destructive">{submitError}</p>
+                  )}
                   <Button type="submit" className="w-full sm:w-auto" disabled={submitting}>
                     {submitting ? 'Sending…' : 'Submit'}
                   </Button>
